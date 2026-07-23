@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account_Owner__c</fullName>
+    <label>Account Owner (snapshot)</label>
+    <description>Snapshot of Contact.Account.OwnerId taken at submit time so an ownership change mid-approval does not reroute pending items.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve</relationshipLabel>
+    <relationshipName>Invitees_To_Approve</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

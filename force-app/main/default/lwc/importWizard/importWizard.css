@@ -1,0 +1,15 @@
+.stat {
+    border: 1px solid var(--lwc-colorBorder, #dddbda);
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    text-align: center;
+    min-width: 8rem;
+}
+.stat b {
+    display: block;
+    font-size: 1.25rem;
+}
+.stat span {
+    font-size: 0.75rem;
+    color: var(--lwc-colorTextWeak, #706e6b);
+}

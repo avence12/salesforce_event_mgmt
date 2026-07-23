@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <layoutSections>
+        <customLabel>false</customLabel>
+        <detailHeading>false</detailHeading>
+        <editHeading>true</editHeading>
+        <label>Information</label>
+        <layoutColumns>
+            <layoutItems><behavior>Required</behavior><field>Name</field></layoutItems>
+            <layoutItems><behavior>Required</behavior><field>Event_Date__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Location__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Event_Type__c</field></layoutItems>
+        </layoutColumns>
+        <layoutColumns>
+            <layoutItems><behavior>Edit</behavior><field>Expected_Attendees__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Description__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>OwnerId</field></layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsTopToBottom</style>
+    </layoutSections>
+    <layoutSections>
+        <customLabel>true</customLabel>
+        <detailHeading>true</detailHeading>
+        <editHeading>false</editHeading>
+        <label>Review Progress</label>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>Pending_Count__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approved_Count__c</field></layoutItems>
+        </layoutColumns>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>Rejected_Count__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Exported_Count__c</field></layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsTopToBottom</style>
+    </layoutSections>
+    <relatedLists>
+        <fields>NAME</fields>
+        <fields>Contact__c</fields>
+        <fields>Status__c</fields>
+        <fields>Added_By__c</fields>
+        <fields>Account__c</fields>
+        <relatedList>Event_Invitee__c.Marketing_Event__c</relatedList>
+    </relatedLists>
+</Layout>

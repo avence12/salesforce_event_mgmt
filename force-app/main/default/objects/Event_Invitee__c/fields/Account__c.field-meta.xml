@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account__c</fullName>
+    <label>Account (snapshot)</label>
+    <description>Snapshot of the Contact's Account at add time. Populated by Apex — deliberately not a formula so a later Contact reparent does not rewrite history.</description>
+    <type>Lookup</type>
+    <referenceTo>Account</referenceTo>
+    <relationshipLabel>Event Invitees</relationshipLabel>
+    <relationshipName>Event_Invitees</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

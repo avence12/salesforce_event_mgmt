@@ -1,0 +1,98 @@
+<template>
+    <lightning-card title="Import External Contact List" icon-name="standard:contact_list">
+        <div class="slds-p-around_medium">
+
+            <!-- Progress -->
+            <div class="slds-progress slds-progress_horizontal slds-m-bottom_medium">
+                <ol class="slds-progress__list">
+                    <li class={step1Class}><span class="slds-progress__marker"></span><span class="slds-progress__item_content">1 Upload File</span></li>
+                    <li class={step2Class}><span class="slds-progress__marker"></span><span class="slds-progress__item_content">2 Preview Changes</span></li>
+                    <li class={step3Class}><span class="slds-progress__marker"></span><span class="slds-progress__item_content">3 Apply Results</span></li>
+                </ol>
+            </div>
+
+            <template lwc:if={error}>
+                <div class="slds-text-color_error slds-m-bottom_small" role="alert">{error}</div>
+            </template>
+            <template lwc:if={loading}>
+                <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
+            </template>
+
+            <!-- STEP 1 -->
+            <template lwc:if={isStep1}>
+                <p class="slds-m-bottom_small slds-text-color_weak">
+                    Upload an Excel (.xlsx) file. Rows are matched to existing Contacts by Email.
+                    Expected headers: First Name, Last Name, Email, Title, Company, Mobile.
+                </p>
+                <lightning-input type="file" label="Excel file (.xlsx)" accept=".xlsx"
+                                 onchange={handleFileChange}></lightning-input>
+            </template>
+
+            <!-- STEP 2 -->
+            <template lwc:if={isStep2}>
+                <p class="slds-m-bottom_small">Uploaded: <b>{fileName}</b> ({rowCount} rows)</p>
+
+                <div class="slds-grid slds-gutters slds-m-bottom_medium slds-wrap">
+                    <div class="slds-col"><div class="stat"><b>{stats.newCount}</b><span>New (will create)</span></div></div>
+                    <div class="slds-col"><div class="stat"><b>{stats.updateCount}</b><span>Changed (will update)</span></div></div>
+                    <div class="slds-col"><div class="stat"><b>{stats.unchangedCount}</b><span>Unchanged (skip)</span></div></div>
+                    <div class="slds-col"><div class="stat"><b>{stats.companyChangeCount}</b><span>Company change (manual)</span></div></div>
+                    <div class="slds-col"><div class="stat"><b>{stats.skippedCount}</b><span>Skipped (invalid)</span></div></div>
+                </div>
+
+                <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col" style="width:2rem"></th>
+                            <th scope="col">Name</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Change</th>
+                            <th scope="col">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={previewRows} for:item="r">
+                            <tr key={r.key}>
+                                <td><input type="checkbox" data-key={r.key} checked={r.selected}
+                                           disabled={r.disabled} onchange={handleRowToggle} /></td>
+                                <td>{r.name}</td>
+                                <td>{r.email}</td>
+                                <td>{r.changeText}</td>
+                                <td><span class={r.badgeClass}>{r.typeLabel}</span></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                <div class="slds-grid slds-grid_align-spread slds-m-top_medium">
+                    <div>
+                        <template lwc:if={hasCompanyChanges}>
+                            <lightning-button label="Download Manual-Review List"
+                                              onclick={handleDownloadManualList}></lightning-button>
+                        </template>
+                    </div>
+                    <div>
+                        <lightning-button label="Back" onclick={handleBack} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button variant="brand" label={applyLabel} disabled={applyDisabled}
+                                          onclick={handleApply}></lightning-button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- STEP 3 -->
+            <template lwc:if={isStep3}>
+                <template lwc:if={applyResult}>
+                    <div class="slds-text-heading_medium slds-m-bottom_small">Import complete ✅</div>
+                    <p><b>{applyResult.created}</b> contact(s) created, <b>{applyResult.updated}</b> updated.</p>
+                    <template lwc:if={hasCompanyChanges}>
+                        <p class="slds-m-top_small slds-text-color_weak">
+                            Company-change rows were not applied — download the manual-review list from the previous step if you haven't.
+                        </p>
+                    </template>
+                </template>
+                <lightning-button class="slds-m-top_medium" label="Import Another File"
+                                  onclick={handleStartOver}></lightning-button>
+            </template>
+        </div>
+    </lightning-card>
+</template>

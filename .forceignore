@@ -1,0 +1,7 @@
+# Ignore non-source files
+package.json
+package-lock.json
+node_modules
+scripts
+**/*.md
+.gstack

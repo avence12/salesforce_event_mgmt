@@ -1,0 +1,107 @@
+<template>
+    <lightning-card title="Event Invitees" icon-name="standard:people">
+        <div slot="actions">
+            <template lwc:if={showExport}>
+                <lightning-button label="Export Approved List (CSV)" icon-name="utility:download"
+                                  onclick={handleExport}></lightning-button>
+            </template>
+        </div>
+        <div class="slds-p-around_medium">
+            <template lwc:if={loading}>
+                <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
+            </template>
+
+            <lightning-tabset>
+                <!-- ============ ADD CONTACTS ============ -->
+                <lightning-tab label="Add Contacts">
+                    <div class="slds-grid slds-gutters slds-m-bottom_small slds-wrap">
+                        <div class="slds-col slds-size_1-of-3">
+                            <lightning-combobox label="My Accounts" value={accountFilter}
+                                                options={accountOptions} onchange={handleAccountFilter}></lightning-combobox>
+                        </div>
+                        <div class="slds-col slds-size_2-of-3">
+                            <lightning-input type="search" label="Search name / email / title"
+                                             value={searchTerm} onchange={handleSearch}></lightning-input>
+                        </div>
+                    </div>
+
+                    <template lwc:if={hasSelectable}>
+                        <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col" style="width:2rem"></th>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Title</th>
+                                    <th scope="col">Email</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={filteredGroups} for:item="g">
+                                    <tr key={g.accountId} class="group-header">
+                                        <td colspan="4"><b>{g.header}</b></td>
+                                    </tr>
+                                    <template for:each={g.contacts} for:item="c">
+                                        <tr key={c.contactId}>
+                                            <td><input type="checkbox" data-id={c.contactId}
+                                                       checked={c.selected} onchange={handleToggle} /></td>
+                                            <td>{c.name}</td>
+                                            <td>{c.title}</td>
+                                            <td>{c.email}</td>
+                                        </tr>
+                                    </template>
+                                </template>
+                            </tbody>
+                        </table>
+                    </template>
+                    <template lwc:else>
+                        <p class="slds-text-color_weak slds-p-vertical_medium">
+                            No selectable contacts — you see contacts under accounts you own or where you're on the Account Team,
+                            excluding those already invited.
+                        </p>
+                    </template>
+
+                    <div class="slds-grid slds-grid_align-end slds-m-top_medium">
+                        <lightning-button label={addLabel} disabled={addDisabled}
+                                          onclick={handleAdd} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button variant="brand" label={submitLabel} disabled={submitDisabled}
+                                          onclick={handleSubmit}></lightning-button>
+                    </div>
+                    <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                        Each invitee records who added it. You submit only your own batch — other AMs' selections are unaffected.
+                    </p>
+                </lightning-tab>
+
+                <!-- ============ ALL INVITEES ============ -->
+                <lightning-tab label="All Invitees">
+                    <template lwc:if={hasInvitees}>
+                        <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Title</th>
+                                    <th scope="col">Account</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Added By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={inviteeRows} for:item="i">
+                                    <tr key={i.key}>
+                                        <td>{i.contactName}</td>
+                                        <td>{i.contactTitle}</td>
+                                        <td>{i.accountName}</td>
+                                        <td><span class="slds-badge">{i.status}</span></td>
+                                        <td>{i.addedByLabel}</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </template>
+                    <template lwc:else>
+                        <p class="slds-text-color_weak slds-p-vertical_medium">No invitees yet.</p>
+                    </template>
+                </lightning-tab>
+            </lightning-tabset>
+        </div>
+    </lightning-card>
+</template>

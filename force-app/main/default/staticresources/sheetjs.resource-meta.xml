@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+    <cacheControl>Private</cacheControl>
+    <contentType>application/javascript</contentType>
+    <description>SheetJS Community Edition 0.18.5 (xlsx.full.min.js) — client-side .xlsx parsing for the importWizard LWC. Requires Lightning Web Security.</description>
+</StaticResource>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomNotificationType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customNotifTypeName>Event_Approval_Notification</customNotifTypeName>
+    <masterLabel>Event Approval Notification</masterLabel>
+    <description>In-app (bell) notifications for event invitee approval requests and decisions. Delivered to desktop and the Salesforce Mobile App.</description>
+    <desktop>true</desktop>
+    <mobile>true</mobile>
+</CustomNotificationType>
