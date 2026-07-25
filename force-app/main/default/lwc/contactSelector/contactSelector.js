@@ -131,7 +131,9 @@ export default class ContactSelector extends LightningElement {
     async handleExport() {
         this.loading = true;
         try {
-            const res = await exportApproved({ eventId: this.recordId });
+            // Whole approved list for this event; the Approved Exports tab is where
+            // a decision-date range can be applied.
+            const res = await exportApproved({ eventId: this.recordId, fromDate: null, toDate: null });
             downloadCsv(res.csv, res.fileName);
             this.toast('Exported', `${res.rowCount} approved contact(s) exported.`, 'success');
             await refreshApex(this.wiredInvitees);

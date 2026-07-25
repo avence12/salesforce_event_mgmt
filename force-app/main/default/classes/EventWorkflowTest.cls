@@ -106,12 +106,12 @@ private class EventWorkflowTest {
 
         // Export as Alex: 1 approved row; flips to Exported; re-export still returns it.
         System.runAs(alex) {
-            EventExportController.ExportResult ex1 = EventExportController.exportApproved(evt.Id);
+            EventExportController.ExportResult ex1 = EventExportController.exportApproved(evt.Id, null, null);
             System.assertEquals(1, ex1.rowCount);
             System.assert(ex1.csv.startsWith('Name,Title,Account,Email,Approved By,Decided At'));
             System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported']);
 
-            EventExportController.ExportResult ex2 = EventExportController.exportApproved(evt.Id);
+            EventExportController.ExportResult ex2 = EventExportController.exportApproved(evt.Id, null, null);
             System.assertEquals(1, ex2.rowCount, 'Re-export must return the full approved list');
         }
     }
@@ -152,17 +152,17 @@ private class EventWorkflowTest {
         Test.stopTest();
 
         System.runAs(alex) {
-            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(false);
+            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(false, null, null);
             System.assertEquals(2, all.size(), 'Both events carry approved rows');
             for (EventExportController.ApprovedSummary s : all) {
                 System.assertEquals(1, s.approvedCount);
                 System.assertEquals(0, s.exportedCount);
                 System.assertEquals(1, s.totalCount);
             }
-            System.assertEquals(1, EventExportController.getApprovedSummary(true).size(),
+            System.assertEquals(1, EventExportController.getApprovedSummary(true, null, null).size(),
                 'mineOnly must drop the row Maria added');
 
-            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false);
+            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, null, null);
             System.assertEquals(2, ex.rowCount);
             System.assertEquals(2, ex.eventCount);
             System.assertEquals(false, ex.truncated);
@@ -173,17 +173,77 @@ private class EventWorkflowTest {
             System.assertEquals(2, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
                 'Downloading everything marks everything Exported');
 
-            System.assertEquals(2, EventExportController.exportAllApproved(false).rowCount,
+            System.assertEquals(2, EventExportController.exportAllApproved(false, null, null).rowCount,
                 'Re-download must return the full approved list, not only new rows');
 
-            EventExportController.ExportResult justMine = EventExportController.exportAllApproved(true);
+            EventExportController.ExportResult justMine = EventExportController.exportAllApproved(true, null, null);
             System.assertEquals(1, justMine.rowCount);
             System.assertEquals(1, justMine.eventCount);
 
             EventExportController.rowLimit = 1;
-            EventExportController.ExportResult capped = EventExportController.exportAllApproved(false);
+            EventExportController.ExportResult capped = EventExportController.exportAllApproved(false, null, null);
             System.assertEquals(1, capped.rowCount);
             System.assertEquals(true, capped.truncated, 'Row cap must be reported, not silently applied');
+        }
+    }
+
+    /**
+     * The decision-date range is picked as calendar dates in the user's timezone but
+     * compared against Decided_At__c, which is GMT. Taipei (UTC+8, no DST) is used so
+     * the two readings of the same instant land on *different* calendar days: an
+     * implementation that filtered on the raw GMT date would fail both assertions.
+     */
+    @IsTest
+    static void dateRangeBoundariesFollowUserTimezone() {
+        User alex = findUser('amalex');
+        User sarah = findUser('ownsarah');
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            update new User(Id = alex.Id, TimeZoneSidKey = 'Asia/Taipei'); // runAs: setup vs non-setup DML
+        }
+
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Event_Invitee__c row = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
+        System.runAs(sarah) {
+            ApprovalConsoleController.decide(evt.Id, new List<Id>{ row.Id }, true);
+        }
+
+        // 2026-06-30 20:00 GMT is 2026-07-01 04:00 in Taipei — 30 June by GMT, 1 July to Alex.
+        update new Event_Invitee__c(Id = row.Id, Decided_At__c = Datetime.newInstanceGmt(2026, 6, 30, 20, 0, 0));
+
+        Date jun30 = Date.newInstance(2026, 6, 30);
+        Date jul01 = Date.newInstance(2026, 7, 1);
+
+        System.runAs(alex) {
+            // 30 June in Taipei ends at 2026-06-30 16:00 GMT — the row is after that.
+            System.assertEquals(0, EventExportController.getApprovedSummary(false, jun30, jun30).size(),
+                'Approved on 1 July local time — a 30 June range must not see it');
+            Boolean threw = false;
+            try { EventExportController.exportAllApproved(false, jun30, jun30); }
+            catch (AuraHandledException e) { threw = true; }
+            System.assert(threw, 'Out-of-range export must fail loudly, not hand over an empty file');
+
+            // 1 July in Taipei = 2026-06-30 16:00 → 2026-07-01 16:00 GMT, end-inclusive.
+            List<EventExportController.ApprovedSummary> hits =
+                EventExportController.getApprovedSummary(false, jul01, jul01);
+            System.assertEquals(1, hits.size());
+            System.assertEquals(1, hits[0].approvedCount);
+
+            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, jul01, jul01);
+            System.assertEquals(1, ex.rowCount);
+            System.assert(ex.windowLabel.contains('2026-06-30 16:00'),
+                'Reported GMT window must start at Taipei midnight, not GMT midnight: ' + ex.windowLabel);
+            System.assert(ex.windowLabel.contains('Asia/Taipei'), 'Window names the timezone it was read in');
+            System.assert(ex.fileName.contains('2026-07-01'), 'Filename carries the requested range');
+
+            // An open-ended range is still allowed on either side.
+            System.assertEquals(1, EventExportController.exportAllApproved(false, jul01, null).rowCount);
+            System.assertEquals(1, EventExportController.exportAllApproved(false, null, jul01).rowCount);
         }
     }
 
@@ -191,9 +251,9 @@ private class EventWorkflowTest {
     static void exportAllApproved_withNothingApprovedThrows() {
         User alex = findUser('amalex');
         System.runAs(alex) {
-            System.assertEquals(0, EventExportController.getApprovedSummary(false).size());
+            System.assertEquals(0, EventExportController.getApprovedSummary(false, null, null).size());
             Boolean threw = false;
-            try { EventExportController.exportAllApproved(false); }
+            try { EventExportController.exportAllApproved(false, null, null); }
             catch (AuraHandledException e) { threw = true; }
             System.assert(threw, 'Nothing approved → explicit error, not an empty file');
         }
