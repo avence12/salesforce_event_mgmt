@@ -6,6 +6,10 @@ Repo: PoC/salesforce_event_mgmt
 Status: APPROVED
 Mode: Builder (hackathon / demo PoC)
 
+**Revised 2026-07-25** — export grew a second entry point (cross-event download) and a
+sign-off date range after the original approval. Both are folded into the sections below;
+see *Screen 5 — Export* for the substance and *Deliverables* for the added components.
+
 ## Problem Statement
 
 Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel) from conferences and other systems. Today there is no structured way to: (1) reconcile those lists against existing Salesforce Contacts, (2) assemble an event invitee list from multiple AMs' accounts, (3) get per-contact sign-off from each Account Owner (the AM's manager/director), and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox, on top of existing Account and Contact objects.
@@ -32,7 +36,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel
 2. **Company change is flagged for manual review**, not auto-moved (target Account may not exist; reparenting is risky).
 3. Approval is **grouped by Account Owner**: each Owner independently approves/rejects only contacts under their own accounts.
 4. iOS approval means the Salesforce Mobile App rendering our LWC — no native app.
-5. Export = CSV download of approved contacts.
+5. Export = CSV download of approved contacts — one event at a time from its record page, or every event at once from a dedicated app page, optionally narrowed to the date range the sign-offs happened in.
 6. Events are **shared**: any AM can add contacts from their own accounts to the same Event; each invitee records who added it; each AM submits their own batch; completion notifications go to the AM who added those contacts.
 
 ## Approaches Considered
@@ -59,7 +63,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel
 
 ## Recommended Approach (B) — Detailed Design
 
-Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tmp/gstack-sketch.png`). Four screens, all English UI.
+Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tmp/gstack-sketch.png`). Five screens, all English UI — the sketches cover the first four; Screen 5 (Approved Exports) was added after approval.
 
 ### Data model
 
@@ -119,7 +123,7 @@ Standard object create form (Lightning record page with a curated layout is suff
 - Shows invitees where `Account_Owner__c = current user` AND `Status__c = Pending Approval` for this event, grouped by Account (component renders nothing for users with no pending items). **Select All** checkbox; **Approve (n)** / **Reject** buttons act on checked rows (single Apex call, bulk-safe).
 - Completion notification: computed **in Apex, inside the same decision service** that updates statuses (an aggregate condition — "zero remaining Pending for this AM on this event" — is bulk-fragile in a record-triggered Flow). When an AM's remaining Pending count hits zero, email that AM: "Your submissions for {Event} have been fully reviewed: X approved, Y rejected."
 
-### Export
+### Screen 5 — Export (Event page button + Approved Exports app page)
 
 Two entry points, one Apex class (`EventExportController`) and one CSV writer behind them:
 
@@ -134,17 +138,19 @@ Both queries include **both Approved and Exported** rows, so re-export always re
 
 ### Permissions (PoC-minimal)
 
-Two Permission Sets: `Event_AM` (create events, import contacts, add/submit invitees) and `Event_Approver` (read events, decide invitees). `Status__c` is read-only via FLS for both; the mutating Apex runs in system mode (without `WITH USER_MODE` on those DML statements) so status transitions bypass FLS by design.
+Two Permission Sets: `Event_AM` (create events, import contacts, add/submit invitees, download approved lists — grants the *Import Contacts* and *Approved Exports* tabs plus `EventExportController`) and `Event_Approver` (read events, decide invitees). `Status__c` is read-only via FLS for both; the mutating Apex runs in system mode (without `WITH USER_MODE` on those DML statements) so status transitions bypass FLS by design.
+
+Both export methods are `with sharing`, so the cross-event download is bounded by record visibility — an AM sees exactly the events and invitees they could open by hand, never more. `Event_Invitee__c` is `ControlledByParent` under a `ReadWrite` event, which in the PoC means everyone sees everything; the *Only invitees I added* toggle is a convenience filter, **not** a security boundary, and tightening the event's OWD is the production lever if that matters.
 
 ### Deliverables / repo layout
 
-SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **3 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page) + 3 Apex controllers and 1 notification/decision service (+ tests), 1 static resource (SheetJS, pinned version), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
+SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), 1 static resource (SheetJS, pinned version), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
 
 ## Open Questions
 
 1. Exact Excel column headers from the real source system (assumed: First Name, Last Name, Email, Title, Company, Mobile) — confirm with one real file before the demo.
 2. "AM's accounts" definition in production (owner vs Account Team vs role hierarchy) — PoC uses owner + Account Team membership.
-3. Where the exported CSV goes next (mail-merge tool? event platform?) — affects export columns; PoC ships the 6 columns above.
+3. Where the exported CSV goes next (mail-merge tool? event platform?) — affects export columns; PoC ships 6 columns per event, 8 across events (Event and Event Date lead). Related and still open: the file's Decided At column is GMT while the date-range pickers read in the user's timezone — if the downstream consumer parses that column, it may want local time or an ISO-8601 offset instead.
 4. Should Rejected invitees be re-submittable after edits? PoC: yes, via reset — re-adding a rejected contact resets the existing invitee row to Draft (see Screen 3); there is never a second row per Event+Contact.
 
 ## Success Criteria
@@ -155,6 +161,9 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
 3. One Owner opens the console on desktop, the other in the Salesforce Mobile App (or phone-format preview); both Select All → Approve.
 4. Both AMs receive completion emails; the event shows correct roll-up counts; Export downloads a CSV with exactly the approved contacts.
 5. Duplicate adds are prevented; a rejected contact does not appear in the export.
+6. The Approved Exports tab lists every event with sign-offs and its downloaded/not-yet-downloaded counts; **Download All Approved** yields one file spanning both events, and the counts on screen match the rows in the file.
+7. Narrowing the date range to the day the approvals happened returns the same rows; shifting it by one day returns none — proving the window is read in the user's timezone, not GMT.
+8. A downloaded file with non-ASCII names opens in desktop Excel without mojibake.
 
 ## Dependencies
 
@@ -172,7 +181,8 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
 4. Build Screen 3 selector + submit service + notifications → verify: two AMs' batches stay independent; owners notified.
 5. Build Screen 4 approval console (desktop + phone form factor) + completion notification → verify: select-all approve updates all rows and emails the right AM.
 6. Export button + Event roll-ups + record page assembly → verify: full demo script (Success Criteria) passes.
-7. Dry-run the demo with fresh eyes; polish copy and empty/error states shown in the script.
+7. Approved Exports app page (cross-event download + decision-date range) → verify: criteria 6–8 pass, including the timezone-boundary case.
+8. Dry-run the demo with fresh eyes; polish copy and empty/error states shown in the script.
 
 ## What I noticed about how you think
 
