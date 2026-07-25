@@ -10,6 +10,7 @@
     <navType>Standard</navType>
     <tabs>Marketing_Event__c</tabs>
     <tabs>Import_Contacts</tabs>
+    <tabs>Approved_Exports</tabs>
     <tabs>standard-Account</tabs>
     <tabs>standard-Contact</tabs>
     <uiType>Lightning</uiType>

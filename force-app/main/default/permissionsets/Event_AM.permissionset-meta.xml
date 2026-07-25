@@ -116,4 +116,8 @@
         <tab>Import_Contacts</tab>
         <visibility>Visible</visibility>
     </tabSettings>
+    <tabSettings>
+        <tab>Approved_Exports</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
 </PermissionSet>

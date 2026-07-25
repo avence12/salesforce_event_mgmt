@@ -1,0 +1,96 @@
+<template>
+    <lightning-card title="Approved Contacts — Download" icon-name="utility:download">
+        <div slot="actions">
+            <lightning-button variant="brand" label={downloadAllLabel} icon-name="utility:download"
+                              disabled={downloadAllDisabled} onclick={handleDownloadAll}></lightning-button>
+        </div>
+
+        <div class="slds-p-around_medium">
+            <template lwc:if={loading}>
+                <lightning-spinner alternative-text="Preparing download…" size="medium"></lightning-spinner>
+            </template>
+
+            <div class="slds-grid slds-gutters slds-wrap slds-grid_vertical-align-end slds-m-bottom_x-small">
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-input type="date" label="Approved from" value={fromDate}
+                                     message-when-bad-input={rangeError}
+                                     onchange={handleFromChange}></lightning-input>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-input type="date" label="Approved to" value={toDate}
+                                     onchange={handleToChange}></lightning-input>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-button label="Clear dates" disabled={clearDisabled}
+                                      onclick={handleClearRange}></lightning-button>
+                </div>
+            </div>
+            <template lwc:if={rangeInvalid}>
+                <p class="slds-text-color_error slds-text-body_small slds-m-bottom_x-small">{rangeError}</p>
+            </template>
+            <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">{timeZoneNote}</p>
+
+            <div class="slds-m-bottom_small">
+                <lightning-input type="checkbox" label="Only invitees I added"
+                                 checked={mineOnly} onchange={handleScopeChange}></lightning-input>
+                <p class="slds-text-color_weak slds-text-body_small">{scopeNote}</p>
+            </div>
+
+            <template lwc:if={hasRows}>
+                <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col">Event</th>
+                            <th scope="col">Event Date</th>
+                            <th scope="col" class="num">Not yet downloaded</th>
+                            <th scope="col" class="num">Already downloaded</th>
+                            <th scope="col" class="num">Total approved</th>
+                            <th scope="col" style="width:8rem"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={rows} for:item="r">
+                            <tr key={r.eventId}>
+                                <td><a href={r.eventUrl}>{r.eventName}</a></td>
+                                <td>{r.eventDateLabel}</td>
+                                <td class="num">{r.approvedCount}</td>
+                                <td class="num">{r.exportedCount}</td>
+                                <td class="num"><b>{r.totalCount}</b></td>
+                                <td>
+                                    <lightning-button label="Download" data-id={r.eventId}
+                                                      disabled={loading}
+                                                      onclick={handleDownloadEvent}></lightning-button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2"><b>{eventCount} event(s)</b></td>
+                            <td class="num"><b>{newCount}</b></td>
+                            <td class="num"></td>
+                            <td class="num"><b>{totalCount}</b></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                    Downloading marks rows as Exported on the event roll-up; re-downloading always returns the
+                    complete approved list, never just the new rows.
+                </p>
+            </template>
+            <template lwc:else>
+                <template lwc:if={hasRange}>
+                    <p class="slds-text-color_weak slds-p-vertical_medium">
+                        Nothing was approved in this date range — widen it or clear the dates.
+                    </p>
+                </template>
+                <template lwc:else>
+                    <p class="slds-text-color_weak slds-p-vertical_medium">
+                        Nothing approved yet — once Account Owners sign off on invitees, the events show up here.
+                    </p>
+                </template>
+            </template>
+        </div>
+    </lightning-card>
+</template>

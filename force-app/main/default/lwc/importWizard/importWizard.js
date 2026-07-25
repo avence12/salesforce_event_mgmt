@@ -4,6 +4,7 @@ import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import SHEETJS from '@salesforce/resourceUrl/sheetjs';
 import previewMatches from '@salesforce/apex/ContactImportController.previewMatches';
 import applyChanges from '@salesforce/apex/ContactImportController.applyChanges';
+import { downloadCsv, csvRow } from 'c/csvDownload';
 
 const MAX_ROWS = 500;
 
@@ -173,15 +174,12 @@ export default class ImportWizard extends LightningElement {
     }
 
     handleDownloadManualList() {
+        // Every value here came out of the uploaded .xlsx, so it is quoted and
+        // formula-guarded rather than trusted — see c/csvDownload.
         const rows = this.previewRows.filter((r) => r.classification === 'COMPANY_CHANGE');
         const lines = ['Name,Email,Current → New Company'];
-        rows.forEach((r) => lines.push([r.name, r.email, (r.changeText || '').replace(/,/g, ';')].join(',')));
-        const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'company_change_manual_review.csv';
-        a.click();
-        URL.revokeObjectURL(a.href);
+        rows.forEach((r) => lines.push(csvRow([r.name, r.email, r.changeText])));
+        downloadCsv(lines.join('\r\n'), 'company_change_manual_review.csv');
     }
 
     handleBack() {

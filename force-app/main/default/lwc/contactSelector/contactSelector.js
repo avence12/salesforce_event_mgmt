@@ -6,6 +6,7 @@ import getAllInvitees from '@salesforce/apex/InviteeSelectorController.getAllInv
 import addInvitees from '@salesforce/apex/InviteeSelectorController.addInvitees';
 import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitMyInvitees';
 import exportApproved from '@salesforce/apex/EventExportController.exportApproved';
+import { downloadCsv } from 'c/csvDownload';
 
 export default class ContactSelector extends LightningElement {
     @api recordId; // Marketing_Event__c
@@ -130,13 +131,10 @@ export default class ContactSelector extends LightningElement {
     async handleExport() {
         this.loading = true;
         try {
-            const res = await exportApproved({ eventId: this.recordId });
-            const blob = new Blob([res.csv], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = res.fileName;
-            a.click();
-            URL.revokeObjectURL(a.href);
+            // Whole approved list for this event; the Approved Exports tab is where
+            // a decision-date range can be applied.
+            const res = await exportApproved({ eventId: this.recordId, fromDate: null, toDate: null });
+            downloadCsv(res.csv, res.fileName);
             this.toast('Exported', `${res.rowCount} approved contact(s) exported.`, 'success');
             await refreshApex(this.wiredInvitees);
         } catch (e) {
