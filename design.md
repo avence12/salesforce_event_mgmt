@@ -44,7 +44,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel
 - Cons: weak approval UX, no diff preview, low demo impact.
 
 ### Approach B: Full custom objects + LWC (ideal architecture) — **CHOSEN**
-- Custom `Marketing_Event__c` + `Event_Invitee__c`; four screens — three custom LWCs (import wizard, contact selector, approval console) plus a standard record form for event creation; Flow + Apex for notifications; CSV export button.
+- Custom `Marketing_Event__c` + `Event_Invitee__c`; five screens — four custom LWCs (import wizard, contact selector, approval console, approved-exports downloader) plus a standard record form for event creation; Flow + Apex for notifications; CSV export button.
 - Effort: L (human ~3–4 weeks / CC ~2–4 hours) · Risk: Medium
 - Pros: exactly matches the user's script; best demo experience; clean model free of CampaignMember quirks.
 - Cons: largest build surface; rebuilds things Campaign gives for free.
@@ -121,7 +121,14 @@ Standard object create form (Lightning record page with a curated layout is suff
 
 ### Export
 
-**Export Approved List (CSV)** button on the Event page (visible when approved + exported count > 0): Apex builds CSV (Name, Title, Account, Email, Approved By = `Account_Owner__c`, Decided At) served as a downloadable file. The query includes **both Approved and Exported** rows, so re-export always returns the full approved list; on first export rows move Approved → Exported, and the Event page shows the `Exported_Count__c` roll-up alongside the others (no misleading "0 approved" after export).
+Two entry points, one Apex class (`EventExportController`) and one CSV writer behind them:
+
+- **Export Approved List (CSV)** button on the Event page (visible when approved + exported count > 0): CSV of Name, Title, Account, Email, Approved By = `Account_Owner__c`, Decided At.
+- **Approved Exports** app tab (`approvedExport` LWC): every event the user can see that has signed-off invitees, with per-event counts of what has and hasn't been downloaded yet, a **Download All Approved** button that pulls the whole lot into one file (two extra leading columns, Event and Event Date), and a per-event download on each row. An *Only invitees I added* toggle scopes both the list and the file to the running user's own batches — the natural read of "my approved contacts" in a multi-AM event.
+
+Both queries include **both Approved and Exported** rows, so re-export always returns the full approved list; on first export rows move Approved → Exported, and the Event page shows the `Exported_Count__c` roll-up alongside the others (no misleading "0 approved" after export). The cross-event query is capped (`rowLimit`, 10 000) and the result carries a `truncated` flag so a partial file is reported rather than silently handed over.
+
+**Getting the file onto the user's machine intact** is its own small problem, handled once in the shared `c/csvDownload` module: rows are joined with CRLF (RFC 4180) and the Blob is prefixed with a UTF-8 BOM, without which desktop Excel decodes the file as the local ANSI codepage and mangles every non-ASCII name; the object URL is revoked on a later tick because revoking in the same tick as `click()` cancels the download in Safari and older Chrome.
 
 ### Permissions (PoC-minimal)
 

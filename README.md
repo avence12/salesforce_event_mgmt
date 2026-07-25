@@ -8,7 +8,7 @@ Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement
 1. **Import** — AM uploads an Excel (.xlsx) contact list; rows are matched to existing Contacts by email with a diff preview (New / Update / Unchanged / Company change / Skipped) before anything is applied.
 2. **Create & select** — AM creates a Marketing Event and adds contacts from their own accounts. Events are shared: every AM adds their own batch (`Added By` is tracked per invitee).
 3. **Approve** — Each AM submits their batch; every affected **Account Owner** gets an email + bell notification and bulk-approves/rejects their pending invitees on the event page (desktop or Salesforce Mobile App).
-4. **Export** — When an AM's batch is fully reviewed they're notified and can download the approved list as CSV (re-export safe).
+4. **Export** — When an AM's batch is fully reviewed they're notified and can download the approved list as CSV (re-export safe) — either one event from its record page, or **every signed-off invitee across all events in a single file** from the *Approved Exports* tab.
 
 ## Components
 
@@ -16,7 +16,7 @@ Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement
 |---|---|
 | Objects | `Marketing_Event__c` (+4 roll-up counters), `Event_Invitee__c` (junction, unique per event+contact, status state machine) |
 | Apex | `ContactImportController`, `InviteeSelectorController`, `ApprovalConsoleController`, `EventExportController`, `EventNotificationService` + test classes |
-| LWC | `importWizard` (app page/tab), `contactSelector` + `approvalConsole` (event record page) |
+| LWC | `importWizard` + `approvedExport` (app pages/tabs), `contactSelector` + `approvalConsole` (event record page), `csvDownload` (shared download helper) |
 | Static resource | `sheetjs` (SheetJS CE 0.18.5 — client-side .xlsx parsing) |
 | Config | Permission sets `Event_AM` / `Event_Approver`, custom notification type, app + tabs + flexipages + layouts |
 
@@ -50,6 +50,7 @@ sf apex run test -o poc-sandbox --wait 10 --code-coverage
 2. Still as AM: open *Q3 2026 Customer Appreciation Gala* → **Add Contacts** tab → group-by-account selection → Add → **Submit My Contacts for Approval**. (Optionally repeat as a second AM.)
 3. As **Account Owner** (desktop or the Salesforce Mobile App): open the event from the bell notification → *Pending Your Approval* → Select All → Approve (reject one for effect).
 4. Back as AM: show the completion email/bell, the roll-up counters on the event, then **Export Approved List (CSV)** — open the file.
+5. Open the **Approved Exports** tab: every event with signed-off invitees, with counts of what has and hasn't been downloaded yet. **Download All Approved** pulls the lot into one CSV (tick *Only invitees I added* to get just your own batches).
 
 ## Design decisions worth knowing
 

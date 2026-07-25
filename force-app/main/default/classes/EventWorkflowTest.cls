@@ -1,6 +1,7 @@
 /**
  * End-to-end workflow tests: add → submit (owner snapshot + notifications)
- * → approve/reject (completion notification) → export → rejected re-add.
+ * → approve/reject (completion notification) → export (per event and across all
+ * events) → rejected re-add.
  * Two AMs and two Account Owners exercise the multi-AM, multi-owner grouping.
  */
 @IsTest
@@ -112,6 +113,89 @@ private class EventWorkflowTest {
 
             EventExportController.ExportResult ex2 = EventExportController.exportApproved(evt.Id);
             System.assertEquals(1, ex2.rowCount, 'Re-export must return the full approved list');
+        }
+    }
+
+    @IsTest
+    static void exportAllApproved_spansEventsAndRespectsMineOnly() {
+        User alex = findUser('amalex');
+        User maria = findUser('ammaria');
+        User sarah = findUser('ownsarah');
+        User marcus = findUser('ownmarc');
+
+        Marketing_Event__c gala = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Marketing_Event__c summit = new Marketing_Event__c(
+            Name = 'FinTech Summit, 2026', // the comma is deliberate — exercises CSV quoting
+            Event_Date__c = Date.today().addDays(90),
+            Location__c = 'Berlin',
+            Event_Type__c = 'Dinner / Gala'
+        );
+        insert summit;
+
+        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+        Contact james = [SELECT Id FROM Contact WHERE Email = 'james@nordbank.test'];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addInvitees(gala.Id, new List<Id>{ emily.Id });
+            InviteeSelectorController.submitMyInvitees(gala.Id);
+        }
+        System.runAs(maria) {
+            InviteeSelectorController.addInvitees(summit.Id, new List<Id>{ james.Id });
+            InviteeSelectorController.submitMyInvitees(summit.Id);
+        }
+        Event_Invitee__c emilyRow = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
+        Event_Invitee__c jamesRow = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :james.Id];
+
+        Test.startTest();
+        System.runAs(sarah) { ApprovalConsoleController.decide(gala.Id, new List<Id>{ emilyRow.Id }, true); }
+        System.runAs(marcus) { ApprovalConsoleController.decide(summit.Id, new List<Id>{ jamesRow.Id }, true); }
+        Test.stopTest();
+
+        System.runAs(alex) {
+            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(false);
+            System.assertEquals(2, all.size(), 'Both events carry approved rows');
+            for (EventExportController.ApprovedSummary s : all) {
+                System.assertEquals(1, s.approvedCount);
+                System.assertEquals(0, s.exportedCount);
+                System.assertEquals(1, s.totalCount);
+            }
+            System.assertEquals(1, EventExportController.getApprovedSummary(true).size(),
+                'mineOnly must drop the row Maria added');
+
+            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false);
+            System.assertEquals(2, ex.rowCount);
+            System.assertEquals(2, ex.eventCount);
+            System.assertEquals(false, ex.truncated);
+            System.assert(ex.csv.startsWith('Event,Event Date,Name,Title,Account,Email,Approved By,Decided At'),
+                'Cross-event file needs the event columns');
+            System.assert(ex.csv.contains('\r\n'), 'CRLF line endings — desktop Excel chokes on bare LF');
+            System.assert(ex.csv.contains('"FinTech Summit, 2026"'), 'A value with a comma must be quoted');
+            System.assertEquals(2, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
+                'Downloading everything marks everything Exported');
+
+            System.assertEquals(2, EventExportController.exportAllApproved(false).rowCount,
+                'Re-download must return the full approved list, not only new rows');
+
+            EventExportController.ExportResult justMine = EventExportController.exportAllApproved(true);
+            System.assertEquals(1, justMine.rowCount);
+            System.assertEquals(1, justMine.eventCount);
+
+            EventExportController.rowLimit = 1;
+            EventExportController.ExportResult capped = EventExportController.exportAllApproved(false);
+            System.assertEquals(1, capped.rowCount);
+            System.assertEquals(true, capped.truncated, 'Row cap must be reported, not silently applied');
+        }
+    }
+
+    @IsTest
+    static void exportAllApproved_withNothingApprovedThrows() {
+        User alex = findUser('amalex');
+        System.runAs(alex) {
+            System.assertEquals(0, EventExportController.getApprovedSummary(false).size());
+            Boolean threw = false;
+            try { EventExportController.exportAllApproved(false); }
+            catch (AuraHandledException e) { threw = true; }
+            System.assert(threw, 'Nothing approved → explicit error, not an empty file');
         }
     }
 
