@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>External_Approver__c</fullName>
+    <label>External Approver</label>
+    <type>Text</type>
+    <length>128</length>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <description>Who actually decided in the corporate approval system (employee ID / directory account). May differ from Account_Owner__c — corporate systems allow delegation and escalation.</description>
+</CustomField>

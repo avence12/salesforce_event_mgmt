@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Correlation_Id__c</fullName>
+    <label>Correlation ID</label>
+    <type>Text</type>
+    <length>36</length>
+    <required>true</required>
+    <description>Matches Event_Invitee__c.External_Approval_Id__c; the decision callback must echo it back.</description>
+</CustomField>

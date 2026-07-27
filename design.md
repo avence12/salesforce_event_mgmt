@@ -144,9 +144,60 @@ Two Permission Sets: `Event_AM` (create events, import contacts, add/submit invi
 
 Both export methods are `with sharing`, so the cross-event download is bounded by record visibility — an AM sees exactly the events and invitees they could open by hand, never more. `Event_Invitee__c` is `ControlledByParent` under a `ReadWrite` event, which in the PoC means everyone sees everything; the *Only invitees I added* toggle is a convenience filter, **not** a security boundary, and tightening the event's OWD is the production lever if that matters.
 
+### Corporate (on-prem) approval integration — Mode A
+
+**Added 2026-07-27.** The sign-off can be delegated to the company's internal (on-prem) approval
+system, which then becomes the **system of record for decisions**; Salesforce keeps the invitee
+state machine and the export pipeline. Switched by `Approval_Integration_Setting__mdt.Default →
+External Approval Enabled` (off by default — the PoC demo flow is untouched until it's flipped).
+
+**Shape: event out, REST back, reconciliation underneath.**
+
+- **Outbound — `Approval_Request__e` platform event.** `submitMyInvitees` stamps each row with a
+  UUID correlation ID (`External_Approval_Id__c`, unique external ID) and `Integration_Status__c
+  = Sent`, then publishes one event per invitee (`ApprovalRequestPublisher`). The on-prem
+  middleware subscribes via the **Pub/Sub API** — the connection is initiated from inside the
+  corporate network, so **no inbound firewall opening** and no VPN toward Salesforce. The payload
+  is PII-light (names/titles only, no email/phone) and carries the approver as
+  `User.FederationIdentifier` (fallback Username), the identity the corporate directory knows.
+  In this mode Salesforce sends **no owner notifications** — the corporate system owns approver
+  notification — and the approval console renders read-only with an explanatory banner.
+- **Inbound — `POST /services/apexrest/event-approval/v1/decisions`**
+  (`ExternalApprovalRestService`, called by the middleware over ordinary outbound HTTPS as a
+  dedicated integration user with the `Event_Approval_Integration` permission set). The body
+  carries `acknowledgements` (ticket created: Sent → Acknowledged) and/or `decisions`
+  (`correlationId`, `approve`, `approverId`, `comment`). Responses are per-item —
+  `APPLIED / ALREADY_APPLIED / NOT_FOUND / CONFLICT / INVALID` — and **replays are idempotent**,
+  so the middleware can retry blindly. Decisions land in `ApprovalDecisionService`, the same
+  service the console uses, so `Decided_At__c`, the status guard and the AM completion
+  notification behave identically regardless of where the decision was made.
+- **Reconciliation — `ApprovalSyncReconciliationBatch`** (schedule hourly). Pending rows stuck in
+  Sent/Acknowledged are republished with `Action__c = RESEND` (same correlation ID — the
+  middleware upserts, never opens a duplicate ticket) after `Resend After Hours` (default 24),
+  and flagged `Integration_Status__c = Sync Failed` for manual follow-up after `Fail After Hours`
+  (default 72). A late decision callback still lands on a Sync Failed row — its business status
+  is still Pending Approval.
+
+**Model notes.** `Integration_Status__c` (Sent / Acknowledged / Decided / Sync Failed) is
+deliberately a *separate* field from the business `Status__c` — sync state and approval state
+move independently. `External_Approver__c` records who actually decided in the corporate system
+(delegation/escalation means it may differ from the `Account_Owner__c` snapshot), plus
+`Decision_Comment__c`. Re-adding a rejected invitee clears all four integration fields along
+with the existing reset, so a **late callback for the stale ticket returns NOT_FOUND** instead
+of deciding the fresh submission.
+
+**Fallback.** Flipping the switch off restores in-app approval instantly (rows already sent keep
+their correlation IDs; a decision made in Salesforce during a fallback leaves the corporate
+ticket open — closing it there is a manual/ops step, by design).
+
+**Auth.** The middleware authenticates as the integration user via a Connected App (OAuth 2.0
+client credentials or JWT bearer); the REST class is `without sharing` on purpose — the
+unguessable correlation UUID is the row-level capability, and the permission set is the only
+thing granting the endpoint.
+
 ### Deliverables / repo layout
 
-SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), 1 static resource (SheetJS, pinned version), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
+SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields (plus the `Approval_Request__e` platform event, the `Approval_Integration_Setting__mdt` switch and 4 integration fields on the invitee), **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), 1 static resource (SheetJS, pinned version), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
 
 ## Open Questions
 

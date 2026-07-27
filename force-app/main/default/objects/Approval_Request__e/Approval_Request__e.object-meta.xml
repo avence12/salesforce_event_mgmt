@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <deploymentStatus>Deployed</deploymentStatus>
+    <eventType>HighVolume</eventType>
+    <label>Approval Request</label>
+    <pluralLabel>Approval Requests</pluralLabel>
+    <publishBehavior>PublishAfterCommit</publishBehavior>
+    <description>Outbound approval request to the corporate (on-prem) approval system. The on-prem middleware subscribes via the Pub/Sub API — connection is initiated from inside the corporate network, so no inbound firewall opening is needed. Payload is deliberately PII-light: names and titles only, no email or phone.</description>
+</CustomObject>

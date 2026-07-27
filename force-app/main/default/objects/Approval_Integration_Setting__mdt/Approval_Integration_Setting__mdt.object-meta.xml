@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Approval Integration Setting</label>
+    <pluralLabel>Approval Integration Settings</pluralLabel>
+    <visibility>Public</visibility>
+    <description>Feature switch and thresholds for the corporate (on-prem) approval system integration. The single record named "Default" is read by ApprovalIntegrationSettings; enabling the checkbox reroutes submissions to the external system and makes the in-app approval console read-only.</description>
+</CustomObject>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>External_Approval_Id__c</fullName>
+    <label>External Approval ID</label>
+    <type>Text</type>
+    <length>36</length>
+    <unique>true</unique>
+    <caseSensitive>false</caseSensitive>
+    <externalId>true</externalId>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <description>Correlation ID of the approval request in the corporate (on-prem) approval system. Generated at submit time when external approval is enabled; cleared when a rejected invitee is re-added. The decision callback addresses rows by this value.</description>
+</CustomField>

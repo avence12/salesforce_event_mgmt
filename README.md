@@ -14,11 +14,11 @@ Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement
 
 | Layer | Items |
 |---|---|
-| Objects | `Marketing_Event__c` (+4 roll-up counters), `Event_Invitee__c` (junction, unique per event+contact, status state machine) |
-| Apex | `ContactImportController`, `InviteeSelectorController`, `ApprovalConsoleController`, `EventExportController`, `EventNotificationService` + test classes |
+| Objects | `Marketing_Event__c` (+4 roll-up counters), `Event_Invitee__c` (junction, unique per event+contact, status state machine + integration fields), `Approval_Request__e` (platform event out to the corporate approval system), `Approval_Integration_Setting__mdt` (integration switch) |
+| Apex | `ContactImportController`, `InviteeSelectorController`, `ApprovalConsoleController`, `EventExportController`, `EventNotificationService`, `ApprovalDecisionService`, `ApprovalRequestPublisher`, `ExternalApprovalRestService`, `ApprovalSyncReconciliationBatch`, `ApprovalIntegrationSettings` + test classes |
 | LWC | `importWizard` + `approvedExport` (app pages/tabs), `contactSelector` + `approvalConsole` (event record page), `csvDownload` (shared download helper) |
 | Static resource | `sheetjs` (SheetJS CE 0.18.5 — client-side .xlsx parsing) |
-| Config | Permission sets `Event_AM` / `Event_Approver`, custom notification type, app + tabs + flexipages + layouts |
+| Config | Permission sets `Event_AM` / `Event_Approver` / `Event_Approval_Integration`, custom notification type, app + tabs + flexipages + layouts |
 
 ## Prerequisites
 
@@ -51,6 +51,29 @@ sf apex run test -o poc-sandbox --wait 10 --code-coverage
 3. As **Account Owner** (desktop or the Salesforce Mobile App): open the event from the bell notification → *Pending Your Approval* → Select All → Approve (reject one for effect).
 4. Back as AM: show the completion email/bell, the roll-up counters on the event, then **Export Approved List (CSV)** — open the file.
 5. Open the **Approved Exports** tab: every event with signed-off invitees, with counts of what has and hasn't been downloaded yet. **Download All Approved** pulls the lot into one CSV (tick *Only invitees I added* to get just your own batches). Set *Approved from* / *Approved to* to limit the file to a sign-off date range — both ends inclusive, read in your own timezone.
+
+## Corporate approval system integration (optional, off by default)
+
+Sign-off can be handed to the company's on-prem approval system instead of the in-app console.
+Flip **Setup → Custom Metadata Types → Approval Integration Setting → Default → External Approval
+Enabled**. From then on:
+
+- Submitting publishes one `Approval_Request__e` per invitee (correlation ID =
+  `External_Approval_Id__c`); the on-prem middleware subscribes via the **Pub/Sub API** (outbound
+  connection from the corporate network — no inbound firewall opening).
+- The middleware writes decisions back to
+  `POST /services/apexrest/event-approval/v1/decisions` as an integration user holding the
+  `Event Approval Integration` permission set. Callbacks are **idempotent** (per-item statuses:
+  `APPLIED / ALREADY_APPLIED / NOT_FOUND / CONFLICT / INVALID`); acknowledgements move
+  `Integration Status` from Sent to Acknowledged.
+- The approval console goes read-only; the AM completion notification and export flow are
+  unchanged — decisions land through the same `ApprovalDecisionService` the console uses.
+- Schedule the reconciliation backstop once:
+  `System.schedule('Approval Sync Reconciliation', '0 0 * * * ?', new ApprovalSyncReconciliationBatch());`
+  — stale requests are re-published as `RESEND` after 24 h and flagged `Sync Failed` after 72 h
+  (thresholds live on the same custom metadata record).
+
+See *Corporate (on-prem) approval integration* in [design.md](design.md) for the full architecture.
 
 ## Design decisions worth knowing
 

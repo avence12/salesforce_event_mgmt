@@ -103,7 +103,10 @@ export default class ContactSelector extends LightningElement {
         this.loading = true;
         try {
             const res = await submitMyInvitees({ eventId: this.recordId });
-            this.toast('Submitted', `${res.submitted} contact(s) sent for approval — ${res.ownersNotified} Account Owner(s) notified.`, 'success');
+            const detail = res.externalRequests > 0
+                ? `${res.submitted} contact(s) sent to the corporate approval system.`
+                : `${res.submitted} contact(s) sent for approval — ${res.ownersNotified} Account Owner(s) notified.`;
+            this.toast('Submitted', detail, 'success');
             await refreshApex(this.wiredInvitees);
         } catch (e) {
             this.toast('Error', this.messageOf(e), 'error');

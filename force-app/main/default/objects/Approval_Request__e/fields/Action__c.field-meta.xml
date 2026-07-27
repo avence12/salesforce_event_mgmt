@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Action__c</fullName>
+    <label>Action</label>
+    <type>Text</type>
+    <length>10</length>
+    <required>true</required>
+    <description>REQUEST for a first submission, RESEND when the reconciliation batch re-drives a request the middleware never acknowledged. A RESEND carries the same Correlation ID — the middleware must treat it as an upsert, not a new ticket.</description>
+</CustomField>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_Federation_Id__c</fullName>
+    <label>Approver Federation ID</label>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <description>The approver identity the corporate system understands: User.FederationIdentifier (employee ID / directory account), falling back to Username when federation is not populated.</description>
+</CustomField>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Integration_Status__c</fullName>
+    <label>Integration Status</label>
+    <type>Picklist</type>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <description>Sync state against the corporate approval system — deliberately separate from the business Status__c. Sent = request published; Acknowledged = middleware confirmed ticket creation; Decided = decision written back; Sync Failed = flagged by the reconciliation batch for manual follow-up.</description>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Sent</fullName><default>false</default><label>Sent</label></value>
+            <value><fullName>Acknowledged</fullName><default>false</default><label>Acknowledged</label></value>
+            <value><fullName>Decided</fullName><default>false</default><label>Decided</label></value>
+            <value><fullName>Sync Failed</fullName><default>false</default><label>Sync Failed</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

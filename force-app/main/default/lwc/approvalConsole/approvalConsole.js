@@ -3,6 +3,7 @@ import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getPendingForMe from '@salesforce/apex/ApprovalConsoleController.getPendingForMe';
 import decide from '@salesforce/apex/ApprovalConsoleController.decide';
+import isExternalApprovalEnabled from '@salesforce/apex/ApprovalConsoleController.isExternalApprovalEnabled';
 
 export default class ApprovalConsole extends LightningElement {
     @api recordId; // Marketing_Event__c
@@ -12,6 +13,12 @@ export default class ApprovalConsole extends LightningElement {
 
     wiredPending;
     pending = [];
+    externalMode = false;
+
+    @wire(isExternalApprovalEnabled)
+    handleExternalMode({ data }) {
+        if (data !== undefined) this.externalMode = data === true;
+    }
 
     @wire(getPendingForMe, { eventId: '$recordId' })
     handlePending(result) {
@@ -24,6 +31,7 @@ export default class ApprovalConsole extends LightningElement {
     }
 
     get hasPending() { return this.pending.length > 0; }
+    get canDecide() { return !this.externalMode; }
     get totalCount() { return this.pending.length; }
     get selectedCount() { return this.selectedIds.size; }
     get allSelected() { return this.pending.length > 0 && this.selectedIds.size === this.pending.length; }

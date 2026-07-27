@@ -29,6 +29,7 @@ public with sharing class InviteeSelectorController {
     public class SubmitResult {
         @AuraEnabled public Integer submitted { get; set; }
         @AuraEnabled public Integer ownersNotified { get; set; }
+        @AuraEnabled public Integer externalRequests { get; set; }
     }
 
     @AuraEnabled(cacheable=true)
@@ -109,6 +110,12 @@ public with sharing class InviteeSelectorController {
                 existing.Account_Owner__c = null;
                 existing.Submitted_At__c = null;
                 existing.Decided_At__c = null;
+                // A fresh submission gets a fresh correlation ID — a late callback for
+                // the old corporate ticket must land NOT_FOUND, not decide the new row.
+                existing.External_Approval_Id__c = null;
+                existing.Integration_Status__c = null;
+                existing.External_Approver__c = null;
+                existing.Decision_Comment__c = null;
                 toReset.add(existing);
             }
             // Any other status: already invited — silently skipped (UI hides these anyway).
@@ -141,6 +148,7 @@ public with sharing class InviteeSelectorController {
             SELECT Id, OwnerId FROM Account WHERE Id IN :accountIds
         ]);
 
+        Boolean external = ApprovalIntegrationSettings.externalEnabled();
         Map<Id, Integer> countByOwner = new Map<Id, Integer>();
         Datetime now = Datetime.now();
         for (Event_Invitee__c inv : mine) {
@@ -150,6 +158,10 @@ public with sharing class InviteeSelectorController {
             inv.Status__c = 'Pending Approval';
             inv.Submitted_At__c = now;
             inv.Account_Owner__c = ownerId;
+            if (external) {
+                inv.External_Approval_Id__c = UUID.randomUUID().toString();
+                inv.Integration_Status__c = 'Sent';
+            }
             if (ownerId != null) {
                 Integer n = countByOwner.containsKey(ownerId) ? countByOwner.get(ownerId) : 0;
                 countByOwner.put(ownerId, n + 1);
@@ -157,12 +169,26 @@ public with sharing class InviteeSelectorController {
         }
         update mine;
 
-        Marketing_Event__c evt = [SELECT Id, Name FROM Marketing_Event__c WHERE Id = :eventId];
-        EventNotificationService.notifyOwnersOfSubmission(evt, countByOwner, UserInfo.getUserId());
+        Integer published = 0;
+        if (external) {
+            // The corporate approval system owns approver notification in this mode;
+            // Salesforce only publishes the request for the on-prem middleware.
+            published = ApprovalRequestPublisher.publish([
+                SELECT Id, External_Approval_Id__c, Account_Owner__c, Added_By__r.Name,
+                       Contact__r.Name, Contact__r.Title, Account__r.Name,
+                       Marketing_Event__r.Name, Marketing_Event__r.Event_Date__c
+                FROM Event_Invitee__c
+                WHERE Id IN :mine
+            ], ApprovalRequestPublisher.ACTION_REQUEST);
+        } else {
+            Marketing_Event__c evt = [SELECT Id, Name FROM Marketing_Event__c WHERE Id = :eventId];
+            EventNotificationService.notifyOwnersOfSubmission(evt, countByOwner, UserInfo.getUserId());
+        }
 
         SubmitResult res = new SubmitResult();
         res.submitted = mine.size();
-        res.ownersNotified = countByOwner.size();
+        res.ownersNotified = external ? 0 : countByOwner.size();
+        res.externalRequests = published;
         return res;
     }
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>External_Approval_Enabled__c</fullName>
+    <label>External Approval Enabled</label>
+    <type>Checkbox</type>
+    <defaultValue>false</defaultValue>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <description>When true, submissions publish Approval_Request__e events for the corporate approval system instead of notifying Account Owners in Salesforce, and the approval console becomes read-only.</description>
+</CustomField>

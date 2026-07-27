@@ -96,6 +96,26 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.External_Approval_Id__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Integration_Status__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.External_Approver__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Decision_Comment__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
     <classAccesses>
         <apexClass>ContactImportController</apexClass>
         <enabled>true</enabled>

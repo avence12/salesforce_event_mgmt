@@ -20,4 +20,19 @@
         </layoutColumns>
         <style>TwoColumnsTopToBottom</style>
     </layoutSections>
+    <layoutSections>
+        <customLabel>true</customLabel>
+        <detailHeading>true</detailHeading>
+        <editHeading>true</editHeading>
+        <label>Corporate Approval Integration</label>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>External_Approval_Id__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Integration_Status__c</field></layoutItems>
+        </layoutColumns>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>External_Approver__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Decision_Comment__c</field></layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsTopToBottom</style>
+    </layoutSections>
 </Layout>
