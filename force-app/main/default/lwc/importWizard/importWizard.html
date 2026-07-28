@@ -21,10 +21,15 @@
             <!-- STEP 1 -->
             <template lwc:if={isStep1}>
                 <p class="slds-m-bottom_small slds-text-color_weak">
-                    Upload an Excel (.xlsx) file. Rows are matched to existing Contacts by Email.
+                    Upload a CSV (.csv) file — comma, semicolon or tab separated. Rows are matched
+                    to existing Contacts by Email.
                     Expected headers: First Name, Last Name, Email, Title, Company, Mobile.
                 </p>
-                <lightning-input type="file" label="Excel file (.xlsx)" accept=".xlsx"
+                <p class="slds-m-bottom_small slds-text-color_weak">
+                    Save it as <b>UTF-8</b> (in Excel: File → Save As → “CSV UTF-8”), otherwise
+                    accented names cannot be read.
+                </p>
+                <lightning-input type="file" label="CSV file (.csv)" accept=".csv"
                                  onchange={handleFileChange}></lightning-input>
             </template>
 

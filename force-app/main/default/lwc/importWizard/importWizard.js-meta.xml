@@ -3,7 +3,7 @@
     <apiVersion>61.0</apiVersion>
     <isExposed>true</isExposed>
     <masterLabel>Import External Contact List</masterLabel>
-    <description>Upload an .xlsx contact list, preview changes against existing Contacts (matched by email), and apply.</description>
+    <description>Upload a .csv contact list, preview changes against existing Contacts (matched by email), and apply.</description>
     <targets>
         <target>lightning__AppPage</target>
         <target>lightning__HomePage</target>

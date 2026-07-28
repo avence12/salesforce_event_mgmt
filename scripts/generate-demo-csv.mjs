@@ -1,18 +1,20 @@
 /**
- * Generates demo-data/FinTech_Summit_2026_Attendees.xlsx — a 48-row attendee
+ * Generates demo-data/FinTech_Summit_2026_Attendees.csv — a 48-row attendee
  * list aligned with scripts/seed-demo-data.apex so the import wizard shows all
  * five classifications:
  *   - UPDATE          (Emily: new title; James: new mobile)
  *   - UNCHANGED       (Robert, Laura, Anna)
  *   - COMPANY_CHANGE  (Sophie: Globex → Acme Corp)
- *   - NEW             (40 generated attendees)
+ *   - NEW             (Zoë Müller-Sørensen + 37 generated attendees)
  *   - SKIPPED         (1 missing email, 1 missing last name)
  *   plus 1 in-file duplicate email (deduped client-side, last wins)
  *
- * Run:  node scripts/generate-demo-xlsx.mjs   (needs `npm i xlsx` here or NODE_PATH)
+ * Written UTF-8 with a BOM and CRLF line endings. The Zoë Müller-Sørensen row is
+ * deliberately non-ASCII so the demo exercises the wizard's UTF-8 decoding.
+ *
+ * Run:  node scripts/generate-demo-csv.mjs
  */
-import * as XLSX from 'xlsx';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 
 const rows = [
     ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile'],
@@ -32,7 +34,9 @@ const rows = [
     ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', ''],
     // In-file duplicate: first occurrence is superseded by the next row (last wins)
     ['Dana', 'Duplicate', 'dana@dupe.example', 'Old Title', 'Acme Corp', ''],
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'New Title', 'Acme Corp', '']
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'New Title', 'Acme Corp', ''],
+    // NEW with non-ASCII name — proves the file is read as UTF-8 end to end
+    ['Zoë', 'Müller-Sørensen', 'z.muller@newcolabs.example', 'Head of Analytics', 'NewCo Labs', '']
 ];
 
 const first = ['David', 'Nina', 'Oscar', 'Priya', 'Lukas', 'Maya', 'Ethan', 'Clara', 'Hugo', 'Ines',
@@ -40,15 +44,19 @@ const first = ['David', 'Nina', 'Oscar', 'Priya', 'Lukas', 'Maya', 'Ethan', 'Cla
     'Leo', 'Ida', 'Max', 'Ruth', 'Sam', 'Eva', 'Karl', 'Amy', 'Paul', 'Mia',
     'Erik', 'Sara', 'Ivan', 'Lucy', 'Owen', 'Rosa', 'Nils', 'Faye'];
 const companies = ['NewCo Labs', 'Vertex Capital', 'Bluepeak Bank', 'Helios Insurance', 'Quantumsoft', 'PoC Unmatched Ltd'];
-for (let i = 0; i < 38; i++) {
+for (let i = 0; i < 37; i++) {
     const f = first[i];
     rows.push([f, 'Attendee' + (i + 1), `${f.toLowerCase()}.a${i + 1}@prospect.example`,
         i % 3 === 0 ? 'Director' : 'Manager', companies[i % companies.length], '']);
 }
 
-const ws = XLSX.utils.aoa_to_sheet(rows);
-const wb = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(wb, ws, 'Attendees');
+function csvCell(value) {
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+
 mkdirSync('demo-data', { recursive: true });
-XLSX.writeFile(wb, 'demo-data/FinTech_Summit_2026_Attendees.xlsx');
-console.log(`Wrote demo-data/FinTech_Summit_2026_Attendees.xlsx (${rows.length - 1} data rows)`);
+writeFileSync('demo-data/FinTech_Summit_2026_Attendees.csv', '\uFEFF' + csv, 'utf8');
+console.log(`Wrote demo-data/FinTech_Summit_2026_Attendees.csv (${rows.length - 1} data rows)`);
