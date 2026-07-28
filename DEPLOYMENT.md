@@ -50,8 +50,7 @@ sf org login device --alias poc-sandbox --instance-url https://test.salesforce.c
 
 ### Step 3: One-time org prechecks (Setup UI)
 
-1. **Lightning Web Security must be enabled**: Setup → Session Settings → "Use Lightning Web Security for Lightning web components". SheetJS (the .xlsx parser in `importWizard`) breaks under legacy Locker Service — this is the single demo-killer, check it first.
-2. Email deliverability set to "All Email" (Setup → Deliverability) — only needed to demo the notification emails.
+1. Email deliverability set to "All Email" (Setup → Deliverability) — only needed to demo the notification emails.
 
 ### Step 4: Validate, then deploy
 
@@ -76,7 +75,7 @@ sf apex run test -o poc-sandbox --wait 10 --code-coverage
    ```bash
    sf apex run --file scripts/seed-demo-data.apex -o poc-sandbox
    ```
-4. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.xlsx`. Follow the 5-minute demo script in [README.md](README.md).
+4. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the 5-minute demo script in [README.md](README.md).
 
 ---
 

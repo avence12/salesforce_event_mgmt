@@ -1,6 +1,5 @@
 {
   "name": "event-mgmt-scripts",
   "private": true,
-  "type": "module",
-  "dependencies": { "xlsx": "0.18.5" }
+  "type": "module"
 }

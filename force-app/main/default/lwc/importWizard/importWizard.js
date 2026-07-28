@@ -1,7 +1,5 @@
 import { LightningElement, track } from 'lwc';
-import { loadScript } from 'lightning/platformResourceLoader';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
-import SHEETJS from '@salesforce/resourceUrl/sheetjs';
 import previewMatches from '@salesforce/apex/ContactImportController.previewMatches';
 import applyChanges from '@salesforce/apex/ContactImportController.applyChanges';
 import { downloadCsv, csvRow } from 'c/csvDownload';
@@ -30,8 +28,6 @@ export default class ImportWizard extends LightningElement {
     @track loading = false;
     @track error = '';
 
-    sheetJsLoaded = false;
-
     get isStep1() { return this.step === 1; }
     get isStep2() { return this.step === 2; }
     get isStep3() { return this.step === 3; }
@@ -53,14 +49,6 @@ export default class ImportWizard extends LightningElement {
     }
     get hasCompanyChanges() {
         return this.stats.companyChangeCount > 0;
-    }
-
-    renderedCallback() {
-        if (this.sheetJsLoaded) return;
-        this.sheetJsLoaded = true;
-        loadScript(this, SHEETJS).catch(() => {
-            this.error = 'Failed to load the Excel parser (SheetJS). Verify the static resource is deployed and Lightning Web Security is enabled.';
-        });
     }
 
     async handleFileChange(event) {
@@ -92,17 +80,53 @@ export default class ImportWizard extends LightningElement {
             reader.onerror = () => reject(new Error('Could not read the file.'));
             reader.onload = () => {
                 try {
-                    // eslint-disable-next-line no-undef
-                    const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
-                    const sheet = wb.Sheets[wb.SheetNames[0]];
-                    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+                    const raw = this.parseCsv(String(reader.result));
                     resolve(this.mapRows(raw));
                 } catch (e) {
-                    reject(new Error('Not a readable .xlsx file: ' + e.message));
+                    reject(new Error('Not a readable .csv file: ' + e.message));
                 }
             };
-            reader.readAsArrayBuffer(file);
+            reader.readAsText(file, 'UTF-8');
         });
+    }
+
+    // Minimal RFC 4180 parser: quoted fields, "" escapes, and CRLF/LF rows.
+    parseCsv(text) {
+        const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text; // strip UTF-8 BOM
+        const rows = [];
+        let row = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < src.length; i++) {
+            const c = src[i];
+            if (inQuotes) {
+                if (c === '"') {
+                    if (src[i + 1] === '"') { field += '"'; i++; }
+                    else { inQuotes = false; }
+                } else {
+                    field += c;
+                }
+            } else if (c === '"') {
+                inQuotes = true;
+            } else if (c === ',') {
+                row.push(field);
+                field = '';
+            } else if (c === '\r') {
+                // skip — the following \n (if any) ends the row
+            } else if (c === '\n') {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = '';
+            } else {
+                field += c;
+            }
+        }
+        if (field !== '' || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+        return rows.filter((r) => r.length > 1 || r[0] !== '');
     }
 
     mapRows(raw) {
@@ -174,7 +198,7 @@ export default class ImportWizard extends LightningElement {
     }
 
     handleDownloadManualList() {
-        // Every value here came out of the uploaded .xlsx, so it is quoted and
+        // Every value here came out of the uploaded .csv, so it is quoted and
         // formula-guarded rather than trusted — see c/csvDownload.
         const rows = this.previewRows.filter((r) => r.classification === 'COMPANY_CHANGE');
         const lines = ['Name,Email,Current → New Company'];
