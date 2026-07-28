@@ -1,6 +1,6 @@
 /**
  * Screen 1 — Import External Contact List.
- * The LWC parses the .xlsx client-side (SheetJS) and sends rows here.
+ * The LWC parses the .csv client-side and sends rows here.
  * Matching key: Email (case-insensitive). Classification precedence:
  * SKIPPED > COMPANY_CHANGE > UPDATE > UNCHANGED. In-file de-dup happens client-side.
  *

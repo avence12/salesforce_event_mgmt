@@ -256,7 +256,7 @@ private class EventWorkflowTest {
 
     /**
      * CSV formula injection: exported values are AM-editable (Contact Title, Account
-     * name, event name) or arrive via the .xlsx import, so a cell must never reach
+     * name, event name) or arrive via the .csv import, so a cell must never reach
      * Excel in a state it will evaluate.
      */
     @IsTest

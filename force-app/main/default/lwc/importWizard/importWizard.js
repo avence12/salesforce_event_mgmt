@@ -1,7 +1,5 @@
 import { LightningElement, track } from 'lwc';
-import { loadScript } from 'lightning/platformResourceLoader';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
-import SHEETJS from '@salesforce/resourceUrl/sheetjs';
 import previewMatches from '@salesforce/apex/ContactImportController.previewMatches';
 import applyChanges from '@salesforce/apex/ContactImportController.applyChanges';
 import { downloadCsv, csvRow } from 'c/csvDownload';
@@ -30,8 +28,6 @@ export default class ImportWizard extends LightningElement {
     @track loading = false;
     @track error = '';
 
-    sheetJsLoaded = false;
-
     get isStep1() { return this.step === 1; }
     get isStep2() { return this.step === 2; }
     get isStep3() { return this.step === 3; }
@@ -53,14 +49,6 @@ export default class ImportWizard extends LightningElement {
     }
     get hasCompanyChanges() {
         return this.stats.companyChangeCount > 0;
-    }
-
-    renderedCallback() {
-        if (this.sheetJsLoaded) return;
-        this.sheetJsLoaded = true;
-        loadScript(this, SHEETJS).catch(() => {
-            this.error = 'Failed to load the Excel parser (SheetJS). Verify the static resource is deployed and Lightning Web Security is enabled.';
-        });
     }
 
     async handleFileChange(event) {
@@ -91,23 +79,105 @@ export default class ImportWizard extends LightningElement {
             const reader = new FileReader();
             reader.onerror = () => reject(new Error('Could not read the file.'));
             reader.onload = () => {
+                let text;
                 try {
-                    // eslint-disable-next-line no-undef
-                    const wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
-                    const sheet = wb.Sheets[wb.SheetNames[0]];
-                    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
-                    resolve(this.mapRows(raw));
+                    // Decode the bytes ourselves with fatal:true rather than using
+                    // readAsText, which substitutes U+FFFD for anything it cannot
+                    // decode: a file saved in the local ANSI codepage (Excel's plain
+                    // "CSV", not "CSV UTF-8") would otherwise store "Müller" as a
+                    // replacement-character mess, silently and past the preview.
+                    text = new TextDecoder('utf-8', { fatal: true }).decode(reader.result);
+                } catch {
+                    reject(new Error(
+                        'The file is not UTF-8 text, so non-English characters would be corrupted. ' +
+                        'Re-save it in Excel with File → Save As → "CSV UTF-8 (Comma delimited)" and upload again.'
+                    ));
+                    return;
+                }
+                try {
+                    resolve(this.mapRows(this.parseCsv(text)));
                 } catch (e) {
-                    reject(new Error('Not a readable .xlsx file: ' + e.message));
+                    reject(e);
                 }
             };
             reader.readAsArrayBuffer(file);
         });
     }
 
+    /**
+     * Minimal RFC 4180 parser: quoted fields, "" escapes, and CR / LF / CRLF rows.
+     * The delimiter is sniffed rather than assumed — Excel in most EU locales writes
+     * semicolons because the comma is the decimal separator.
+     */
+    parseCsv(text) {
+        const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text; // strip UTF-8 BOM
+        const delimiter = this.sniffDelimiter(src);
+        const rows = [];
+        let row = [];
+        let field = '';
+        let inQuotes = false;
+        for (let i = 0; i < src.length; i++) {
+            const c = src[i];
+            if (inQuotes) {
+                if (c === '"') {
+                    if (src[i + 1] === '"') { field += '"'; i++; }
+                    else { inQuotes = false; }
+                } else {
+                    field += c;
+                }
+            } else if (c === '"') {
+                inQuotes = true;
+            } else if (c === delimiter) {
+                row.push(field);
+                field = '';
+            } else if (c === '\r' || c === '\n') {
+                if (c === '\r' && src[i + 1] === '\n') { i++; } // CRLF is one terminator
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = '';
+            } else {
+                field += c;
+            }
+        }
+        if (field !== '' || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+        return rows.filter((r) => r.length > 1 || r[0] !== '');
+    }
+
+    /** Delimiter of the header line: comma (default), semicolon (EU Excel) or tab. */
+    sniffDelimiter(src) {
+        const header = src.split(/\r\n|\r|\n/, 1)[0] || '';
+        let best = ',';
+        let bestCount = 0;
+        [',', ';', '\t'].forEach((candidate) => {
+            let count = 0;
+            let inQuotes = false;
+            for (let i = 0; i < header.length; i++) {
+                if (header[i] === '"') inQuotes = !inQuotes;
+                else if (header[i] === candidate && !inQuotes) count++;
+            }
+            if (count > bestCount) {
+                bestCount = count;
+                best = candidate;
+            }
+        });
+        return best;
+    }
+
     mapRows(raw) {
         if (!raw || raw.length < 2) return [];
         const headers = raw[0].map((h) => HEADER_MAP[String(h).toLowerCase().replace(/[^a-z]/g, '')] || null);
+        // Naming what was actually read beats "no data rows found" — the usual causes
+        // are a delimiter we could not sniff or a file that is not the contact list.
+        if (!headers.some(Boolean)) {
+            throw new Error(
+                `No recognised column headers. The first row read as: ${raw[0].join(' | ')}. ` +
+                'Expected: First Name, Last Name, Email, Title, Company, Mobile.'
+            );
+        }
         const byEmail = new Map(); // in-file de-dup by email — last occurrence wins
         const noEmail = [];
         for (let i = 1; i < raw.length; i++) {
@@ -174,7 +244,7 @@ export default class ImportWizard extends LightningElement {
     }
 
     handleDownloadManualList() {
-        // Every value here came out of the uploaded .xlsx, so it is quoted and
+        // Every value here came out of the uploaded .csv, so it is quoted and
         // formula-guarded rather than trusted — see c/csvDownload.
         const rows = this.previewRows.filter((r) => r.classification === 'COMPANY_CHANGE');
         const lines = ['Name,Email,Current → New Company'];
