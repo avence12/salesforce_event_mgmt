@@ -5,9 +5,12 @@
  *   - UPDATE          (Emily: new title; James: new mobile)
  *   - UNCHANGED       (Robert, Laura, Anna)
  *   - COMPANY_CHANGE  (Sophie: Globex → Acme Corp)
- *   - NEW             (40 generated attendees)
+ *   - NEW             (Zoë Müller-Sørensen + 37 generated attendees)
  *   - SKIPPED         (1 missing email, 1 missing last name)
  *   plus 1 in-file duplicate email (deduped client-side, last wins)
+ *
+ * Written UTF-8 with a BOM and CRLF line endings. The Zoë Müller-Sørensen row is
+ * deliberately non-ASCII so the demo exercises the wizard's UTF-8 decoding.
  *
  * Run:  node scripts/generate-demo-csv.mjs
  */
@@ -31,7 +34,9 @@ const rows = [
     ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', ''],
     // In-file duplicate: first occurrence is superseded by the next row (last wins)
     ['Dana', 'Duplicate', 'dana@dupe.example', 'Old Title', 'Acme Corp', ''],
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'New Title', 'Acme Corp', '']
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'New Title', 'Acme Corp', ''],
+    // NEW with non-ASCII name — proves the file is read as UTF-8 end to end
+    ['Zoë', 'Müller-Sørensen', 'z.muller@newcolabs.example', 'Head of Analytics', 'NewCo Labs', '']
 ];
 
 const first = ['David', 'Nina', 'Oscar', 'Priya', 'Lukas', 'Maya', 'Ethan', 'Clara', 'Hugo', 'Ines',
@@ -39,7 +44,7 @@ const first = ['David', 'Nina', 'Oscar', 'Priya', 'Lukas', 'Maya', 'Ethan', 'Cla
     'Leo', 'Ida', 'Max', 'Ruth', 'Sam', 'Eva', 'Karl', 'Amy', 'Paul', 'Mia',
     'Erik', 'Sara', 'Ivan', 'Lucy', 'Owen', 'Rosa', 'Nils', 'Faye'];
 const companies = ['NewCo Labs', 'Vertex Capital', 'Bluepeak Bank', 'Helios Insurance', 'Quantumsoft', 'PoC Unmatched Ltd'];
-for (let i = 0; i < 38; i++) {
+for (let i = 0; i < 37; i++) {
     const f = first[i];
     rows.push([f, 'Attendee' + (i + 1), `${f.toLowerCase()}.a${i + 1}@prospect.example`,
         i % 3 === 0 ? 'Director' : 'Manager', companies[i % companies.length], '']);

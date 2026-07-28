@@ -79,20 +79,39 @@ export default class ImportWizard extends LightningElement {
             const reader = new FileReader();
             reader.onerror = () => reject(new Error('Could not read the file.'));
             reader.onload = () => {
+                let text;
                 try {
-                    const raw = this.parseCsv(String(reader.result));
-                    resolve(this.mapRows(raw));
+                    // Decode the bytes ourselves with fatal:true rather than using
+                    // readAsText, which substitutes U+FFFD for anything it cannot
+                    // decode: a file saved in the local ANSI codepage (Excel's plain
+                    // "CSV", not "CSV UTF-8") would otherwise store "Müller" as a
+                    // replacement-character mess, silently and past the preview.
+                    text = new TextDecoder('utf-8', { fatal: true }).decode(reader.result);
+                } catch {
+                    reject(new Error(
+                        'The file is not UTF-8 text, so non-English characters would be corrupted. ' +
+                        'Re-save it in Excel with File → Save As → "CSV UTF-8 (Comma delimited)" and upload again.'
+                    ));
+                    return;
+                }
+                try {
+                    resolve(this.mapRows(this.parseCsv(text)));
                 } catch (e) {
-                    reject(new Error('Not a readable .csv file: ' + e.message));
+                    reject(e);
                 }
             };
-            reader.readAsText(file, 'UTF-8');
+            reader.readAsArrayBuffer(file);
         });
     }
 
-    // Minimal RFC 4180 parser: quoted fields, "" escapes, and CRLF/LF rows.
+    /**
+     * Minimal RFC 4180 parser: quoted fields, "" escapes, and CR / LF / CRLF rows.
+     * The delimiter is sniffed rather than assumed — Excel in most EU locales writes
+     * semicolons because the comma is the decimal separator.
+     */
     parseCsv(text) {
         const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text; // strip UTF-8 BOM
+        const delimiter = this.sniffDelimiter(src);
         const rows = [];
         let row = [];
         let field = '';
@@ -108,12 +127,11 @@ export default class ImportWizard extends LightningElement {
                 }
             } else if (c === '"') {
                 inQuotes = true;
-            } else if (c === ',') {
+            } else if (c === delimiter) {
                 row.push(field);
                 field = '';
-            } else if (c === '\r') {
-                // skip — the following \n (if any) ends the row
-            } else if (c === '\n') {
+            } else if (c === '\r' || c === '\n') {
+                if (c === '\r' && src[i + 1] === '\n') { i++; } // CRLF is one terminator
                 row.push(field);
                 rows.push(row);
                 row = [];
@@ -129,9 +147,37 @@ export default class ImportWizard extends LightningElement {
         return rows.filter((r) => r.length > 1 || r[0] !== '');
     }
 
+    /** Delimiter of the header line: comma (default), semicolon (EU Excel) or tab. */
+    sniffDelimiter(src) {
+        const header = src.split(/\r\n|\r|\n/, 1)[0] || '';
+        let best = ',';
+        let bestCount = 0;
+        [',', ';', '\t'].forEach((candidate) => {
+            let count = 0;
+            let inQuotes = false;
+            for (let i = 0; i < header.length; i++) {
+                if (header[i] === '"') inQuotes = !inQuotes;
+                else if (header[i] === candidate && !inQuotes) count++;
+            }
+            if (count > bestCount) {
+                bestCount = count;
+                best = candidate;
+            }
+        });
+        return best;
+    }
+
     mapRows(raw) {
         if (!raw || raw.length < 2) return [];
         const headers = raw[0].map((h) => HEADER_MAP[String(h).toLowerCase().replace(/[^a-z]/g, '')] || null);
+        // Naming what was actually read beats "no data rows found" — the usual causes
+        // are a delimiter we could not sniff or a file that is not the contact list.
+        if (!headers.some(Boolean)) {
+            throw new Error(
+                `No recognised column headers. The first row read as: ${raw[0].join(' | ')}. ` +
+                'Expected: First Name, Last Name, Email, Title, Company, Mobile.'
+            );
+        }
         const byEmail = new Map(); // in-file de-dup by email — last occurrence wins
         const noEmail = [];
         for (let i = 1; i < raw.length; i++) {

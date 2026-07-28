@@ -94,7 +94,11 @@ Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
 
 ### Screen 1 — Import External Contact List (LWC wizard, App page)
 
-1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw File to JS. Parsed **client-side** with a minimal RFC 4180 CSV parser (quoted fields, `""` escapes, CRLF/LF rows) built into the LWC → rows. Expected columns: First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected, case-insensitive). Rows within the file are de-duplicated by Email before preview (last occurrence wins).
+1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw File to JS. Parsed **client-side** with a minimal RFC 4180 CSV parser built into the LWC (quoted fields, `""` escapes, CR / LF / CRLF row terminators) → rows. Expected columns: First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected, case-insensitive). Rows within the file are de-duplicated by Email before preview (last occurrence wins).
+
+   Two properties of real-world CSV are handled explicitly, because unlike `.xlsx` — a zip of UTF-8 XML with one unambiguous reading — a CSV file does not describe its own encoding or delimiter:
+   - **Delimiter is sniffed from the header line** (comma, semicolon or tab). Excel in most EU locales writes **semicolons**, because the comma is the decimal separator there; with an AM audience that is largely EU-based, assuming a comma would have failed on a large share of real files.
+   - **The bytes are decoded as strict UTF-8** (`TextDecoder('utf-8', {fatal: true})` over an ArrayBuffer, not `readAsText`). Excel's plain "CSV" writes the local ANSI codepage, which decodes to U+FFFD and would silently store *Müller* as *M�ller*; failing with "re-save as CSV UTF-8" is the one honest option, since guessing between cp1252, Big5 and Shift-JIS is not reliable. A file that is not the contact list at all is likewise rejected by name — the wizard echoes the header row it actually read instead of reporting "no data rows found".
 2. **Preview**: Apex `ContactImportController.previewMatches(rows)` matches by Email (case-insensitive) against Contact.Email and classifies each row:
    - **New** — email not found ⇒ will create Contact (Account matched by exact Company name; unmatched Company ⇒ grouped under a "PoC Unassigned" bucket Account and flagged in the row for the demo).
    - **Update** — email found, Title/Mobile differ ⇒ will update those fields.
@@ -158,7 +162,7 @@ SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects
 ## Success Criteria
 
 Demo script runs end-to-end in the Sandbox without manual data fixes:
-1. Upload a 48-row .csv (seed file includes at least one missing-email and one duplicate-email row) → preview shows correct New/Update/Unchanged/Company-change/Skipped classification → apply updates Contacts.
+1. Upload a 48-row .csv (seed file includes at least one missing-email row, one duplicate-email row, and one non-ASCII name) → preview shows correct New/Update/Unchanged/Company-change/Skipped classification → apply updates Contacts, with the non-ASCII name stored intact.
 2. AM creates an event; two different AM users each add their own contacts and submit; both Account Owners get notified.
 3. One Owner opens the console on desktop, the other in the Salesforce Mobile App (or phone-format preview); both Select All → Approve.
 4. Both AMs receive completion emails; the event shows correct roll-up counts; Export downloads a CSV with exactly the approved contacts.

@@ -5,7 +5,7 @@ Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement
 
 ## What it does
 
-1. **Import** — AM uploads a CSV (.csv) contact list; rows are matched to existing Contacts by email with a diff preview (New / Update / Unchanged / Company change / Skipped) before anything is applied.
+1. **Import** — AM uploads a CSV (.csv) contact list (comma, semicolon or tab separated; must be UTF-8); rows are matched to existing Contacts by email with a diff preview (New / Update / Unchanged / Company change / Skipped) before anything is applied.
 2. **Create & select** — AM creates a Marketing Event and adds contacts from their own accounts. Events are shared: every AM adds their own batch (`Added By` is tracked per invitee).
 3. **Approve** — Each AM submits their batch; every affected **Account Owner** gets an email + bell notification and bulk-approves/rejects their pending invitees on the event page (desktop or Salesforce Mobile App).
 4. **Export** — When an AM's batch is fully reviewed they're notified and can download the approved list as CSV (re-export safe) — either one event from its record page, or **every signed-off invitee across all events in a single file** from the *Approved Exports* tab, optionally limited to a sign-off date range.
