@@ -34,6 +34,18 @@ sf project deploy start -o poc-sandbox
 sf apex run test -o poc-sandbox --wait 10 --code-coverage
 ```
 
+Can't complete a browser login? [DEPLOYMENT.md](DEPLOYMENT.md#step-2-authenticate-to-the-sandbox)
+covers device flow, auth URL, JWT and access-token logins.
+
+## Quality checks
+
+```bash
+npm install
+npm run gauntlet     # tests, coverage, lint, format, Apex static analysis, mutation
+```
+
+See [QUALITY.md](QUALITY.md) for what each layer proves, the anti-gaming rules, and the known gaps.
+
 ## Post-deploy setup (once, ~5 minutes)
 
 1. **Activate the record page**: Setup → Object Manager → Marketing Event → Lightning Record Pages → *Marketing Event Record Page* → Activate → **Org Default** (desktop + phone).
@@ -63,3 +75,5 @@ sf apex run test -o poc-sandbox --wait 10 --code-coverage
 - 500-row import cap; company changes are flagged for manual handling, never auto-reparented.
 - `addInvitees` trusts the client-side account scoping (server re-verification is a production hardening item).
 - No i18n; UI is English-only by design (US/EU AM audience).
+- Apex carries 84 baselined PMD findings — 26 of them CRUD/FLS, overlapping the hardening item
+  above. The gate is "no new violations"; see [QUALITY.md](QUALITY.md#known-gaps-stated-plainly).
