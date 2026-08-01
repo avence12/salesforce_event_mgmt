@@ -8,30 +8,42 @@
  * FLS-read-only for users and only mutated through these controllers.
  */
 public with sharing class ContactImportController {
-
     public static final Integer MAX_ROWS = 500;
     public static final String BUCKET_ACCOUNT_NAME = 'PoC Unassigned';
 
     public class ImportRow {
-        @AuraEnabled public String firstName { get; set; }
-        @AuraEnabled public String lastName { get; set; }
-        @AuraEnabled public String email { get; set; }
-        @AuraEnabled public String title { get; set; }
-        @AuraEnabled public String company { get; set; }
-        @AuraEnabled public String mobile { get; set; }
+        @AuraEnabled
+        public String firstName { get; set; }
+        @AuraEnabled
+        public String lastName { get; set; }
+        @AuraEnabled
+        public String email { get; set; }
+        @AuraEnabled
+        public String title { get; set; }
+        @AuraEnabled
+        public String company { get; set; }
+        @AuraEnabled
+        public String mobile { get; set; }
     }
 
     public class PreviewResult {
-        @AuraEnabled public ImportRow row { get; set; }
-        @AuraEnabled public String classification { get; set; } // NEW_CONTACT | UPDATE | UNCHANGED | COMPANY_CHANGE | SKIPPED
-        @AuraEnabled public String reason { get; set; }         // for SKIPPED / COMPANY_CHANGE
-        @AuraEnabled public Id contactId { get; set; }
-        @AuraEnabled public List<String> changes { get; set; }  // human-readable "Title: Manager → Senior Manager"
+        @AuraEnabled
+        public ImportRow row { get; set; }
+        @AuraEnabled
+        public String classification { get; set; } // NEW_CONTACT | UPDATE | UNCHANGED | COMPANY_CHANGE | SKIPPED
+        @AuraEnabled
+        public String reason { get; set; } // for SKIPPED / COMPANY_CHANGE
+        @AuraEnabled
+        public Id contactId { get; set; }
+        @AuraEnabled
+        public List<String> changes { get; set; } // human-readable "Title: Manager → Senior Manager"
     }
 
     public class ApplyResult {
-        @AuraEnabled public Integer created { get; set; }
-        @AuraEnabled public Integer updated { get; set; }
+        @AuraEnabled
+        public Integer created { get; set; }
+        @AuraEnabled
+        public Integer updated { get; set; }
     }
 
     @AuraEnabled
@@ -72,25 +84,35 @@ public with sharing class ContactImportController {
                 Id accId = String.isNotBlank(pr.row.company)
                     ? accountIdByName.get(pr.row.company.trim().toLowerCase())
                     : accountIdByName.get(BUCKET_ACCOUNT_NAME.toLowerCase());
-                toInsert.add(new Contact(
-                    FirstName = pr.row.firstName,
-                    LastName = pr.row.lastName,
-                    Email = pr.row.email == null ? null : pr.row.email.trim(),
-                    Title = pr.row.title,
-                    MobilePhone = pr.row.mobile,
-                    AccountId = accId
-                ));
+                toInsert.add(
+                    new Contact(
+                        FirstName = pr.row.firstName,
+                        LastName = pr.row.lastName,
+                        Email = pr.row.email == null ? null : pr.row.email.trim(),
+                        Title = pr.row.title,
+                        MobilePhone = pr.row.mobile,
+                        AccountId = accId
+                    )
+                );
             } else if (pr.classification == 'UPDATE') {
                 Contact c = new Contact(Id = pr.contactId);
-                if (String.isNotBlank(pr.row.title)) { c.Title = pr.row.title; }
-                if (String.isNotBlank(pr.row.mobile)) { c.MobilePhone = pr.row.mobile; }
+                if (String.isNotBlank(pr.row.title)) {
+                    c.Title = pr.row.title;
+                }
+                if (String.isNotBlank(pr.row.mobile)) {
+                    c.MobilePhone = pr.row.mobile;
+                }
                 toUpdate.add(c);
             }
             // UNCHANGED, COMPANY_CHANGE, SKIPPED: never applied here.
         }
 
-        if (!toInsert.isEmpty()) { insert toInsert; }
-        if (!toUpdate.isEmpty()) { update toUpdate; }
+        if (!toInsert.isEmpty()) {
+            insert toInsert;
+        }
+        if (!toUpdate.isEmpty()) {
+            update toUpdate;
+        }
 
         ApplyResult res = new ApplyResult();
         res.created = toInsert.size();
@@ -151,9 +173,10 @@ public with sharing class ContactImportController {
 
             pr.contactId = existing.Id;
             String currentCompany = existing.Account != null ? existing.Account.Name : null;
-            Boolean companyChanged = String.isNotBlank(r.company)
-                && String.isNotBlank(currentCompany)
-                && !r.company.trim().equalsIgnoreCase(currentCompany.trim());
+            Boolean companyChanged =
+                String.isNotBlank(r.company) &&
+                String.isNotBlank(currentCompany) &&
+                !r.company.trim().equalsIgnoreCase(currentCompany.trim());
 
             // Precedence: company change wins over field updates.
             if (companyChanged) {

@@ -23,20 +23,40 @@ export default class ApprovalConsole extends LightningElement {
         }
     }
 
-    get hasPending() { return this.pending.length > 0; }
-    get totalCount() { return this.pending.length; }
-    get selectedCount() { return this.selectedIds.size; }
-    get allSelected() { return this.pending.length > 0 && this.selectedIds.size === this.pending.length; }
-    get selectAllLabel() { return `Select All (${this.totalCount})`; }
-    get approveLabel() { return `Approve (${this.selectedCount})`; }
-    get rejectLabel() { return `Reject (${this.selectedCount})`; }
-    get actionsDisabled() { return this.loading || this.selectedCount === 0; }
+    get hasPending() {
+        return this.pending.length > 0;
+    }
+    get totalCount() {
+        return this.pending.length;
+    }
+    get selectedCount() {
+        return this.selectedIds.size;
+    }
+    get allSelected() {
+        return this.pending.length > 0 && this.selectedIds.size === this.pending.length;
+    }
+    get selectAllLabel() {
+        return `Select All (${this.totalCount})`;
+    }
+    get approveLabel() {
+        return `Approve (${this.selectedCount})`;
+    }
+    get rejectLabel() {
+        return `Reject (${this.selectedCount})`;
+    }
+    get actionsDisabled() {
+        return this.loading || this.selectedCount === 0;
+    }
 
     get groups() {
         const byAccount = new Map();
         this.pending.forEach((p) => {
             if (!byAccount.has(p.accountId)) {
-                byAccount.set(p.accountId, { accountId: p.accountId, accountName: p.accountName, rows: [] });
+                byAccount.set(p.accountId, {
+                    accountId: p.accountId,
+                    accountName: p.accountName,
+                    rows: []
+                });
             }
             byAccount.get(p.accountId).rows.push({
                 ...p,
@@ -61,8 +81,12 @@ export default class ApprovalConsole extends LightningElement {
         this.selectedIds = next;
     }
 
-    handleApprove() { this.decideSelected(true); }
-    handleReject() { this.decideSelected(false); }
+    handleApprove() {
+        this.decideSelected(true);
+    }
+    handleReject() {
+        this.decideSelected(false);
+    }
 
     async decideSelected(approve) {
         this.loading = true;
@@ -73,11 +97,18 @@ export default class ApprovalConsole extends LightningElement {
                 approve
             });
             const verb = approve ? 'approved' : 'rejected';
-            const suffix = res.amsNotified > 0 ? ` ${res.amsNotified} AM(s) notified — their batch is fully reviewed.` : '';
+            const suffix =
+                res.amsNotified > 0
+                    ? ` ${res.amsNotified} AM(s) notified — their batch is fully reviewed.`
+                    : '';
             this.toast('Done', `${res.decided} invitee(s) ${verb}.${suffix}`, 'success');
             await refreshApex(this.wiredPending);
         } catch (e) {
-            this.toast('Error', (e && e.body && e.body.message) || (e && e.message) || 'Unexpected error', 'error');
+            this.toast(
+                'Error',
+                (e && e.body && e.body.message) || (e && e.message) || 'Unexpected error',
+                'error'
+            );
         } finally {
             this.loading = false;
         }

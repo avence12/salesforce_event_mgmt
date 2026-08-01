@@ -24,7 +24,11 @@ export default class ApprovedExport extends LightningElement {
     appliedFrom = null;
     appliedTo = null;
 
-    @wire(getApprovedSummary, { mineOnly: '$mineOnly', fromDate: '$appliedFrom', toDate: '$appliedTo' })
+    @wire(getApprovedSummary, {
+        mineOnly: '$mineOnly',
+        fromDate: '$appliedFrom',
+        toDate: '$appliedTo'
+    })
     handleSummary(result) {
         this.wiredSummary = result;
         if (result.data) this.summary = result.data;
@@ -39,13 +43,25 @@ export default class ApprovedExport extends LightningElement {
         }));
     }
 
-    get hasRows() { return this.summary.length > 0; }
-    get eventCount() { return this.summary.length; }
-    get totalCount() { return this.summary.reduce((n, s) => n + s.totalCount, 0); }
-    get newCount() { return this.summary.reduce((n, s) => n + s.approvedCount, 0); }
+    get hasRows() {
+        return this.summary.length > 0;
+    }
+    get eventCount() {
+        return this.summary.length;
+    }
+    get totalCount() {
+        return this.summary.reduce((n, s) => n + s.totalCount, 0);
+    }
+    get newCount() {
+        return this.summary.reduce((n, s) => n + s.approvedCount, 0);
+    }
 
-    get downloadAllLabel() { return `Download All Approved (${this.totalCount})`; }
-    get downloadAllDisabled() { return this.loading || !this.hasRows || this.rangeInvalid; }
+    get downloadAllLabel() {
+        return `Download All Approved (${this.totalCount})`;
+    }
+    get downloadAllDisabled() {
+        return this.loading || !this.hasRows || this.rangeInvalid;
+    }
 
     get rangeInvalid() {
         return !!(this.fromDate && this.toDate && this.fromDate > this.toDate);
@@ -53,13 +69,19 @@ export default class ApprovedExport extends LightningElement {
     get rangeError() {
         return this.rangeInvalid ? 'The "from" date must not be after the "to" date.' : '';
     }
-    get hasRange() { return !!(this.fromDate || this.toDate); }
-    get clearDisabled() { return this.loading || !this.hasRange; }
+    get hasRange() {
+        return !!(this.fromDate || this.toDate);
+    }
+    get clearDisabled() {
+        return this.loading || !this.hasRange;
+    }
 
     get timeZoneNote() {
-        return `Dates are your approval dates (Decided At), read in your timezone — ${TIME_ZONE}. ` +
+        return (
+            `Dates are your approval dates (Decided At), read in your timezone — ${TIME_ZONE}. ` +
             'Both ends are inclusive. The Decided At column inside the file stays in GMT, ' +
-            'so timestamps near midnight can look like the neighbouring day.';
+            'so timestamps near midnight can look like the neighbouring day.'
+        );
     }
 
     get scopeNote() {
@@ -100,7 +122,11 @@ export default class ApprovedExport extends LightningElement {
 
     handleDownloadAll() {
         this.runExport(() =>
-            exportAllApproved({ mineOnly: this.mineOnly, fromDate: this.fromDate, toDate: this.toDate })
+            exportAllApproved({
+                mineOnly: this.mineOnly,
+                fromDate: this.fromDate,
+                toDate: this.toDate
+            })
         );
     }
 

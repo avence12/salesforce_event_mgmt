@@ -5,41 +5,59 @@
  * Rejected contacts reappear and re-adding resets the existing row to Draft.
  */
 public with sharing class InviteeSelectorController {
-
     public class SelectableContact {
-        @AuraEnabled public Id contactId { get; set; }
-        @AuraEnabled public String name { get; set; }
-        @AuraEnabled public String title { get; set; }
-        @AuraEnabled public String email { get; set; }
-        @AuraEnabled public Id accountId { get; set; }
-        @AuraEnabled public String accountName { get; set; }
-        @AuraEnabled public String accountOwnerName { get; set; }
+        @AuraEnabled
+        public Id contactId { get; set; }
+        @AuraEnabled
+        public String name { get; set; }
+        @AuraEnabled
+        public String title { get; set; }
+        @AuraEnabled
+        public String email { get; set; }
+        @AuraEnabled
+        public Id accountId { get; set; }
+        @AuraEnabled
+        public String accountName { get; set; }
+        @AuraEnabled
+        public String accountOwnerName { get; set; }
     }
 
     public class InviteeRow {
-        @AuraEnabled public Id inviteeId { get; set; }
-        @AuraEnabled public String contactName { get; set; }
-        @AuraEnabled public String contactTitle { get; set; }
-        @AuraEnabled public String accountName { get; set; }
-        @AuraEnabled public String status { get; set; }
-        @AuraEnabled public String addedByName { get; set; }
-        @AuraEnabled public Boolean mine { get; set; }
+        @AuraEnabled
+        public Id inviteeId { get; set; }
+        @AuraEnabled
+        public String contactName { get; set; }
+        @AuraEnabled
+        public String contactTitle { get; set; }
+        @AuraEnabled
+        public String accountName { get; set; }
+        @AuraEnabled
+        public String status { get; set; }
+        @AuraEnabled
+        public String addedByName { get; set; }
+        @AuraEnabled
+        public Boolean mine { get; set; }
     }
 
     public class SubmitResult {
-        @AuraEnabled public Integer submitted { get; set; }
-        @AuraEnabled public Integer ownersNotified { get; set; }
+        @AuraEnabled
+        public Integer submitted { get; set; }
+        @AuraEnabled
+        public Integer ownersNotified { get; set; }
     }
 
     @AuraEnabled(cacheable=true)
     public static List<SelectableContact> getSelectableContacts(Id eventId) {
         Set<Id> myAccountIds = getMyAccountIds();
-        if (myAccountIds.isEmpty()) { return new List<SelectableContact>(); }
+        if (myAccountIds.isEmpty()) {
+            return new List<SelectableContact>();
+        }
 
         // Hide contacts already on the event unless their row is Rejected.
         Set<Id> blockedContactIds = new Set<Id>();
         for (Event_Invitee__c inv : [
-            SELECT Contact__c FROM Event_Invitee__c
+            SELECT Contact__c
+            FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId AND Status__c != 'Rejected'
         ]) {
             blockedContactIds.add(inv.Contact__c);
@@ -72,14 +90,13 @@ public with sharing class InviteeSelectorController {
             throw new AuraHandledException('No contacts selected.');
         }
 
-        Map<Id, Contact> contacts = new Map<Id, Contact>([
-            SELECT Id, AccountId FROM Contact WHERE Id IN :contactIds
-        ]);
+        Map<Id, Contact> contacts = new Map<Id, Contact>([SELECT Id, AccountId FROM Contact WHERE Id IN :contactIds]);
 
         // Existing rows for these contacts on this event (any status).
         Map<Id, Event_Invitee__c> existingByContact = new Map<Id, Event_Invitee__c>();
         for (Event_Invitee__c inv : [
-            SELECT Id, Contact__c, Status__c FROM Event_Invitee__c
+            SELECT Id, Contact__c, Status__c
+            FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId AND Contact__c IN :contactIds
         ]) {
             existingByContact.put(inv.Contact__c, inv);
@@ -90,17 +107,21 @@ public with sharing class InviteeSelectorController {
 
         for (Id contactId : contactIds) {
             Contact c = contacts.get(contactId);
-            if (c == null) { continue; }
+            if (c == null) {
+                continue;
+            }
             Event_Invitee__c existing = existingByContact.get(contactId);
             if (existing == null) {
-                toInsert.add(new Event_Invitee__c(
-                    Marketing_Event__c = eventId,
-                    Contact__c = contactId,
-                    Status__c = 'Draft',
-                    Added_By__c = UserInfo.getUserId(),
-                    Account__c = c.AccountId, // snapshot at add time
-                    Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(contactId)
-                ));
+                toInsert.add(
+                    new Event_Invitee__c(
+                        Marketing_Event__c = eventId,
+                        Contact__c = contactId,
+                        Status__c = 'Draft',
+                        Added_By__c = UserInfo.getUserId(),
+                        Account__c = c.AccountId, // snapshot at add time
+                        Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(contactId)
+                    )
+                );
             } else if (existing.Status__c == 'Rejected') {
                 // Re-add resets the existing row — Unique_Key__c forbids a second row.
                 existing.Status__c = 'Draft';
@@ -114,8 +135,12 @@ public with sharing class InviteeSelectorController {
             // Any other status: already invited — silently skipped (UI hides these anyway).
         }
 
-        if (!toInsert.isEmpty()) { insert toInsert; }
-        if (!toReset.isEmpty()) { update toReset; }
+        if (!toInsert.isEmpty()) {
+            insert toInsert;
+        }
+        if (!toReset.isEmpty()) {
+            update toReset;
+        }
         return toInsert.size() + toReset.size();
     }
 
@@ -124,9 +149,7 @@ public with sharing class InviteeSelectorController {
         List<Event_Invitee__c> mine = [
             SELECT Id, Account__c
             FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId
-              AND Added_By__c = :UserInfo.getUserId()
-              AND Status__c = 'Draft'
+            WHERE Marketing_Event__c = :eventId AND Added_By__c = :UserInfo.getUserId() AND Status__c = 'Draft'
         ];
         if (mine.isEmpty()) {
             throw new AuraHandledException('You have no draft invitees to submit.');
@@ -135,11 +158,11 @@ public with sharing class InviteeSelectorController {
         // Snapshot the Account Owner at submit time.
         Set<Id> accountIds = new Set<Id>();
         for (Event_Invitee__c inv : mine) {
-            if (inv.Account__c != null) { accountIds.add(inv.Account__c); }
+            if (inv.Account__c != null) {
+                accountIds.add(inv.Account__c);
+            }
         }
-        Map<Id, Account> owners = new Map<Id, Account>([
-            SELECT Id, OwnerId FROM Account WHERE Id IN :accountIds
-        ]);
+        Map<Id, Account> owners = new Map<Id, Account>([SELECT Id, OwnerId FROM Account WHERE Id IN :accountIds]);
 
         Map<Id, Integer> countByOwner = new Map<Id, Integer>();
         Datetime now = Datetime.now();
@@ -170,8 +193,7 @@ public with sharing class InviteeSelectorController {
     public static List<InviteeRow> getAllInvitees(Id eventId) {
         List<InviteeRow> out = new List<InviteeRow>();
         for (Event_Invitee__c inv : [
-            SELECT Id, Contact__r.Name, Contact__r.Title, Account__r.Name,
-                   Status__c, Added_By__r.Name, Added_By__c
+            SELECT Id, Contact__r.Name, Contact__r.Title, Account__r.Name, Status__c, Added_By__r.Name, Added_By__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId
             ORDER BY Account__r.Name, Contact__r.Name

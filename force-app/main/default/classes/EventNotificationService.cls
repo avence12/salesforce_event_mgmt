@@ -5,20 +5,30 @@
  * design decision to keep aggregation out of record-triggered Flows.
  */
 public with sharing class EventNotificationService {
-
-    @TestVisible private static Integer emailsSent = 0;
-    @TestVisible private static Integer bellsSent = 0;
+    @TestVisible
+    private static Integer emailsSent = 0;
+    @TestVisible
+    private static Integer bellsSent = 0;
 
     /** One notification per distinct Account Owner at submit time. */
-    public static void notifyOwnersOfSubmission(Marketing_Event__c evt, Map<Id, Integer> pendingCountByOwnerId, Id submittedById) {
+    public static void notifyOwnersOfSubmission(
+        Marketing_Event__c evt,
+        Map<Id, Integer> pendingCountByOwnerId,
+        Id submittedById
+    ) {
         String submitterName = [SELECT Name FROM User WHERE Id = :submittedById].Name;
         List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
 
         for (Id ownerId : pendingCountByOwnerId.keySet()) {
             Integer n = pendingCountByOwnerId.get(ownerId);
             String title = 'Approval requested: ' + evt.Name;
-            String body = submitterName + ' submitted ' + n + ' contact(s) under your accounts for "'
-                + evt.Name + '". Open the event to approve or reject.';
+            String body =
+                submitterName +
+                ' submitted ' +
+                n +
+                ' contact(s) under your accounts for "' +
+                evt.Name +
+                '". Open the event to approve or reject.';
 
             emails.add(buildEmail(ownerId, title, body, evt.Id));
             sendBell(ownerId, title, body, evt.Id);
@@ -29,9 +39,15 @@ public with sharing class EventNotificationService {
     /** Sent when an AM's submitted batch for an event has zero remaining Pending rows. */
     public static void notifyAmOfCompletion(Marketing_Event__c evt, Id amId, Integer approved, Integer rejected) {
         String title = 'Review complete: ' + evt.Name;
-        String body = 'Your submissions for "' + evt.Name + '" have been fully reviewed: '
-            + approved + ' approved, ' + rejected + ' rejected. '
-            + 'You can now export the approved list from the event page.';
+        String body =
+            'Your submissions for "' +
+            evt.Name +
+            '" have been fully reviewed: ' +
+            approved +
+            ' approved, ' +
+            rejected +
+            ' rejected. ' +
+            'You can now export the approved list from the event page.';
         sendEmails(new List<Messaging.SingleEmailMessage>{ buildEmail(amId, title, body, evt.Id) });
         sendBell(amId, title, body, evt.Id);
     }
@@ -48,7 +64,9 @@ public with sharing class EventNotificationService {
     }
 
     private static void sendEmails(List<Messaging.SingleEmailMessage> emails) {
-        if (emails.isEmpty()) { return; }
+        if (emails.isEmpty()) {
+            return;
+        }
         try {
             Messaging.sendEmail(emails, false);
             emailsSent += emails.size();
@@ -60,11 +78,14 @@ public with sharing class EventNotificationService {
 
     private static void sendBell(Id userId, String title, String body, Id eventId) {
         List<CustomNotificationType> types = [
-            SELECT Id FROM CustomNotificationType
+            SELECT Id
+            FROM CustomNotificationType
             WHERE DeveloperName = 'Event_Approval_Notification'
             LIMIT 1
         ];
-        if (types.isEmpty()) { return; } // not deployed / test context without the type
+        if (types.isEmpty()) {
+            return;
+        } // not deployed / test context without the type
         try {
             Messaging.CustomNotification n = new Messaging.CustomNotification();
             n.setNotificationTypeId(types[0].Id);

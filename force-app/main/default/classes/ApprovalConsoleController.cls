@@ -5,19 +5,26 @@
  * Pending per submitting AM"), not in a record-triggered Flow.
  */
 public with sharing class ApprovalConsoleController {
-
     public class PendingInvitee {
-        @AuraEnabled public Id inviteeId { get; set; }
-        @AuraEnabled public String contactName { get; set; }
-        @AuraEnabled public String contactTitle { get; set; }
-        @AuraEnabled public Id accountId { get; set; }
-        @AuraEnabled public String accountName { get; set; }
-        @AuraEnabled public String addedByName { get; set; }
+        @AuraEnabled
+        public Id inviteeId { get; set; }
+        @AuraEnabled
+        public String contactName { get; set; }
+        @AuraEnabled
+        public String contactTitle { get; set; }
+        @AuraEnabled
+        public Id accountId { get; set; }
+        @AuraEnabled
+        public String accountName { get; set; }
+        @AuraEnabled
+        public String addedByName { get; set; }
     }
 
     public class DecisionResult {
-        @AuraEnabled public Integer decided { get; set; }
-        @AuraEnabled public Integer amsNotified { get; set; }
+        @AuraEnabled
+        public Integer decided { get; set; }
+        @AuraEnabled
+        public Integer amsNotified { get; set; }
     }
 
     @AuraEnabled(cacheable=true)
@@ -26,9 +33,10 @@ public with sharing class ApprovalConsoleController {
         for (Event_Invitee__c inv : [
             SELECT Id, Contact__r.Name, Contact__r.Title, Account__c, Account__r.Name, Added_By__r.Name
             FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId
-              AND Account_Owner__c = :UserInfo.getUserId()
-              AND Status__c = 'Pending Approval'
+            WHERE
+                Marketing_Event__c = :eventId
+                AND Account_Owner__c = :UserInfo.getUserId()
+                AND Status__c = 'Pending Approval'
             ORDER BY Account__r.Name, Contact__r.Name
             LIMIT 2000
         ]) {
@@ -54,10 +62,11 @@ public with sharing class ApprovalConsoleController {
         List<Event_Invitee__c> rows = [
             SELECT Id, Added_By__c
             FROM Event_Invitee__c
-            WHERE Id IN :inviteeIds
-              AND Marketing_Event__c = :eventId
-              AND Account_Owner__c = :UserInfo.getUserId()
-              AND Status__c = 'Pending Approval'
+            WHERE
+                Id IN :inviteeIds
+                AND Marketing_Event__c = :eventId
+                AND Account_Owner__c = :UserInfo.getUserId()
+                AND Status__c = 'Pending Approval'
         ];
         if (rows.isEmpty()) {
             throw new AuraHandledException('Nothing to decide — the selected invitees are no longer pending.');
@@ -68,7 +77,9 @@ public with sharing class ApprovalConsoleController {
         for (Event_Invitee__c inv : rows) {
             inv.Status__c = approve ? 'Approved' : 'Rejected';
             inv.Decided_At__c = now;
-            if (inv.Added_By__c != null) { affectedAms.add(inv.Added_By__c); }
+            if (inv.Added_By__c != null) {
+                affectedAms.add(inv.Added_By__c);
+            }
         }
         update rows;
 
@@ -84,15 +95,15 @@ public with sharing class ApprovalConsoleController {
 
     /** For each affected AM: if they have zero remaining Pending rows on this event, send the completion notification. */
     private static Integer notifyCompletedAms(Id eventId, Set<Id> amIds) {
-        if (amIds.isEmpty()) { return 0; }
+        if (amIds.isEmpty()) {
+            return 0;
+        }
 
         Set<Id> stillPending = new Set<Id>();
         for (AggregateResult ar : [
             SELECT Added_By__c am
             FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId
-              AND Added_By__c IN :amIds
-              AND Status__c = 'Pending Approval'
+            WHERE Marketing_Event__c = :eventId AND Added_By__c IN :amIds AND Status__c = 'Pending Approval'
             GROUP BY Added_By__c
         ]) {
             stillPending.add((Id) ar.get('am'));
@@ -103,9 +114,10 @@ public with sharing class ApprovalConsoleController {
         for (AggregateResult ar : [
             SELECT Added_By__c am, Status__c st, COUNT(Id) n
             FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId
-              AND Added_By__c IN :amIds
-              AND Status__c IN ('Approved', 'Rejected', 'Exported')
+            WHERE
+                Marketing_Event__c = :eventId
+                AND Added_By__c IN :amIds
+                AND Status__c IN ('Approved', 'Rejected', 'Exported')
             GROUP BY Added_By__c, Status__c
         ]) {
             Id am = (Id) ar.get('am');
@@ -121,9 +133,12 @@ public with sharing class ApprovalConsoleController {
         Marketing_Event__c evt = [SELECT Id, Name FROM Marketing_Event__c WHERE Id = :eventId];
         Integer notified = 0;
         for (Id amId : amIds) {
-            if (stillPending.contains(amId)) { continue; }
+            if (stillPending.contains(amId)) {
+                continue;
+            }
             EventNotificationService.notifyAmOfCompletion(
-                evt, amId,
+                evt,
+                amId,
                 approvedByAm.containsKey(amId) ? approvedByAm.get(amId) : 0,
                 rejectedByAm.containsKey(amId) ? rejectedByAm.get(amId) : 0
             );

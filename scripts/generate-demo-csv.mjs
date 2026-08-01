@@ -21,7 +21,14 @@ const rows = [
     // UPDATE: title changed vs seed (Manager → Senior Manager)
     ['Emily', 'Carter', 'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', ''],
     // UPDATE: mobile added
-    ['James', 'Mueller', 'j.mueller@nordbank.example', 'Director', 'Nordbank AG', '+49 151 2345 678'],
+    [
+        'James',
+        'Mueller',
+        'j.mueller@nordbank.example',
+        'Director',
+        'Nordbank AG',
+        '+49 151 2345 678'
+    ],
     // UNCHANGED
     ['Robert', 'Kim', 'robert.kim@acmecorp.example', 'SVP, Operations', 'Acme Corp', ''],
     ['Laura', 'Chen', 'laura.chen@acmeins.example', 'VP, Finance', 'Acme Insurance', ''],
@@ -39,15 +46,64 @@ const rows = [
     ['Zoë', 'Müller-Sørensen', 'z.muller@newcolabs.example', 'Head of Analytics', 'NewCo Labs', '']
 ];
 
-const first = ['David', 'Nina', 'Oscar', 'Priya', 'Lukas', 'Maya', 'Ethan', 'Clara', 'Hugo', 'Ines',
-    'Felix', 'Zoe', 'Adam', 'Lena', 'Marco', 'Julia', 'Tom', 'Elsa', 'Noah', 'Vera',
-    'Leo', 'Ida', 'Max', 'Ruth', 'Sam', 'Eva', 'Karl', 'Amy', 'Paul', 'Mia',
-    'Erik', 'Sara', 'Ivan', 'Lucy', 'Owen', 'Rosa', 'Nils', 'Faye'];
-const companies = ['NewCo Labs', 'Vertex Capital', 'Bluepeak Bank', 'Helios Insurance', 'Quantumsoft', 'PoC Unmatched Ltd'];
+const first = [
+    'David',
+    'Nina',
+    'Oscar',
+    'Priya',
+    'Lukas',
+    'Maya',
+    'Ethan',
+    'Clara',
+    'Hugo',
+    'Ines',
+    'Felix',
+    'Zoe',
+    'Adam',
+    'Lena',
+    'Marco',
+    'Julia',
+    'Tom',
+    'Elsa',
+    'Noah',
+    'Vera',
+    'Leo',
+    'Ida',
+    'Max',
+    'Ruth',
+    'Sam',
+    'Eva',
+    'Karl',
+    'Amy',
+    'Paul',
+    'Mia',
+    'Erik',
+    'Sara',
+    'Ivan',
+    'Lucy',
+    'Owen',
+    'Rosa',
+    'Nils',
+    'Faye'
+];
+const companies = [
+    'NewCo Labs',
+    'Vertex Capital',
+    'Bluepeak Bank',
+    'Helios Insurance',
+    'Quantumsoft',
+    'PoC Unmatched Ltd'
+];
 for (let i = 0; i < 37; i++) {
     const f = first[i];
-    rows.push([f, 'Attendee' + (i + 1), `${f.toLowerCase()}.a${i + 1}@prospect.example`,
-        i % 3 === 0 ? 'Director' : 'Manager', companies[i % companies.length], '']);
+    rows.push([
+        f,
+        'Attendee' + (i + 1),
+        `${f.toLowerCase()}.a${i + 1}@prospect.example`,
+        i % 3 === 0 ? 'Director' : 'Manager',
+        companies[i % companies.length],
+        ''
+    ]);
 }
 
 function csvCell(value) {

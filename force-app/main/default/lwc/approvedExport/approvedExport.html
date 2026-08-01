@@ -1,8 +1,13 @@
 <template>
     <lightning-card title="Approved Contacts — Download" icon-name="utility:download">
         <div slot="actions">
-            <lightning-button variant="brand" label={downloadAllLabel} icon-name="utility:download"
-                              disabled={downloadAllDisabled} onclick={handleDownloadAll}></lightning-button>
+            <lightning-button
+                variant="brand"
+                label={downloadAllLabel}
+                icon-name="utility:download"
+                disabled={downloadAllDisabled}
+                onclick={handleDownloadAll}
+            ></lightning-button>
         </div>
 
         <div class="slds-p-around_medium">
@@ -12,17 +17,28 @@
 
             <div class="slds-grid slds-gutters slds-wrap slds-grid_vertical-align-end slds-m-bottom_x-small">
                 <div class="slds-col slds-size_1-of-3">
-                    <lightning-input type="date" label="Approved from" value={fromDate}
-                                     message-when-bad-input={rangeError}
-                                     onchange={handleFromChange}></lightning-input>
+                    <lightning-input
+                        type="date"
+                        label="Approved from"
+                        value={fromDate}
+                        message-when-bad-input={rangeError}
+                        onchange={handleFromChange}
+                    ></lightning-input>
                 </div>
                 <div class="slds-col slds-size_1-of-3">
-                    <lightning-input type="date" label="Approved to" value={toDate}
-                                     onchange={handleToChange}></lightning-input>
+                    <lightning-input
+                        type="date"
+                        label="Approved to"
+                        value={toDate}
+                        onchange={handleToChange}
+                    ></lightning-input>
                 </div>
                 <div class="slds-col slds-size_1-of-3">
-                    <lightning-button label="Clear dates" disabled={clearDisabled}
-                                      onclick={handleClearRange}></lightning-button>
+                    <lightning-button
+                        label="Clear dates"
+                        disabled={clearDisabled}
+                        onclick={handleClearRange}
+                    ></lightning-button>
                 </div>
             </div>
             <template lwc:if={rangeInvalid}>
@@ -31,8 +47,12 @@
             <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">{timeZoneNote}</p>
 
             <div class="slds-m-bottom_small">
-                <lightning-input type="checkbox" label="Only invitees I added"
-                                 checked={mineOnly} onchange={handleScopeChange}></lightning-input>
+                <lightning-input
+                    type="checkbox"
+                    label="Only invitees I added"
+                    checked={mineOnly}
+                    onchange={handleScopeChange}
+                ></lightning-input>
                 <p class="slds-text-color_weak slds-text-body_small">{scopeNote}</p>
             </div>
 
@@ -45,7 +65,7 @@
                             <th scope="col" class="num">Not yet downloaded</th>
                             <th scope="col" class="num">Already downloaded</th>
                             <th scope="col" class="num">Total approved</th>
-                            <th scope="col" style="width:8rem"></th>
+                            <th scope="col" style="width: 8rem"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -57,9 +77,12 @@
                                 <td class="num">{r.exportedCount}</td>
                                 <td class="num"><b>{r.totalCount}</b></td>
                                 <td>
-                                    <lightning-button label="Download" data-id={r.eventId}
-                                                      disabled={loading}
-                                                      onclick={handleDownloadEvent}></lightning-button>
+                                    <lightning-button
+                                        label="Download"
+                                        data-id={r.eventId}
+                                        disabled={loading}
+                                        onclick={handleDownloadEvent}
+                                    ></lightning-button>
                                 </td>
                             </tr>
                         </template>
@@ -75,8 +98,8 @@
                     </tfoot>
                 </table>
                 <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
-                    Downloading marks rows as Exported on the event roll-up; re-downloading always returns the
-                    complete approved list, never just the new rows.
+                    Downloading marks rows as Exported on the event roll-up; re-downloading always returns the complete
+                    approved list, never just the new rows.
                 </p>
             </template>
             <template lwc:else>
