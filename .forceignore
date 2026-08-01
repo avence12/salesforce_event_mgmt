@@ -5,3 +5,10 @@ node_modules
 scripts
 **/*.md
 .gstack
+coverage
+
+# Quality tooling — local only, never deployed to an org
+eslint.config.js
+jest.config.js
+force-app/test
+**/__tests__/**
