@@ -8,12 +8,28 @@ const MAX_ROWS = 500;
 
 // Header detection: normalized header cell → canonical field
 const HEADER_MAP = {
-    firstname: 'firstName', first: 'firstName', givenname: 'firstName',
-    lastname: 'lastName', last: 'lastName', surname: 'lastName', familyname: 'lastName',
-    email: 'email', emailaddress: 'email', mail: 'email',
-    title: 'title', jobtitle: 'title', position: 'title',
-    company: 'company', companyname: 'company', account: 'company', organization: 'company', organisation: 'company',
-    mobile: 'mobile', mobilephone: 'mobile', phone: 'mobile', cell: 'mobile'
+    firstname: 'firstName',
+    first: 'firstName',
+    givenname: 'firstName',
+    lastname: 'lastName',
+    last: 'lastName',
+    surname: 'lastName',
+    familyname: 'lastName',
+    email: 'email',
+    emailaddress: 'email',
+    mail: 'email',
+    title: 'title',
+    jobtitle: 'title',
+    position: 'title',
+    company: 'company',
+    companyname: 'company',
+    account: 'company',
+    organization: 'company',
+    organisation: 'company',
+    mobile: 'mobile',
+    mobilephone: 'mobile',
+    phone: 'mobile',
+    cell: 'mobile'
 };
 
 const APPLYABLE = new Set(['NEW_CONTACT', 'UPDATE']);
@@ -23,19 +39,40 @@ export default class ImportWizard extends LightningElement {
     @track fileName = '';
     @track rowCount = 0;
     @track previewRows = [];
-    @track stats = { newCount: 0, updateCount: 0, unchangedCount: 0, companyChangeCount: 0, skippedCount: 0 };
+    @track stats = {
+        newCount: 0,
+        updateCount: 0,
+        unchangedCount: 0,
+        companyChangeCount: 0,
+        skippedCount: 0
+    };
     @track applyResult = null;
     @track loading = false;
     @track error = '';
 
-    get isStep1() { return this.step === 1; }
-    get isStep2() { return this.step === 2; }
-    get isStep3() { return this.step === 3; }
-    get step1Class() { return this.stepClass(1); }
-    get step2Class() { return this.stepClass(2); }
-    get step3Class() { return this.stepClass(3); }
+    get isStep1() {
+        return this.step === 1;
+    }
+    get isStep2() {
+        return this.step === 2;
+    }
+    get isStep3() {
+        return this.step === 3;
+    }
+    get step1Class() {
+        return this.stepClass(1);
+    }
+    get step2Class() {
+        return this.stepClass(2);
+    }
+    get step3Class() {
+        return this.stepClass(3);
+    }
     stepClass(n) {
-        return 'slds-progress__item' + (this.step === n ? ' slds-is-active' : (this.step > n ? ' slds-is-completed' : ''));
+        return (
+            'slds-progress__item' +
+            (this.step === n ? ' slds-is-active' : this.step > n ? ' slds-is-completed' : '')
+        );
     }
 
     get selectedCount() {
@@ -59,8 +96,14 @@ export default class ImportWizard extends LightningElement {
         this.fileName = file.name;
         try {
             const rows = await this.parseFile(file);
-            if (rows.length === 0) throw new Error('No data rows found. Expected headers like: First Name, Last Name, Email, Title, Company, Mobile.');
-            if (rows.length > MAX_ROWS) throw new Error(`File has ${rows.length} rows — the PoC limit is ${MAX_ROWS}. Please split the file.`);
+            if (rows.length === 0)
+                throw new Error(
+                    'No data rows found. Expected headers like: First Name, Last Name, Email, Title, Company, Mobile.'
+                );
+            if (rows.length > MAX_ROWS)
+                throw new Error(
+                    `File has ${rows.length} rows — the PoC limit is ${MAX_ROWS}. Please split the file.`
+                );
             this.rowCount = rows.length;
 
             const results = await previewMatches({ rows });
@@ -88,10 +131,12 @@ export default class ImportWizard extends LightningElement {
                     // replacement-character mess, silently and past the preview.
                     text = new TextDecoder('utf-8', { fatal: true }).decode(reader.result);
                 } catch {
-                    reject(new Error(
-                        'The file is not UTF-8 text, so non-English characters would be corrupted. ' +
-                        'Re-save it in Excel with File → Save As → "CSV UTF-8 (Comma delimited)" and upload again.'
-                    ));
+                    reject(
+                        new Error(
+                            'The file is not UTF-8 text, so non-English characters would be corrupted. ' +
+                                'Re-save it in Excel with File → Save As → "CSV UTF-8 (Comma delimited)" and upload again.'
+                        )
+                    );
                     return;
                 }
                 try {
@@ -120,8 +165,12 @@ export default class ImportWizard extends LightningElement {
             const c = src[i];
             if (inQuotes) {
                 if (c === '"') {
-                    if (src[i + 1] === '"') { field += '"'; i++; }
-                    else { inQuotes = false; }
+                    if (src[i + 1] === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
                 } else {
                     field += c;
                 }
@@ -131,7 +180,9 @@ export default class ImportWizard extends LightningElement {
                 row.push(field);
                 field = '';
             } else if (c === '\r' || c === '\n') {
-                if (c === '\r' && src[i + 1] === '\n') { i++; } // CRLF is one terminator
+                if (c === '\r' && src[i + 1] === '\n') {
+                    i++;
+                } // CRLF is one terminator
                 row.push(field);
                 rows.push(row);
                 row = [];
@@ -169,19 +220,33 @@ export default class ImportWizard extends LightningElement {
 
     mapRows(raw) {
         if (!raw || raw.length < 2) return [];
-        const headers = raw[0].map((h) => HEADER_MAP[String(h).toLowerCase().replace(/[^a-z]/g, '')] || null);
+        const headers = raw[0].map(
+            (h) =>
+                HEADER_MAP[
+                    String(h)
+                        .toLowerCase()
+                        .replace(/[^a-z]/g, '')
+                ] || null
+        );
         // Naming what was actually read beats "no data rows found" — the usual causes
         // are a delimiter we could not sniff or a file that is not the contact list.
         if (!headers.some(Boolean)) {
             throw new Error(
                 `No recognised column headers. The first row read as: ${raw[0].join(' | ')}. ` +
-                'Expected: First Name, Last Name, Email, Title, Company, Mobile.'
+                    'Expected: First Name, Last Name, Email, Title, Company, Mobile.'
             );
         }
         const byEmail = new Map(); // in-file de-dup by email — last occurrence wins
         const noEmail = [];
         for (let i = 1; i < raw.length; i++) {
-            const row = { firstName: '', lastName: '', email: '', title: '', company: '', mobile: '' };
+            const row = {
+                firstName: '',
+                lastName: '',
+                email: '',
+                title: '',
+                company: '',
+                mobile: ''
+            };
             headers.forEach((field, col) => {
                 if (field && raw[i][col] !== undefined && raw[i][col] !== null) {
                     row[field] = String(raw[i][col]).trim();
@@ -196,7 +261,13 @@ export default class ImportWizard extends LightningElement {
     }
 
     buildPreview(results) {
-        const stats = { newCount: 0, updateCount: 0, unchangedCount: 0, companyChangeCount: 0, skippedCount: 0 };
+        const stats = {
+            newCount: 0,
+            updateCount: 0,
+            unchangedCount: 0,
+            companyChangeCount: 0,
+            skippedCount: 0
+        };
         this.previewRows = results.map((r, idx) => {
             const cls = r.classification;
             if (cls === 'NEW_CONTACT') stats.newCount++;
@@ -211,9 +282,22 @@ export default class ImportWizard extends LightningElement {
                 name,
                 email: r.row.email,
                 classification: cls,
-                typeLabel: { NEW_CONTACT: 'New', UPDATE: 'Update', UNCHANGED: 'Unchanged', COMPANY_CHANGE: 'Manual', SKIPPED: 'Skipped' }[cls] || cls,
-                badgeClass: cls === 'SKIPPED' || cls === 'COMPANY_CHANGE' ? 'slds-badge slds-theme_warning' : 'slds-badge',
-                changeText: (r.changes && r.changes.length ? r.changes.join('; ') : '') || r.reason || (cls === 'NEW_CONTACT' ? '— (not found)' : ''),
+                typeLabel:
+                    {
+                        NEW_CONTACT: 'New',
+                        UPDATE: 'Update',
+                        UNCHANGED: 'Unchanged',
+                        COMPANY_CHANGE: 'Manual',
+                        SKIPPED: 'Skipped'
+                    }[cls] || cls,
+                badgeClass:
+                    cls === 'SKIPPED' || cls === 'COMPANY_CHANGE'
+                        ? 'slds-badge slds-theme_warning'
+                        : 'slds-badge',
+                changeText:
+                    (r.changes && r.changes.length ? r.changes.join('; ') : '') ||
+                    r.reason ||
+                    (cls === 'NEW_CONTACT' ? '— (not found)' : ''),
                 selectable: APPLYABLE.has(cls),
                 selected: APPLYABLE.has(cls),
                 disabled: !APPLYABLE.has(cls)
@@ -224,9 +308,10 @@ export default class ImportWizard extends LightningElement {
 
     handleRowToggle(event) {
         const key = Number(event.target.dataset.key);
-        this.previewRows = this.previewRows.map((r) =>
-            r.key === key ? { ...r, selected: event.target.checked } : r
-        );
+        const checked = event.target.checked;
+        this.previewRows = this.previewRows.map((r) => {
+            return r.key === key ? { ...r, selected: checked } : r;
+        });
     }
 
     async handleApply() {

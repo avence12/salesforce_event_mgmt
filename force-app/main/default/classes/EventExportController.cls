@@ -16,7 +16,6 @@
  * cleanly in desktop Excel; the UTF-8 BOM is added client-side when the Blob is built.
  */
 public with sharing class EventExportController {
-
     /** Hard ceiling so a cross-event export can't blow the heap on a large org. */
     @TestVisible
     private static Integer rowLimit = 10000;
@@ -34,28 +33,39 @@ public with sharing class EventExportController {
         'Account__r.Name, Account_Owner__r.Name';
 
     private static final String ROW_ORDER =
-        'Marketing_Event__r.Event_Date__c NULLS LAST, Marketing_Event__r.Name, ' +
-        'Account__r.Name, Contact__r.Name';
+        'Marketing_Event__r.Event_Date__c NULLS LAST, Marketing_Event__r.Name, ' + 'Account__r.Name, Contact__r.Name';
 
     public class ExportResult {
-        @AuraEnabled public String csv { get; set; }
-        @AuraEnabled public String fileName { get; set; }
-        @AuraEnabled public Integer rowCount { get; set; }
-        @AuraEnabled public Integer eventCount { get; set; }
+        @AuraEnabled
+        public String csv { get; set; }
+        @AuraEnabled
+        public String fileName { get; set; }
+        @AuraEnabled
+        public Integer rowCount { get; set; }
+        @AuraEnabled
+        public Integer eventCount { get; set; }
         /** True when the row cap cut the export short — the UI warns instead of silently under-delivering. */
-        @AuraEnabled public Boolean truncated { get; set; }
+        @AuraEnabled
+        public Boolean truncated { get; set; }
         /** Human-readable description of the decision-date window applied; null when unfiltered. */
-        @AuraEnabled public String windowLabel { get; set; }
+        @AuraEnabled
+        public String windowLabel { get; set; }
     }
 
     /** One line per event on the "download everything" screen. */
     public class ApprovedSummary {
-        @AuraEnabled public Id eventId { get; set; }
-        @AuraEnabled public String eventName { get; set; }
-        @AuraEnabled public Date eventDate { get; set; }
-        @AuraEnabled public Integer approvedCount { get; set; }  // not yet downloaded
-        @AuraEnabled public Integer exportedCount { get; set; }  // downloaded at least once
-        @AuraEnabled public Integer totalCount { get; set; }
+        @AuraEnabled
+        public Id eventId { get; set; }
+        @AuraEnabled
+        public String eventName { get; set; }
+        @AuraEnabled
+        public Date eventDate { get; set; }
+        @AuraEnabled
+        public Integer approvedCount { get; set; } // not yet downloaded
+        @AuraEnabled
+        public Integer exportedCount { get; set; } // downloaded at least once
+        @AuraEnabled
+        public Integer totalCount { get; set; }
     }
 
     /**
@@ -63,7 +73,11 @@ public with sharing class EventExportController {
      * `mineOnly` restricts to invitees the running user added (their own batch);
      * `fromDate`/`toDate` (inclusive, user-timezone calendar dates, either may be
      * null) restrict to invitees decided in that window.
+     *
+     * Same shape as queryRows: the concatenated pieces are compile-time
+     * constants, and mineOnly / the dates reach the query only as binds.
      */
+    @SuppressWarnings('PMD.ApexSOQLInjection')
     @AuraEnabled(cacheable=true)
     public static List<ApprovedSummary> getApprovedSummary(Boolean mineOnly, Date fromDate, Date toDate) {
         Id me = UserInfo.getUserId();
@@ -73,7 +87,8 @@ public with sharing class EventExportController {
         String soql =
             'SELECT Marketing_Event__c evtId, Status__c st, COUNT(Id) cnt ' +
             'FROM Event_Invitee__c ' +
-            'WHERE Status__c IN ' + APPROVED_STATUSES +
+            'WHERE Status__c IN ' +
+            APPROVED_STATUSES +
             (mineOnly == true ? ' AND Added_By__c = :me' : '') +
             (fromTs != null ? ' AND Decided_At__c >= :fromTs' : '') +
             (toTs != null ? ' AND Decided_At__c < :toTs' : '') +
@@ -92,10 +107,16 @@ public with sharing class EventExportController {
                 byEvent.put(evtId, s);
             }
             Integer n = (Integer) ar.get('cnt');
-            if ((String) ar.get('st') == 'Approved') { s.approvedCount += n; } else { s.exportedCount += n; }
+            if ((String) ar.get('st') == 'Approved') {
+                s.approvedCount += n;
+            } else {
+                s.exportedCount += n;
+            }
             s.totalCount += n;
         }
-        if (byEvent.isEmpty()) { return new List<ApprovedSummary>(); }
+        if (byEvent.isEmpty()) {
+            return new List<ApprovedSummary>();
+        }
 
         List<ApprovedSummary> out = new List<ApprovedSummary>();
         for (Marketing_Event__c evt : [
@@ -142,11 +163,16 @@ public with sharing class EventExportController {
         }
 
         Set<Id> events = new Set<Id>();
-        for (Event_Invitee__c inv : rows) { events.add(inv.Marketing_Event__c); }
+        for (Event_Invitee__c inv : rows) {
+            events.add(inv.Marketing_Event__c);
+        }
 
         ExportResult res = build(rows, true);
-        res.fileName = 'all_approved_contacts' + fileSuffix(fromDate, toDate) +
-            (fromDate == null && toDate == null ? '_' + Datetime.now().format('yyyyMMdd', 'GMT') : '') + '.csv';
+        res.fileName =
+            'all_approved_contacts' +
+            fileSuffix(fromDate, toDate) +
+            (fromDate == null && toDate == null ? '_' + Datetime.now().format('yyyyMMdd', 'GMT') : '') +
+            '.csv';
         res.eventCount = events.size();
         res.windowLabel = windowLabel(fromDate, toDate);
         return res;
@@ -156,7 +182,14 @@ public with sharing class EventExportController {
      * Single row query behind both exports. Dynamic because the four optional
      * predicates would otherwise need eight hand-written SOQL variants; every
      * user-supplied value is bound, never concatenated.
+     *
+     * PMD flags any concatenated Database.query(). Here the only concatenated
+     * fragments are the private static final constants above (ROW_FIELDS,
+     * APPROVED_STATUSES, ROW_ORDER) and literals; eventId, mineOnly, the dates
+     * and the row cap all arrive as bind variables, so no caller input reaches
+     * the query text.
      */
+    @SuppressWarnings('PMD.ApexSOQLInjection')
     private static List<Event_Invitee__c> queryRows(Id eventId, Boolean mineOnly, Date fromDate, Date toDate) {
         Id me = UserInfo.getUserId();
         Integer maxRows = rowLimit;
@@ -164,14 +197,17 @@ public with sharing class EventExportController {
         Datetime toTs = toLocalDayStart(toDate == null ? null : toDate.addDays(1)); // end-inclusive
 
         String soql =
-            'SELECT ' + ROW_FIELDS +
+            'SELECT ' +
+            ROW_FIELDS +
             ' FROM Event_Invitee__c' +
-            ' WHERE Status__c IN ' + APPROVED_STATUSES +
+            ' WHERE Status__c IN ' +
+            APPROVED_STATUSES +
             (eventId != null ? ' AND Marketing_Event__c = :eventId' : '') +
             (mineOnly == true ? ' AND Added_By__c = :me' : '') +
             (fromTs != null ? ' AND Decided_At__c >= :fromTs' : '') +
             (toTs != null ? ' AND Decided_At__c < :toTs' : '') +
-            ' ORDER BY ' + (eventId != null ? 'Account__r.Name, Contact__r.Name' : ROW_ORDER) +
+            ' ORDER BY ' +
+            (eventId != null ? 'Account__r.Name, Contact__r.Name' : ROW_ORDER) +
             ' LIMIT :maxRows';
         return (List<Event_Invitee__c>) Database.query(soql);
     }
@@ -191,35 +227,39 @@ public with sharing class EventExportController {
      * download marks everything it actually delivered.
      */
     private static ExportResult build(List<Event_Invitee__c> rows, Boolean includeEvent) {
-        List<String> lines = new List<String>{
-            (includeEvent ? EVENT_HEADER : '') + CONTACT_HEADER
-        };
+        List<String> lines = new List<String>{ (includeEvent ? EVENT_HEADER : '') + CONTACT_HEADER };
         List<Event_Invitee__c> toFlip = new List<Event_Invitee__c>();
 
         for (Event_Invitee__c inv : rows) {
             List<String> cells = new List<String>();
             if (includeEvent) {
                 cells.add(csvCell(inv.Marketing_Event__r != null ? inv.Marketing_Event__r.Name : ''));
-                cells.add(csvCell(
-                    inv.Marketing_Event__r != null && inv.Marketing_Event__r.Event_Date__c != null
-                        ? String.valueOf(inv.Marketing_Event__r.Event_Date__c)
-                        : ''));
+                cells.add(
+                    csvCell(
+                        inv.Marketing_Event__r != null &&
+                            inv.Marketing_Event__r.Event_Date__c != null
+                            ? String.valueOf(inv.Marketing_Event__r.Event_Date__c)
+                            : ''
+                    )
+                );
             }
             cells.add(csvCell(inv.Contact__r.Name));
             cells.add(csvCell(inv.Contact__r.Title));
             cells.add(csvCell(inv.Account__r != null ? inv.Account__r.Name : ''));
             cells.add(csvCell(inv.Contact__r.Email));
             cells.add(csvCell(inv.Account_Owner__r != null ? inv.Account_Owner__r.Name : ''));
-            cells.add(csvCell(inv.Decided_At__c != null
-                ? inv.Decided_At__c.format('yyyy-MM-dd HH:mm', 'GMT') + ' GMT'
-                : ''));
+            cells.add(
+                csvCell(inv.Decided_At__c != null ? inv.Decided_At__c.format('yyyy-MM-dd HH:mm', 'GMT') + ' GMT' : '')
+            );
             lines.add(String.join(cells, ','));
 
             if (inv.Status__c == 'Approved') {
                 toFlip.add(new Event_Invitee__c(Id = inv.Id, Status__c = 'Exported'));
             }
         }
-        if (!toFlip.isEmpty()) { update toFlip; }
+        if (!toFlip.isEmpty()) {
+            update toFlip;
+        }
 
         ExportResult res = new ExportResult();
         res.csv = String.join(lines, CRLF);
@@ -234,28 +274,39 @@ public with sharing class EventExportController {
      * would otherwise read the 30 June GMT timestamps as a bug.
      */
     private static String windowLabel(Date fromDate, Date toDate) {
-        if (fromDate == null && toDate == null) { return null; }
+        if (fromDate == null && toDate == null) {
+            return null;
+        }
         String tz = UserInfo.getTimeZone().getID();
-        String local = (fromDate == null ? 'anything' : String.valueOf(fromDate)) +
-                       ' → ' + (toDate == null ? 'now' : String.valueOf(toDate));
+        String local =
+            (fromDate == null ? 'anything' : String.valueOf(fromDate)) +
+            ' → ' +
+            (toDate == null ? 'now' : String.valueOf(toDate));
         Datetime fromTs = toLocalDayStart(fromDate);
         Datetime toTs = toLocalDayStart(toDate == null ? null : toDate.addDays(1));
-        String gmt = (fromTs == null ? '…' : fromTs.format('yyyy-MM-dd HH:mm', 'GMT')) +
-                     ' → ' + (toTs == null ? '…' : toTs.format('yyyy-MM-dd HH:mm', 'GMT'));
+        String gmt =
+            (fromTs == null ? '…' : fromTs.format('yyyy-MM-dd HH:mm', 'GMT')) +
+            ' → ' +
+            (toTs == null ? '…' : toTs.format('yyyy-MM-dd HH:mm', 'GMT'));
         return 'Decided ' + local + ' (' + tz + ') = ' + gmt + ' GMT';
     }
 
     private static String emptyMessage(Boolean mineOnly, Date fromDate, Date toDate) {
         String whose = (mineOnly == true) ? 'approved invitees of yours' : 'approved invitees';
-        return (fromDate == null && toDate == null)
+        return (fromDate == null &&
+            toDate == null)
             ? 'No ' + whose + ' to export yet.'
             : 'No ' + whose + ' decided in the selected date range.';
     }
 
     private static String fileSuffix(Date fromDate, Date toDate) {
-        if (fromDate == null && toDate == null) { return ''; }
-        return '_' + (fromDate == null ? 'start' : String.valueOf(fromDate)) +
-               '_to_' + (toDate == null ? 'now' : String.valueOf(toDate));
+        if (fromDate == null && toDate == null) {
+            return '';
+        }
+        return '_' +
+            (fromDate == null ? 'start' : String.valueOf(fromDate)) +
+            '_to_' +
+            (toDate == null ? 'now' : String.valueOf(toDate));
     }
 
     private static String slug(String name) {
@@ -280,7 +331,9 @@ public with sharing class EventExportController {
      */
     @TestVisible
     private static String csvCell(String value) {
-        if (value == null) { return ''; }
+        if (value == null) {
+            return '';
+        }
         Boolean guarded = isFormulaLike(value);
         String safe = guarded ? '\'' + value : value;
         if (guarded || safe.contains(',') || safe.contains('"') || safe.contains('\n') || safe.contains('\r')) {
@@ -294,7 +347,9 @@ public with sharing class EventExportController {
      * included because Excel skips them before parsing what follows.
      */
     private static Boolean isFormulaLike(String value) {
-        if (String.isEmpty(value)) { return false; }
+        if (String.isEmpty(value)) {
+            return false;
+        }
         return FORMULA_TRIGGERS.contains(value.substring(0, 1));
     }
 }

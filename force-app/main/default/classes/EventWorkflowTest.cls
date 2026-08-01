@@ -6,9 +6,8 @@
  */
 @IsTest
 private class EventWorkflowTest {
-
     private static User findUser(String alias) {
-        return [SELECT Id, Name FROM User WHERE Alias = :alias AND IsActive = true LIMIT 1];
+        return [SELECT Id, Name FROM User WHERE Alias = :alias AND IsActive = TRUE LIMIT 1];
     }
 
     @TestSetup
@@ -16,17 +15,19 @@ private class EventWorkflowTest {
         Profile std = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
         List<User> users = new List<User>();
         for (String alias : new List<String>{ 'amalex', 'ammaria', 'ownsarah', 'ownmarc' }) {
-            users.add(new User(
-                Alias = alias,
-                Username = alias + '.' + System.currentTimeMillis() + '@evtmgmt.poc.test',
-                Email = alias + '@evtmgmt.poc.test',
-                LastName = alias,
-                ProfileId = std.Id,
-                EmailEncodingKey = 'UTF-8',
-                LanguageLocaleKey = 'en_US',
-                LocaleSidKey = 'en_US',
-                TimeZoneSidKey = 'America/New_York'
-            ));
+            users.add(
+                new User(
+                    Alias = alias,
+                    Username = alias + '.' + System.currentTimeMillis() + '@evtmgmt.poc.test',
+                    Email = alias + '@evtmgmt.poc.test',
+                    LastName = alias,
+                    ProfileId = std.Id,
+                    EmailEncodingKey = 'UTF-8',
+                    LanguageLocaleKey = 'en_US',
+                    LocaleSidKey = 'en_US',
+                    TimeZoneSidKey = 'America/New_York'
+                )
+            );
         }
         System.runAs(new User(Id = UserInfo.getUserId())) {
             insert users; // runAs guards against mixed-DML with the setup below
@@ -39,9 +40,27 @@ private class EventWorkflowTest {
         insert new List<Account>{ acme, nordbank };
 
         insert new List<Contact>{
-            new Contact(FirstName = 'Emily', LastName = 'Carter', Email = 'emily@acme.test', Title = 'Senior Manager', AccountId = acme.Id),
-            new Contact(FirstName = 'Robert', LastName = 'Kim', Email = 'robert@acme.test', Title = 'SVP', AccountId = acme.Id),
-            new Contact(FirstName = 'James', LastName = 'Mueller', Email = 'james@nordbank.test', Title = 'Director', AccountId = nordbank.Id)
+            new Contact(
+                FirstName = 'Emily',
+                LastName = 'Carter',
+                Email = 'emily@acme.test',
+                Title = 'Senior Manager',
+                AccountId = acme.Id
+            ),
+            new Contact(
+                FirstName = 'Robert',
+                LastName = 'Kim',
+                Email = 'robert@acme.test',
+                Title = 'SVP',
+                AccountId = acme.Id
+            ),
+            new Contact(
+                FirstName = 'James',
+                LastName = 'Mueller',
+                Email = 'james@nordbank.test',
+                Title = 'Director',
+                AccountId = nordbank.Id
+            )
         };
 
         insert new Marketing_Event__c(
@@ -93,12 +112,18 @@ private class EventWorkflowTest {
             // Approve one, reject one → Alex has zero pending left → completion notification fires.
             Test.startTest();
             ApprovalConsoleController.DecisionResult r1 = ApprovalConsoleController.decide(
-                evt.Id, new List<Id>{ mine[0].inviteeId }, true);
+                evt.Id,
+                new List<Id>{ mine[0].inviteeId },
+                true
+            );
             System.assertEquals(1, r1.decided);
             System.assertEquals(0, r1.amsNotified, 'Alex still has one pending row');
 
             ApprovalConsoleController.DecisionResult r2 = ApprovalConsoleController.decide(
-                evt.Id, new List<Id>{ mine[1].inviteeId }, false);
+                evt.Id,
+                new List<Id>{ mine[1].inviteeId },
+                false
+            );
             System.assertEquals(1, r2.decided);
             System.assertEquals(1, r2.amsNotified, 'Alex fully reviewed → notify him');
             Test.stopTest();
@@ -150,38 +175,58 @@ private class EventWorkflowTest {
         Event_Invitee__c jamesRow = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :james.Id];
 
         Test.startTest();
-        System.runAs(sarah) { ApprovalConsoleController.decide(gala.Id, new List<Id>{ emilyRow.Id }, true); }
-        System.runAs(marcus) { ApprovalConsoleController.decide(summit.Id, new List<Id>{ jamesRow.Id }, true); }
+        System.runAs(sarah) {
+            ApprovalConsoleController.decide(gala.Id, new List<Id>{ emilyRow.Id }, true);
+        }
+        System.runAs(marcus) {
+            ApprovalConsoleController.decide(summit.Id, new List<Id>{ jamesRow.Id }, true);
+        }
         Test.stopTest();
 
         System.runAs(alex) {
-            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(false, null, null);
+            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(
+                false,
+                null,
+                null
+            );
             System.assertEquals(2, all.size(), 'Both events carry approved rows');
             for (EventExportController.ApprovedSummary s : all) {
                 System.assertEquals(1, s.approvedCount);
                 System.assertEquals(0, s.exportedCount);
                 System.assertEquals(1, s.totalCount);
             }
-            System.assertEquals(1, EventExportController.getApprovedSummary(true, null, null).size(),
-                'mineOnly must drop the row Maria added');
+            System.assertEquals(
+                1,
+                EventExportController.getApprovedSummary(true, null, null).size(),
+                'mineOnly must drop the row Maria added'
+            );
 
             EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, null, null);
             System.assertEquals(2, ex.rowCount);
             System.assertEquals(2, ex.eventCount);
             System.assertEquals(false, ex.truncated);
-            System.assert(ex.csv.startsWith('Event,Event Date,Name,Title,Account,Email,Approved By,Decided At'),
-                'Cross-event file needs the event columns');
+            System.assert(
+                ex.csv.startsWith('Event,Event Date,Name,Title,Account,Email,Approved By,Decided At'),
+                'Cross-event file needs the event columns'
+            );
             System.assert(ex.csv.contains('\r\n'), 'CRLF line endings — desktop Excel chokes on bare LF');
             System.assert(ex.csv.contains('"FinTech Summit, 2026"'), 'A value with a comma must be quoted');
-            System.assert(ex.csv.contains('"\'=HYPERLINK('),
-                'A formula-shaped Title must reach the file neutralised: ' + ex.csv);
-            System.assert(!ex.csv.contains(',=HYPERLINK'),
-                'A bare formula must never start a cell');
-            System.assertEquals(2, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
-                'Downloading everything marks everything Exported');
+            System.assert(
+                ex.csv.contains('"\'=HYPERLINK('),
+                'A formula-shaped Title must reach the file neutralised: ' + ex.csv
+            );
+            System.assert(!ex.csv.contains(',=HYPERLINK'), 'A bare formula must never start a cell');
+            System.assertEquals(
+                2,
+                [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
+                'Downloading everything marks everything Exported'
+            );
 
-            System.assertEquals(2, EventExportController.exportAllApproved(false, null, null).rowCount,
-                'Re-download must return the full approved list, not only new rows');
+            System.assertEquals(
+                2,
+                EventExportController.exportAllApproved(false, null, null).rowCount,
+                'Re-download must return the full approved list, not only new rows'
+            );
 
             EventExportController.ExportResult justMine = EventExportController.exportAllApproved(true, null, null);
             System.assertEquals(1, justMine.rowCount);
@@ -228,23 +273,34 @@ private class EventWorkflowTest {
 
         System.runAs(alex) {
             // 30 June in Taipei ends at 2026-06-30 16:00 GMT — the row is after that.
-            System.assertEquals(0, EventExportController.getApprovedSummary(false, jun30, jun30).size(),
-                'Approved on 1 July local time — a 30 June range must not see it');
+            System.assertEquals(
+                0,
+                EventExportController.getApprovedSummary(false, jun30, jun30).size(),
+                'Approved on 1 July local time — a 30 June range must not see it'
+            );
             Boolean threw = false;
-            try { EventExportController.exportAllApproved(false, jun30, jun30); }
-            catch (AuraHandledException e) { threw = true; }
+            try {
+                EventExportController.exportAllApproved(false, jun30, jun30);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
             System.assert(threw, 'Out-of-range export must fail loudly, not hand over an empty file');
 
             // 1 July in Taipei = 2026-06-30 16:00 → 2026-07-01 16:00 GMT, end-inclusive.
-            List<EventExportController.ApprovedSummary> hits =
-                EventExportController.getApprovedSummary(false, jul01, jul01);
+            List<EventExportController.ApprovedSummary> hits = EventExportController.getApprovedSummary(
+                false,
+                jul01,
+                jul01
+            );
             System.assertEquals(1, hits.size());
             System.assertEquals(1, hits[0].approvedCount);
 
             EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, jul01, jul01);
             System.assertEquals(1, ex.rowCount);
-            System.assert(ex.windowLabel.contains('2026-06-30 16:00'),
-                'Reported GMT window must start at Taipei midnight, not GMT midnight: ' + ex.windowLabel);
+            System.assert(
+                ex.windowLabel.contains('2026-06-30 16:00'),
+                'Reported GMT window must start at Taipei midnight, not GMT midnight: ' + ex.windowLabel
+            );
             System.assert(ex.windowLabel.contains('Asia/Taipei'), 'Window names the timezone it was read in');
             System.assert(ex.fileName.contains('2026-07-01'), 'Filename carries the requested range');
 
@@ -261,15 +317,21 @@ private class EventWorkflowTest {
      */
     @IsTest
     static void csvCellNeutralisesFormulaTriggers() {
-        for (String trigger : new List<String>{ '=', '+', '-', '@' }) {
+        // Named triggerChar, not trigger: the latter is an Apex reserved word that
+        // the compiler happens to accept here but Apex parsers (prettier, PMD)
+        // reject, which silently drops this file out of the tooling.
+        for (String triggerChar : new List<String>{ '=', '+', '-', '@' }) {
             System.assertEquals(
-                '"\'' + trigger + '1+1"',
-                EventExportController.csvCell(trigger + '1+1'),
-                'A cell opening with ' + trigger + ' must be quoted and prefixed with an apostrophe');
+                '"\'' + triggerChar + '1+1"',
+                EventExportController.csvCell(triggerChar + '1+1'),
+                'A cell opening with ' + triggerChar + ' must be quoted and prefixed with an apostrophe'
+            );
         }
         // Tab and CR are triggers too — Excel skips them before parsing what follows.
-        System.assert(EventExportController.csvCell('\t=1+1').startsWith('"\'\t='),
-            'A leading tab must not smuggle a formula past the guard');
+        System.assert(
+            EventExportController.csvCell('\t=1+1').startsWith('"\'\t='),
+            'A leading tab must not smuggle a formula past the guard'
+        );
 
         // Ordinary values are untouched; existing quoting behaviour is unchanged.
         System.assertEquals('Emily Carter', EventExportController.csvCell('Emily Carter'));
@@ -287,8 +349,11 @@ private class EventWorkflowTest {
         System.runAs(alex) {
             System.assertEquals(0, EventExportController.getApprovedSummary(false, null, null).size());
             Boolean threw = false;
-            try { EventExportController.exportAllApproved(false, null, null); }
-            catch (AuraHandledException e) { threw = true; }
+            try {
+                EventExportController.exportAllApproved(false, null, null);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
             System.assert(threw, 'Nothing approved → explicit error, not an empty file');
         }
     }
@@ -313,13 +378,20 @@ private class EventWorkflowTest {
             Integer added = InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
             System.assertEquals(1, added, 'Rejected row should reset, not error');
         }
-        inv = [SELECT Status__c, Submitted_At__c, Decided_At__c, Account_Owner__c FROM Event_Invitee__c WHERE Id = :inv.Id];
+        inv = [
+            SELECT Status__c, Submitted_At__c, Decided_At__c, Account_Owner__c
+            FROM Event_Invitee__c
+            WHERE Id = :inv.Id
+        ];
         System.assertEquals('Draft', inv.Status__c);
         System.assertEquals(null, inv.Submitted_At__c);
         System.assertEquals(null, inv.Decided_At__c);
         System.assertEquals(null, inv.Account_Owner__c);
-        System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c WHERE Contact__c = :emily.Id],
-            'Never a second row per event+contact');
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Event_Invitee__c WHERE Contact__c = :emily.Id],
+            'Never a second row per event+contact'
+        );
     }
 
     @IsTest
@@ -335,7 +407,9 @@ private class EventWorkflowTest {
         insert new List<Contact>{ c1, c2 };
 
         System.runAs(alex) {
-            List<InviteeSelectorController.SelectableContact> sel = InviteeSelectorController.getSelectableContacts(evt.Id);
+            List<InviteeSelectorController.SelectableContact> sel = InviteeSelectorController.getSelectableContacts(
+                evt.Id
+            );
             System.assertEquals(2, sel.size(), 'Only contacts under accounts Alex owns');
 
             InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ c1.Id });
@@ -366,8 +440,11 @@ private class EventWorkflowTest {
         // Marcus is not the owner of Acme — deciding Sarah's row must fail.
         System.runAs(marcus) {
             Boolean threw = false;
-            try { ApprovalConsoleController.decide(evt.Id, new List<Id>{ inv.Id }, true); }
-            catch (AuraHandledException e) { threw = true; }
+            try {
+                ApprovalConsoleController.decide(evt.Id, new List<Id>{ inv.Id }, true);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
             System.assert(threw, 'Owners can only decide their own pending rows');
         }
     }
