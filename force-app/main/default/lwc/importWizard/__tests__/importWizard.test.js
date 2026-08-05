@@ -339,6 +339,47 @@ describe('c-import-wizard', () => {
             expect(element.shadowRoot.querySelectorAll('tbody tr')).toHaveLength(5);
         });
 
+        describe('preview ordering', () => {
+            const typeColumn = () =>
+                [...element.shadowRoot.querySelectorAll('tbody tr')].map((r) =>
+                    r.querySelector('td:last-child').textContent.trim()
+                );
+
+            it('puts the rows needing a decision above the rest', async () => {
+                // Server order deliberately buries the two that matter.
+                classify(['UNCHANGED', 'NEW_CONTACT', 'SKIPPED', 'UPDATE', 'COMPANY_CHANGE']);
+                await upload(element, fiveRows);
+                expect(typeColumn()).toEqual(['Manual', 'Skipped', 'Update', 'New', 'Unchanged']);
+            });
+
+            it('keeps file order within one classification', async () => {
+                classify(['UPDATE', 'COMPANY_CHANGE', 'UPDATE']);
+                await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,`);
+                const names = [...element.shadowRoot.querySelectorAll('tbody tr')].map((r) =>
+                    r.querySelector('td:nth-child(2)').textContent.trim()
+                );
+                expect(names).toEqual(['B 2', 'A 1', 'C 3']);
+            });
+
+            it('still applies the row the user unticks after the reorder', async () => {
+                // Sorting must not desynchronise a row from its checkbox.
+                classify(['UNCHANGED', 'UPDATE', 'COMPANY_CHANGE', 'NEW_CONTACT']);
+                await upload(
+                    element,
+                    `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,\nD,4,d@x.com,,,`
+                );
+                const boxes = [...element.shadowRoot.querySelectorAll('tbody input')];
+                const updateBox = boxes[2]; // Manual, Skipped-free order: Manual, Update, New, Unchanged
+                updateBox.checked = false;
+                updateBox.dispatchEvent(new CustomEvent('change'));
+                await flush(1);
+                const applyLabel = [...element.shadowRoot.querySelectorAll('lightning-button')]
+                    .map((b) => String(b.label))
+                    .find((l) => l.startsWith('Apply'));
+                expect(applyLabel).toBe('Apply 1 Change');
+            });
+        });
+
         it.each([
             ['NEW_CONTACT', true],
             ['UPDATE', true],
@@ -573,6 +614,52 @@ describe('c-import-wizard', () => {
             const [csv] = downloadCsv.mock.calls[0];
             expect(csv).toContain('"\'=HYPERLINK(""http://evil"") Doe"');
             expect(csv).not.toMatch(/,=HYPERLINK/);
+        });
+
+        describe('after the import has been applied', () => {
+            // The results step used to only *mention* the manual-review list and
+            // point back at a step with no way to return to it: miss the download
+            // once and the list was gone for good.
+            /** One company change plus one applyable row, so Apply is live. */
+            const mixedPreview = () =>
+                previewMatches.mockImplementation(({ rows }) =>
+                    Promise.resolve(
+                        rows.map((row, i) => ({
+                            row,
+                            classification: i === 0 ? 'COMPANY_CHANGE' : 'NEW_CONTACT',
+                            changes: i === 0 ? ['Acme → Globex'] : [],
+                            reason: ''
+                        }))
+                    )
+                );
+
+            const reachResultsStep = async () => {
+                mixedPreview();
+                applyChanges.mockResolvedValue({ created: 1, updated: 0 });
+                await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,\nJohn,Roe,r@x.com,,,`);
+                const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find(
+                    (b) => String(b.label).startsWith('Apply')
+                );
+                expect(apply.disabled).toBe(false); // otherwise the click below is a no-op
+                apply.dispatchEvent(new CustomEvent('click'));
+                await flush();
+                expect(element.shadowRoot.textContent).toContain('Import complete');
+            };
+
+            it('still offers the download once the import is done', async () => {
+                await reachResultsStep();
+                clickManualDownload();
+                const [csv] = downloadCsv.mock.calls[0];
+                expect(csv).toContain('Jane Doe,j@x.com,Acme → Globex');
+            });
+
+            it('says how many rows were left behind, and that leaving discards them', async () => {
+                await reachResultsStep();
+                const results = element.shadowRoot.textContent;
+                expect(results).toContain('1');
+                expect(results).toContain('company-change row(s) were not applied');
+                expect(results).toContain('Starting another import discards it');
+            });
         });
     });
 

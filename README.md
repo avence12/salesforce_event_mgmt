@@ -74,6 +74,8 @@ See [QUALITY.md](QUALITY.md) for what each layer proves, the anti-gaming rules, 
 
 - 500-row import cap; company changes are flagged for manual handling, never auto-reparented.
 - `addInvitees` trusts the client-side account scoping (server re-verification is a production hardening item).
+- The contact selector returns at most 2,000 contacts per event. It now says so when it truncates,
+  but there is no paging — filter or search to reach the rest.
 - No i18n; UI is English-only by design (US/EU AM audience).
 - Apex carries 84 baselined PMD findings — 26 of them CRUD/FLS, overlapping the hardening item
   above. The gate is "no new violations"; see [QUALITY.md](QUALITY.md#known-gaps-stated-plainly).

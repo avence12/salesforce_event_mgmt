@@ -34,6 +34,17 @@ const HEADER_MAP = {
 
 const APPLYABLE = new Set(['NEW_CONTACT', 'UPDATE']);
 
+// Preview order: rows needing a human decision first, then what will be applied,
+// then the rows there is nothing to say about. With a 500-row file the two that
+// matter would otherwise be buried somewhere in the middle of the wall.
+const SORT_RANK = {
+    COMPANY_CHANGE: 0, // manual review — the whole reason to read this table
+    SKIPPED: 1, // invalid input the user may want to fix and re-upload
+    UPDATE: 2,
+    NEW_CONTACT: 3,
+    UNCHANGED: 4
+};
+
 export default class ImportWizard extends LightningElement {
     @track step = 1;
     @track fileName = '';
@@ -303,6 +314,16 @@ export default class ImportWizard extends LightningElement {
                 disabled: !APPLYABLE.has(cls)
             };
         });
+        // Stable sort: rank first, original file order within a rank. `key` stays the
+        // original index, so row toggling is unaffected by the reordering.
+        this.previewRows = this.previewRows
+            .map((r, i) => ({ r, i }))
+            .sort((a, b) => {
+                const rank =
+                    (SORT_RANK[a.r.classification] ?? 9) - (SORT_RANK[b.r.classification] ?? 9);
+                return rank !== 0 ? rank : a.i - b.i;
+            })
+            .map((x) => x.r);
         this.stats = stats;
     }
 

@@ -407,15 +407,15 @@ private class EventWorkflowTest {
         insert new List<Contact>{ c1, c2 };
 
         System.runAs(alex) {
-            List<InviteeSelectorController.SelectableContact> sel = InviteeSelectorController.getSelectableContacts(
-                evt.Id
-            );
-            System.assertEquals(2, sel.size(), 'Only contacts under accounts Alex owns');
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableContacts(evt.Id);
+            System.assertEquals(2, sel.contacts.size(), 'Only contacts under accounts Alex owns');
+            System.assertEquals(false, sel.truncated, 'Two contacts is nowhere near the cap');
+            System.assertEquals(InviteeSelectorController.CONTACT_CAP, sel.cap);
 
             InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ c1.Id });
             sel = InviteeSelectorController.getSelectableContacts(evt.Id);
-            System.assertEquals(1, sel.size(), 'Invited (Draft) contact must be hidden');
-            System.assertEquals(c2.Id, sel[0].contactId);
+            System.assertEquals(1, sel.contacts.size(), 'Invited (Draft) contact must be hidden');
+            System.assertEquals(c2.Id, sel.contacts[0].contactId);
 
             List<InviteeSelectorController.InviteeRow> all = InviteeSelectorController.getAllInvitees(evt.Id);
             System.assertEquals(1, all.size());

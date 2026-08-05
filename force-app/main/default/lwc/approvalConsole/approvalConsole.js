@@ -1,6 +1,7 @@
 import { LightningElement, api, track, wire } from 'lwc';
 import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import LightningConfirm from 'lightning/confirm';
 import getPendingForMe from '@salesforce/apex/ApprovalConsoleController.getPendingForMe';
 import decide from '@salesforce/apex/ApprovalConsoleController.decide';
 
@@ -84,8 +85,26 @@ export default class ApprovalConsole extends LightningElement {
     handleApprove() {
         this.decideSelected(true);
     }
-    handleReject() {
-        this.decideSelected(false);
+
+    /**
+     * Reject asks first. Everything is pre-selected on load and Reject sits next to
+     * Approve, so one mis-tap on a phone would reject the whole list — and a rejected
+     * invitee can only be recovered by the AM re-adding and re-submitting it.
+     * Approve stays one tap: it is the common case and it is undoable by rejecting.
+     */
+    async handleReject() {
+        const n = this.selectedCount;
+        const confirmed = await LightningConfirm.open({
+            variant: 'header',
+            theme: 'warning',
+            label: `Reject ${n} invitee${n === 1 ? '' : 's'}?`,
+            message:
+                `${n} contact${n === 1 ? '' : 's'} will be rejected for this event. ` +
+                'To bring any of them back, the AM who added them has to re-add and re-submit them.'
+        });
+        if (confirmed) {
+            this.decideSelected(false);
+        }
     }
 
     async decideSelected(approve) {
