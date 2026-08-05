@@ -50,6 +50,10 @@ export function downloadCsv(csv, fileName) {
     // Firefox only fires the download for an anchor that is in the document.
     document.body.appendChild(anchor);
     anchor.click();
+    // The deferral is the point: revoking in the same tick as click() cancels the
+    // download in Safari and older Chrome. Not the render-timing hack the rule
+    // exists to catch.
+    // eslint-disable-next-line @lwc/lwc/no-async-operation
     setTimeout(() => {
         document.body.removeChild(anchor);
         URL.revokeObjectURL(url);

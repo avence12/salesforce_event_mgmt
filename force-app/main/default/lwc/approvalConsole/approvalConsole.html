@@ -7,16 +7,26 @@
                     <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
                 </template>
 
-                <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_small slds-wrap">
+                <div
+                    class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-bottom_small slds-wrap"
+                >
                     <label class="slds-checkbox_toggle">
                         <input type="checkbox" checked={allSelected} onchange={handleSelectAll} />
                         <span class="slds-m-left_x-small">{selectAllLabel}</span>
                     </label>
                     <div>
-                        <lightning-button label={rejectLabel} disabled={actionsDisabled}
-                                          onclick={handleReject} class="slds-m-right_x-small"></lightning-button>
-                        <lightning-button variant="brand" label={approveLabel} disabled={actionsDisabled}
-                                          onclick={handleApprove}></lightning-button>
+                        <lightning-button
+                            label={rejectLabel}
+                            disabled={actionsDisabled}
+                            onclick={handleReject}
+                            class="slds-m-right_x-small"
+                        ></lightning-button>
+                        <lightning-button
+                            variant="brand"
+                            label={approveLabel}
+                            disabled={actionsDisabled}
+                            onclick={handleApprove}
+                        ></lightning-button>
                     </div>
                 </div>
 
@@ -24,12 +34,22 @@
                     <div key={g.accountId} class="slds-m-bottom_small">
                         <div class="group-header slds-p-around_x-small"><b>{g.accountName}</b></div>
                         <template for:each={g.rows} for:item="r">
-                            <div key={r.inviteeId} class="row slds-grid slds-grid_vertical-align-center slds-p-vertical_x-small">
-                                <input type="checkbox" data-id={r.inviteeId} checked={r.selected}
-                                       onchange={handleToggle} class="slds-m-right_small" />
+                            <div
+                                key={r.inviteeId}
+                                class="row slds-grid slds-grid_vertical-align-center slds-p-vertical_x-small"
+                            >
+                                <input
+                                    type="checkbox"
+                                    data-id={r.inviteeId}
+                                    checked={r.selected}
+                                    onchange={handleToggle}
+                                    class="slds-m-right_small"
+                                />
                                 <div class="slds-col">
                                     <div>{r.nameTitle}</div>
-                                    <div class="slds-text-body_small slds-text-color_weak">Added by {r.addedByName}</div>
+                                    <div class="slds-text-body_small slds-text-color_weak">
+                                        Added by {r.addedByName}
+                                    </div>
                                 </div>
                             </div>
                         </template>

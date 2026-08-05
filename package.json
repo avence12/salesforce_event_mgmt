@@ -1,0 +1,29 @@
+{
+  "name": "salesforce-event-mgmt",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Quality tooling for the event management PoC: LWC unit tests, lint, format.",
+  "scripts": {
+    "test": "sfdx-lwc-jest",
+    "test:unit": "sfdx-lwc-jest",
+    "test:watch": "sfdx-lwc-jest --watch",
+    "test:coverage": "sfdx-lwc-jest --coverage",
+    "lint": "eslint force-app/main/default/lwc",
+    "lint:fix": "eslint force-app/main/default/lwc --fix",
+    "prettier": "prettier --write \"force-app/**/*.{js,html,css,cls,trigger}\" \"scripts/**/*.mjs\" \"*.json\"",
+    "prettier:verify": "prettier --check \"force-app/**/*.{js,html,css,cls,trigger}\" \"scripts/**/*.mjs\" \"*.json\"",
+    "pmd": "scripts/quality/run-pmd.sh",
+    "gauntlet": "scripts/quality/gauntlet.sh"
+  },
+  "devDependencies": {
+    "@lwc/eslint-plugin-lwc": "^3.5.0",
+    "@salesforce/eslint-config-lwc": "^4.1.2",
+    "@salesforce/eslint-plugin-lightning": "^2.0.0",
+    "@salesforce/sfdx-lwc-jest": "^7.9.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jest": "^29.0.1",
+    "prettier": "^3.9.6",
+    "prettier-plugin-apex": "^2.3.0"
+  }
+}

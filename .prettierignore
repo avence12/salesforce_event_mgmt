@@ -1,0 +1,13 @@
+node_modules
+coverage
+.sfdx
+.sf
+package-lock.json
+demo-data
+# Metadata XML is generated/managed by the sf CLI; reformatting it creates
+# spurious deploy diffs.
+**/*.xml
+
+# Hand-written prose with tables and mermaid diagrams — reflowing it produces
+# churn without improving anything.
+*.md

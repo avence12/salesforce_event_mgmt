@@ -54,9 +54,16 @@ export default class ContactSelector extends LightningElement {
         const byAccount = new Map();
         rows.forEach((c) => {
             if (!byAccount.has(c.accountId)) {
-                byAccount.set(c.accountId, { accountId: c.accountId, accountName: c.accountName, ownerName: c.accountOwnerName, contacts: [] });
+                byAccount.set(c.accountId, {
+                    accountId: c.accountId,
+                    accountName: c.accountName,
+                    ownerName: c.accountOwnerName,
+                    contacts: []
+                });
             }
-            byAccount.get(c.accountId).contacts.push({ ...c, selected: this.selectedIds.has(c.contactId) });
+            byAccount
+                .get(c.accountId)
+                .contacts.push({ ...c, selected: this.selectedIds.has(c.contactId) });
         });
         return [...byAccount.values()].map((g) => ({
             ...g,
@@ -64,18 +71,32 @@ export default class ContactSelector extends LightningElement {
         }));
     }
 
-    get hasSelectable() { return this.selectable.length > 0; }
-    get addLabel() { return `Add Selected (${this.selectedIds.size})`; }
-    get addDisabled() { return this.loading || this.selectedIds.size === 0; }
+    get hasSelectable() {
+        return this.selectable.length > 0;
+    }
+    get addLabel() {
+        return `Add Selected (${this.selectedIds.size})`;
+    }
+    get addDisabled() {
+        return this.loading || this.selectedIds.size === 0;
+    }
 
     get myDraftCount() {
         return this.invitees.filter((i) => i.mine && i.status === 'Draft').length;
     }
-    get submitLabel() { return `Submit My Contacts for Approval (${this.myDraftCount})`; }
-    get submitDisabled() { return this.loading || this.myDraftCount === 0; }
+    get submitLabel() {
+        return `Submit My Contacts for Approval (${this.myDraftCount})`;
+    }
+    get submitDisabled() {
+        return this.loading || this.myDraftCount === 0;
+    }
 
-    handleSearch(event) { this.searchTerm = event.target.value; }
-    handleAccountFilter(event) { this.accountFilter = event.detail.value; }
+    handleSearch(event) {
+        this.searchTerm = event.target.value;
+    }
+    handleAccountFilter(event) {
+        this.accountFilter = event.detail.value;
+    }
 
     handleToggle(event) {
         const id = event.target.dataset.id;
@@ -88,7 +109,10 @@ export default class ContactSelector extends LightningElement {
     async handleAdd() {
         this.loading = true;
         try {
-            const n = await addInvitees({ eventId: this.recordId, contactIds: [...this.selectedIds] });
+            const n = await addInvitees({
+                eventId: this.recordId,
+                contactIds: [...this.selectedIds]
+            });
             this.toast('Added', `${n} contact(s) added as Draft.`, 'success');
             this.selectedIds = new Set();
             await Promise.all([refreshApex(this.wiredSelectable), refreshApex(this.wiredInvitees)]);
@@ -103,7 +127,11 @@ export default class ContactSelector extends LightningElement {
         this.loading = true;
         try {
             const res = await submitMyInvitees({ eventId: this.recordId });
-            this.toast('Submitted', `${res.submitted} contact(s) sent for approval — ${res.ownersNotified} Account Owner(s) notified.`, 'success');
+            this.toast(
+                'Submitted',
+                `${res.submitted} contact(s) sent for approval — ${res.ownersNotified} Account Owner(s) notified.`,
+                'success'
+            );
             await refreshApex(this.wiredInvitees);
         } catch (e) {
             this.toast('Error', this.messageOf(e), 'error');
@@ -121,19 +149,28 @@ export default class ContactSelector extends LightningElement {
             addedByLabel: i.mine ? `${i.addedByName} (me)` : i.addedByName
         }));
     }
-    get hasInvitees() { return this.invitees.length > 0; }
+    get hasInvitees() {
+        return this.invitees.length > 0;
+    }
 
     get exportableCount() {
-        return this.invitees.filter((i) => i.status === 'Approved' || i.status === 'Exported').length;
+        return this.invitees.filter((i) => i.status === 'Approved' || i.status === 'Exported')
+            .length;
     }
-    get showExport() { return this.exportableCount > 0; }
+    get showExport() {
+        return this.exportableCount > 0;
+    }
 
     async handleExport() {
         this.loading = true;
         try {
             // Whole approved list for this event; the Approved Exports tab is where
             // a decision-date range can be applied.
-            const res = await exportApproved({ eventId: this.recordId, fromDate: null, toDate: null });
+            const res = await exportApproved({
+                eventId: this.recordId,
+                fromDate: null,
+                toDate: null
+            });
             downloadCsv(res.csv, res.fileName);
             this.toast('Exported', `${res.rowCount} approved contact(s) exported.`, 'success');
             await refreshApex(this.wiredInvitees);

@@ -48,15 +48,66 @@ If npm is blocked, use the offline installers from developer.salesforce.com/tool
 
 ### Step 2: Authenticate to the Sandbox
 
-```bash
-sf org login web --alias poc-sandbox --instance-url https://test.salesforce.com
-```
+`sf org login web` needs a local browser that can complete an OAuth redirect back to a `localhost` port the CLI opens. That fails on a headless box, a jump host with no GUI, or a workstation where corporate proxy/firewall rules block the loopback callback. If that's your situation, use one of the alternatives below instead — pick the first one that fits.
 
-On a browser-less jump host, use the device flow instead — it prints a code you enter from any intranet browser:
+#### Option A: Device flow — no local browser, no callback port
+
+Prints a short code; you approve it from *any* browser on *any* machine (your phone, another PC) — nothing needs to reach back to the CLI machine.
 
 ```bash
 sf org login device --alias poc-sandbox --instance-url https://test.salesforce.com
 ```
+
+The CLI prints a URL and a one-time code. Open the URL anywhere, enter the code, log in, approve. The CLI polls in the background and picks up the session automatically. This is the right default for a browser-less jump host or CI worker that still has *someone* around to click "approve" once.
+
+#### Option B: Auth URL — authenticate once elsewhere, carry the session over
+
+Log in normally on a machine that *can* do the web flow (your laptop), export the resulting session as a single opaque URL, then import it on the restricted machine. No credentials or secrets appear in the file itself beyond the URL string, but treat it as a bearer credential — transfer it over an approved channel and delete it after import.
+
+```bash
+# On a machine that CAN complete the web flow:
+sf org login web --alias poc-sandbox --instance-url https://test.salesforce.com
+sf org display --target-org poc-sandbox --verbose --json \
+  | grep sfdxAuthUrl > poc-sandbox.authurl   # contains force://...
+
+# Transfer poc-sandbox.authurl to the restricted machine, then:
+sf org login sfdx-url --sfdx-url-file poc-sandbox.authurl --alias poc-sandbox
+rm poc-sandbox.authurl   # it's a live credential — don't leave it on disk
+```
+
+Good for a one-off "get this specific sandbox usable on this specific locked-down box" without setting up a connected app.
+
+#### Option C: JWT Bearer Flow — fully non-interactive, best for repeat/unattended use
+
+No browser anywhere, ever, once set up. Needs a one-time connected app + certificate setup in the org (an admin can do this from any machine with browser access — it does not have to be the restricted one), then every future login on the restricted machine is fully scripted:
+
+```bash
+# One-time setup (see connected app + cert instructions in Part 2, Option 3):
+sf org login jwt \
+  --client-id <connected-app-consumer-key> \
+  --jwt-key-file server.key \
+  --username you@example.com.poc-sandbox \
+  --instance-url https://test.salesforce.com \
+  --alias poc-sandbox
+```
+
+This is the same mechanism recommended for CI runners in [Part 2, Option 3](#option-3-in-network-cicd--most-mature-needs-it-support) — worth setting up once if you'll be re-authenticating to this sandbox repeatedly, since after that there's no browser, device code, or file transfer involved at all.
+
+#### Option D: Session ID / access token — quick one-off, short-lived
+
+If you (or an admin) already have a valid session ID from a logged-in browser tab (Setup → search "Sessions", or grab it from the browser's dev tools while logged in), you can hand it to the CLI directly. It expires with the session, so it's only useful for a quick, immediate task, not for scripting:
+
+```bash
+sf org login access-token --instance-url https://test.salesforce.com --alias poc-sandbox
+# prompts for the access token interactively
+```
+
+| Option | Needs a browser at all? | Setup effort | Good for |
+|---|---|---|---|
+| A. Device flow | Yes, but on any other device | None | One-off login on a headless/jump-host machine |
+| B. Auth URL | Yes, once, elsewhere | None | Moving one existing session to a locked-down box |
+| C. JWT Bearer | No, never | Connected app + cert (one-time, by an admin) | Repeated logins, CI, unattended jobs |
+| D. Access token | Yes, to obtain the token | None | Quick, short-lived, one-off use |
 
 ### Step 3: One-time org prechecks (Setup UI)
 
@@ -335,3 +386,4 @@ For this PoC the leftover `sheetjs` is harmless dead weight — `importWizard` n
 | Record page deployed but users cannot see it | the FlexiPage deployed; **activation is not metadata** | activate as Org Default in Setup — Part 1, Step 5 |
 | Works in sandbox, fails in Production | Production forces tests; sandbox runs none by default | `--dry-run` against Production before the release window |
 | `INVALID_CROSS_REFERENCE_KEY` on a flexipage | it references a component or tab not yet in the org | deploy the whole package together rather than a subset |
+| `sf org login web` hangs or errors with no browser / connection refused | no local browser, or a proxy/firewall blocks the `localhost` OAuth callback | use device flow, auth URL, JWT, or access-token login instead — [Part 1, Step 2](#step-2-authenticate-to-the-sandbox) |
