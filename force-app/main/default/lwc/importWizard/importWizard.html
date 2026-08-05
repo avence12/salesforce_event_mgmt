@@ -129,16 +129,20 @@
                     <p><b>{applyResult.created}</b> contact(s) created, <b>{applyResult.updated}</b> updated.</p>
                     <template lwc:if={hasCompanyChanges}>
                         <p class="slds-m-top_small slds-text-color_weak">
-                            Company-change rows were not applied — download the manual-review list from the previous
-                            step if you haven't.
+                            <b>{stats.companyChangeCount}</b> company-change row(s) were not applied — download the list
+                            and handle those contacts by hand. Starting another import discards it.
                         </p>
+                        <lightning-button
+                            class="slds-m-top_x-small"
+                            label="Download Manual-Review List"
+                            icon-name="utility:download"
+                            onclick={handleDownloadManualList}
+                        ></lightning-button>
                     </template>
                 </template>
-                <lightning-button
-                    class="slds-m-top_medium"
-                    label="Import Another File"
-                    onclick={handleStartOver}
-                ></lightning-button>
+                <div class="slds-m-top_medium">
+                    <lightning-button label="Import Another File" onclick={handleStartOver}></lightning-button>
+                </div>
             </template>
         </div>
     </lightning-card>

@@ -32,6 +32,15 @@ jest.mock('c/csvDownload', () => ({
 const selectableAdapter = registerApexTestWireAdapter(getSelectableContacts);
 const inviteesAdapter = registerApexTestWireAdapter(getAllInvitees);
 
+const CONTACT_CAP = 2000;
+
+/**
+ * getSelectableContacts returns a wrapper, not a bare list, so a truncated
+ * result can say so instead of reading as "that is everyone".
+ */
+const emitSelectable = (contacts, truncated = false) =>
+    selectableAdapter.emit({ contacts, truncated, cap: CONTACT_CAP });
+
 const flush = async (times = 4) => {
     for (let i = 0; i < times; i++) {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -167,7 +176,7 @@ describe('c-contact-selector', () => {
         });
 
         it('shows an empty state when nothing is selectable', async () => {
-            selectableAdapter.emit([]);
+            emitSelectable([]);
             await flush(1);
             expect(element.shadowRoot.querySelectorAll('tbody tr')).toHaveLength(0);
         });
@@ -181,7 +190,7 @@ describe('c-contact-selector', () => {
 
     describe('account filter options', () => {
         it('lists each account once, sorted, behind an All option', async () => {
-            selectableAdapter.emit(SELECTABLE);
+            emitSelectable(SELECTABLE);
             await flush(1);
             const combobox = element.shadowRoot.querySelector('lightning-combobox');
             expect(combobox.options).toEqual([
@@ -194,7 +203,7 @@ describe('c-contact-selector', () => {
 
     describe('grouping and filtering', () => {
         beforeEach(async () => {
-            selectableAdapter.emit(SELECTABLE);
+            emitSelectable(SELECTABLE);
             await flush(1);
         });
 
@@ -263,7 +272,7 @@ describe('c-contact-selector', () => {
         it('searches past a contact with null name, email and title', async () => {
             // A Contact can legitimately have no email or title; an unguarded
             // .toLowerCase() on those would throw and blank the whole table.
-            selectableAdapter.emit([
+            emitSelectable([
                 { ...SELECTABLE[0], name: null, email: null, title: null },
                 SELECTABLE[2]
             ]);
@@ -273,9 +282,63 @@ describe('c-contact-selector', () => {
         });
     });
 
+    describe('a truncated contact list', () => {
+        const warning = () => element.shadowRoot.querySelector('[role="status"]');
+
+        it('says nothing when the whole list came back', async () => {
+            emitSelectable(SELECTABLE);
+            await flush(1);
+            expect(warning()).toBeNull();
+        });
+
+        it('warns, with the cap, when there are more contacts than were sent', async () => {
+            emitSelectable(SELECTABLE, true);
+            await flush(1);
+            expect(warning().textContent).toContain(`first ${CONTACT_CAP} contacts`);
+        });
+    });
+
+    describe('selections hidden by the filter', () => {
+        const hiddenNote = () =>
+            [...element.shadowRoot.querySelectorAll('p')].find((p) =>
+                p.textContent.includes('outside the current filter')
+            );
+
+        beforeEach(async () => {
+            emitSelectable(SELECTABLE);
+            inviteesAdapter.emit(INVITEES);
+            await flush(1);
+        });
+
+        it('says nothing while every selected contact is visible', async () => {
+            await fire(rowBoxes(element)[0], 'change');
+            expect(hiddenNote()).toBeUndefined();
+        });
+
+        it('keeps selections across a filter change and owns up to the mismatch', async () => {
+            // Pick an Acme contact, then filter to Globex: the Add count still
+            // includes it, so the component has to say so.
+            rowBoxes(element)[0].checked = true;
+            await fire(rowBoxes(element)[0], 'change');
+            await filterAccount(element, 'Globex');
+
+            expect(buttonStartingWith(element, 'Add Selected').label).toBe('Add Selected (1)');
+            expect(hiddenNote().textContent).toContain('1 selected contact is');
+        });
+
+        it('pluralises the note for several hidden selections', async () => {
+            for (const box of [rowBoxes(element)[0], rowBoxes(element)[1]]) {
+                box.checked = true;
+                await fire(box, 'change');
+            }
+            await filterAccount(element, 'Globex');
+            expect(hiddenNote().textContent).toContain('2 selected contacts are');
+        });
+    });
+
     describe('adding contacts', () => {
         beforeEach(async () => {
-            selectableAdapter.emit(SELECTABLE);
+            emitSelectable(SELECTABLE);
             inviteesAdapter.emit(INVITEES);
             await flush(1);
         });
@@ -342,7 +405,7 @@ describe('c-contact-selector', () => {
 
     describe('submitting for approval', () => {
         beforeEach(async () => {
-            selectableAdapter.emit(SELECTABLE);
+            emitSelectable(SELECTABLE);
             inviteesAdapter.emit(INVITEES);
             await flush(1);
         });

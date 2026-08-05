@@ -36,6 +36,15 @@
                         </div>
                     </div>
 
+                    <template lwc:if={truncated}>
+                        <div
+                            class="slds-box slds-box_x-small slds-theme_warning slds-m-bottom_small slds-text-body_small"
+                            role="status"
+                        >
+                            {truncationNote}
+                        </div>
+                    </template>
+
                     <template lwc:if={hasSelectable}>
                         <table class="slds-table slds-table_bordered slds-table_cell-buffer">
                             <thead>
@@ -77,19 +86,29 @@
                         </p>
                     </template>
 
-                    <div class="slds-grid slds-grid_align-end slds-m-top_medium">
-                        <lightning-button
-                            label={addLabel}
-                            disabled={addDisabled}
-                            onclick={handleAdd}
-                            class="slds-m-right_x-small"
-                        ></lightning-button>
-                        <lightning-button
-                            variant="brand"
-                            label={submitLabel}
-                            disabled={submitDisabled}
-                            onclick={handleSubmit}
-                        ></lightning-button>
+                    <div
+                        class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-top_medium slds-wrap"
+                    >
+                        <template lwc:if={hasHiddenSelected}>
+                            <p class="slds-text-body_small slds-text-color_weak">⚠ {hiddenSelectedNote}</p>
+                        </template>
+                        <template lwc:else>
+                            <span></span>
+                        </template>
+                        <div>
+                            <lightning-button
+                                label={addLabel}
+                                disabled={addDisabled}
+                                onclick={handleAdd}
+                                class="slds-m-right_x-small"
+                            ></lightning-button>
+                            <lightning-button
+                                variant="brand"
+                                label={submitLabel}
+                                disabled={submitDisabled}
+                                onclick={handleSubmit}
+                            ></lightning-button>
+                        </div>
                     </div>
                     <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
                         Each invitee records who added it. You submit only your own batch — other AMs' selections are

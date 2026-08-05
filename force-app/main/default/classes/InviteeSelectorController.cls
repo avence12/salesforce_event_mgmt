@@ -22,6 +22,16 @@ public with sharing class InviteeSelectorController {
         public String accountOwnerName { get; set; }
     }
 
+    /** Wrapper so a truncated list can say so — a silently short list reads as "that's everyone". */
+    public class SelectableResult {
+        @AuraEnabled
+        public List<SelectableContact> contacts { get; set; }
+        @AuraEnabled
+        public Boolean truncated { get; set; }
+        @AuraEnabled
+        public Integer cap { get; set; }
+    }
+
     public class InviteeRow {
         @AuraEnabled
         public Id inviteeId { get; set; }
@@ -46,11 +56,19 @@ public with sharing class InviteeSelectorController {
         public Integer ownersNotified { get; set; }
     }
 
+    /** Most contacts the selector will hand back in one call. */
+    public static final Integer CONTACT_CAP = 2000;
+
     @AuraEnabled(cacheable=true)
-    public static List<SelectableContact> getSelectableContacts(Id eventId) {
+    public static SelectableResult getSelectableContacts(Id eventId) {
+        SelectableResult res = new SelectableResult();
+        res.contacts = new List<SelectableContact>();
+        res.truncated = false;
+        res.cap = CONTACT_CAP;
+
         Set<Id> myAccountIds = getMyAccountIds();
         if (myAccountIds.isEmpty()) {
-            return new List<SelectableContact>();
+            return res;
         }
 
         // Hide contacts already on the event unless their row is Rejected.
@@ -63,14 +81,21 @@ public with sharing class InviteeSelectorController {
             blockedContactIds.add(inv.Contact__c);
         }
 
-        List<SelectableContact> out = new List<SelectableContact>();
-        for (Contact c : [
+        // One row past the cap: if it comes back, there are more than we are showing.
+        Integer probe = CONTACT_CAP + 1;
+        List<Contact> found = [
             SELECT Id, Name, Title, Email, AccountId, Account.Name, Account.Owner.Name
             FROM Contact
             WHERE AccountId IN :myAccountIds AND Id NOT IN :blockedContactIds
             ORDER BY Account.Name, Name
-            LIMIT 2000
-        ]) {
+            LIMIT :probe
+        ];
+        if (found.size() > CONTACT_CAP) {
+            res.truncated = true;
+            found.remove(CONTACT_CAP); // drop the probe row
+        }
+
+        for (Contact c : found) {
             SelectableContact sc = new SelectableContact();
             sc.contactId = c.Id;
             sc.name = c.Name;
@@ -79,9 +104,9 @@ public with sharing class InviteeSelectorController {
             sc.accountId = c.AccountId;
             sc.accountName = c.Account.Name;
             sc.accountOwnerName = c.Account.Owner.Name;
-            out.add(sc);
+            res.contacts.add(sc);
         }
-        return out;
+        return res;
     }
 
     @AuraEnabled

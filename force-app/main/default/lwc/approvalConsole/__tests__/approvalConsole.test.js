@@ -2,6 +2,7 @@ import { createElement } from 'lwc';
 import ApprovalConsole from 'c/approvalConsole';
 import { registerApexTestWireAdapter } from '@salesforce/sfdx-lwc-jest';
 import { refreshApex } from '@salesforce/apex';
+import LightningConfirm from 'lightning/confirm';
 import getPendingForMe from '@salesforce/apex/ApprovalConsoleController.getPendingForMe';
 import decide from '@salesforce/apex/ApprovalConsoleController.decide';
 
@@ -78,6 +79,11 @@ describe('c-approval-console', () => {
     beforeEach(() => {
         decide.mockResolvedValue({ decided: 3, amsNotified: 0 });
         refreshApex.mockResolvedValue(undefined);
+        // The stub's static open() throws by design — replacing it is the
+        // documented way to test LightningConfirm. Default to the user
+        // confirming so the reject specs still reach the decision path;
+        // the specs below cover declining.
+        LightningConfirm.open = jest.fn().mockResolvedValue(true);
         element = mount();
         toasts = [];
         element.addEventListener('lightning__showtoast', (e) => toasts.push(e.detail));
@@ -214,6 +220,37 @@ describe('c-approval-console', () => {
         it('rejects with the same payload but approve false', async () => {
             await click('Reject');
             expect(decide.mock.calls[0][0].approve).toBe(false);
+        });
+
+        describe('the reject confirmation', () => {
+            it('asks before rejecting anything', async () => {
+                await click('Reject');
+                expect(LightningConfirm.open).toHaveBeenCalledTimes(1);
+                const opts = LightningConfirm.open.mock.calls[0][0];
+                expect(opts.label).toBe('Reject 3 invitees?');
+                expect(opts.theme).toBe('warning');
+                expect(opts.message).toContain('re-add and re-submit');
+            });
+
+            it('decides nothing when the user backs out', async () => {
+                LightningConfirm.open.mockResolvedValue(false);
+                await click('Reject');
+                expect(decide).not.toHaveBeenCalled();
+                expect(toasts).toHaveLength(0);
+            });
+
+            it('singularises the prompt for one invitee', async () => {
+                await toggle(rowBoxes(element)[0], false);
+                await toggle(rowBoxes(element)[1], false);
+                await click('Reject');
+                expect(LightningConfirm.open.mock.calls[0][0].label).toBe('Reject 1 invitee?');
+            });
+
+            it('never asks before approving — that is the one-tap path', async () => {
+                await click('Approve');
+                expect(LightningConfirm.open).not.toHaveBeenCalled();
+                expect(decide).toHaveBeenCalledTimes(1);
+            });
         });
 
         it('sends only the still-selected invitees', async () => {

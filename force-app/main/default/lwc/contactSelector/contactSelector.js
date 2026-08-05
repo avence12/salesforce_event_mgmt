@@ -20,11 +20,17 @@ export default class ContactSelector extends LightningElement {
     wiredInvitees;
     selectable = [];
     invitees = [];
+    @track truncated = false;
+    @track cap = 0;
 
     @wire(getSelectableContacts, { eventId: '$recordId' })
     handleSelectable(result) {
         this.wiredSelectable = result;
-        if (result.data) this.selectable = result.data;
+        if (result.data) {
+            this.selectable = result.data.contacts;
+            this.truncated = result.data.truncated;
+            this.cap = result.data.cap;
+        }
     }
 
     @wire(getAllInvitees, { eventId: '$recordId' })
@@ -79,6 +85,32 @@ export default class ContactSelector extends LightningElement {
     }
     get addDisabled() {
         return this.loading || this.selectedIds.size === 0;
+    }
+
+    /**
+     * Selections deliberately survive a filter change — picking a few from account A,
+     * then a few from account B, then adding once is a real workflow. What is not
+     * acceptable is the count silently disagreeing with the rows on screen, so say so.
+     */
+    get hiddenSelectedCount() {
+        const visible = new Set();
+        this.filteredGroups.forEach((g) => g.contacts.forEach((c) => visible.add(c.contactId)));
+        let hidden = 0;
+        this.selectedIds.forEach((id) => {
+            if (!visible.has(id)) hidden++;
+        });
+        return hidden;
+    }
+    get hasHiddenSelected() {
+        return this.hiddenSelectedCount > 0;
+    }
+    get hiddenSelectedNote() {
+        const n = this.hiddenSelectedCount;
+        return `${n} selected contact${n === 1 ? ' is' : 's are'} outside the current filter and will still be added.`;
+    }
+
+    get truncationNote() {
+        return `Showing the first ${this.cap} contacts — more exist under your accounts. Narrow the list with the account filter or search to reach the rest.`;
     }
 
     get myDraftCount() {
