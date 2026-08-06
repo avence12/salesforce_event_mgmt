@@ -29,13 +29,14 @@
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Rejected_Count__c</field></layoutItems>
-            <layoutItems><behavior>Readonly</behavior><field>Exported_Count__c</field></layoutItems>
         </layoutColumns>
         <style>TwoColumnsTopToBottom</style>
     </layoutSections>
     <relatedLists>
         <fields>NAME</fields>
-        <fields>Contact__c</fields>
+        <fields>Invitee_Name__c</fields>
+        <fields>Invitee_Org__c</fields>
+        <fields>Invitee_Type__c</fields>
         <fields>Status__c</fields>
         <fields>Added_By__c</fields>
         <fields>Account__c</fields>

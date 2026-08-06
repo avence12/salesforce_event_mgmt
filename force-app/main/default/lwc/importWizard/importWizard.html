@@ -50,7 +50,10 @@
 
                 <div class="slds-grid slds-gutters slds-m-bottom_medium slds-wrap">
                     <div class="slds-col">
-                        <div class="stat"><b>{stats.newCount}</b><span>New (will create)</span></div>
+                        <div class="stat"><b>{stats.newCount}</b><span>New contacts (at customers)</span></div>
+                    </div>
+                    <div class="slds-col">
+                        <div class="stat"><b>{stats.newLeadCount}</b><span>New leads (no customer)</span></div>
                     </div>
                     <div class="slds-col">
                         <div class="stat"><b>{stats.updateCount}</b><span>Changed (will update)</span></div>
@@ -126,7 +129,11 @@
             <template lwc:if={isStep3}>
                 <template lwc:if={applyResult}>
                     <div class="slds-text-heading_medium slds-m-bottom_small">Import complete ✅</div>
-                    <p><b>{applyResult.created}</b> contact(s) created, <b>{applyResult.updated}</b> updated.</p>
+                    <p>
+                        <b>{applyResult.created}</b> contact(s) created, <b>{applyResult.updated}</b> updated.<br />
+                        <b>{applyResult.leadsCreated}</b> lead(s) created, <b>{applyResult.leadsUpdated}</b> updated —
+                        people whose company is not a customer Account. No Account was created for them.
+                    </p>
                     <template lwc:if={hasCompanyChanges}>
                         <p class="slds-m-top_small slds-text-color_weak">
                             <b>{stats.companyChangeCount}</b> company-change row(s) were not applied — download the list

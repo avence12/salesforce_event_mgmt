@@ -1,7 +1,0 @@
-.group-header {
-    background: var(--lwc-colorBackgroundAlt2, #f3f2f2);
-    border-radius: 0.25rem;
-}
-.row {
-    border-bottom: 1px solid var(--lwc-colorBorder, #dddbda);
-}

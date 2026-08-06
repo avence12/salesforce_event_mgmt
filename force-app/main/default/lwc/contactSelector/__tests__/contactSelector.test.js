@@ -3,11 +3,11 @@ import ContactSelector from 'c/contactSelector';
 import { registerApexTestWireAdapter } from '@salesforce/sfdx-lwc-jest';
 import { refreshApex } from '@salesforce/apex';
 import getSelectableContacts from '@salesforce/apex/InviteeSelectorController.getSelectableContacts';
+import getSelectableLeads from '@salesforce/apex/InviteeSelectorController.getSelectableLeads';
 import getAllInvitees from '@salesforce/apex/InviteeSelectorController.getAllInvitees';
 import addInvitees from '@salesforce/apex/InviteeSelectorController.addInvitees';
+import addLeadInvitees from '@salesforce/apex/InviteeSelectorController.addLeadInvitees';
 import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitMyInvitees';
-import exportApproved from '@salesforce/apex/EventExportController.exportApproved';
-import { downloadCsv } from 'c/csvDownload';
 
 jest.mock(
     '@salesforce/apex/InviteeSelectorController.addInvitees',
@@ -19,17 +19,15 @@ jest.mock(
     () => ({ default: jest.fn() }),
     { virtual: true }
 );
-jest.mock('@salesforce/apex/EventExportController.exportApproved', () => ({ default: jest.fn() }), {
-    virtual: true
-});
+jest.mock(
+    '@salesforce/apex/InviteeSelectorController.addLeadInvitees',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
 jest.mock('@salesforce/apex', () => ({ refreshApex: jest.fn() }), { virtual: true });
-jest.mock('c/csvDownload', () => ({
-    downloadCsv: jest.fn(),
-    csvRow: jest.fn(),
-    csvCell: jest.fn()
-}));
 
 const selectableAdapter = registerApexTestWireAdapter(getSelectableContacts);
+const leadsAdapter = registerApexTestWireAdapter(getSelectableLeads);
 const inviteesAdapter = registerApexTestWireAdapter(getAllInvitees);
 
 const CONTACT_CAP = 2000;
@@ -40,6 +38,11 @@ const CONTACT_CAP = 2000;
  */
 const emitSelectable = (contacts, truncated = false) =>
     selectableAdapter.emit({ contacts, truncated, cap: CONTACT_CAP });
+
+// The lead wire reuses the same wrapper shape; leadId is populated instead of
+// contactId, and accountName carries the Lead's Company text.
+const emitLeads = (contacts, truncated = false) =>
+    leadsAdapter.emit({ contacts, truncated, cap: CONTACT_CAP });
 
 const flush = async (times = 4) => {
     for (let i = 0; i < times; i++) {
@@ -79,6 +82,25 @@ const SELECTABLE = [
     }
 ];
 
+const LEADS = [
+    {
+        leadId: '00Q000000000001',
+        name: 'Hélène Dubois',
+        email: 'h.dubois@unige.test',
+        title: 'Professor of Cryptography',
+        accountName: 'Université de Genève',
+        accountOwnerName: 'Alex AM'
+    },
+    {
+        leadId: '00Q000000000002',
+        name: 'Anke Weber',
+        email: 'a.weber@tuberlin.test',
+        title: 'Professor',
+        accountName: 'TU Berlin',
+        accountOwnerName: 'Alex AM'
+    }
+];
+
 const INVITEES = [
     {
         inviteeId: 'a02000000000001',
@@ -97,7 +119,7 @@ const INVITEES = [
     {
         inviteeId: 'a02000000000003',
         contactName: 'Mia Lin',
-        status: 'Exported',
+        status: 'Approved',
         mine: false,
         addedByName: 'Sam AM'
     },
@@ -150,12 +172,8 @@ describe('c-contact-selector', () => {
 
     beforeEach(() => {
         addInvitees.mockResolvedValue(2);
-        submitMyInvitees.mockResolvedValue({ submitted: 1, ownersNotified: 1 });
-        exportApproved.mockResolvedValue({
-            csv: 'Name,Email\r\nJane,j@x.com',
-            fileName: 'approved.csv',
-            rowCount: 2
-        });
+        addLeadInvitees.mockResolvedValue(1);
+        submitMyInvitees.mockResolvedValue({ submitted: 1, approversNotified: 1 });
         refreshApex.mockResolvedValue(undefined);
         element = mount();
         toasts = [];
@@ -411,7 +429,7 @@ describe('c-contact-selector', () => {
         });
 
         const clickSubmit = async () => {
-            buttonStartingWith(element, 'Submit My Contacts').dispatchEvent(
+            buttonStartingWith(element, 'Submit My Invitees').dispatchEvent(
                 new CustomEvent('click')
             );
             await flush();
@@ -420,15 +438,15 @@ describe('c-contact-selector', () => {
         it('counts only my own draft invitees', () => {
             // Jane is mine and Draft; John is mine but Approved; Ken is Draft but
             // someone else's — only Jane counts.
-            expect(buttonStartingWith(element, 'Submit My Contacts').label).toBe(
-                'Submit My Contacts for Approval (1)'
+            expect(buttonStartingWith(element, 'Submit My Invitees').label).toBe(
+                'Submit My Invitees for Approval (1)'
             );
         });
 
         it('is disabled when I have no drafts', async () => {
             inviteesAdapter.emit(INVITEES.filter((i) => !(i.mine && i.status === 'Draft')));
             await flush(1);
-            expect(buttonStartingWith(element, 'Submit My Contacts').disabled).toBe(true);
+            expect(buttonStartingWith(element, 'Submit My Invitees').disabled).toBe(true);
         });
 
         it('submits for this event', async () => {
@@ -436,11 +454,11 @@ describe('c-contact-selector', () => {
             expect(submitMyInvitees).toHaveBeenCalledWith({ eventId: EVENT_ID });
         });
 
-        it('reports the submitted count and notified owners', async () => {
-            submitMyInvitees.mockResolvedValue({ submitted: 3, ownersNotified: 2 });
+        it('reports the submitted count and notified approvers', async () => {
+            submitMyInvitees.mockResolvedValue({ submitted: 3, approversNotified: 2 });
             await clickSubmit();
             expect(toasts.at(-1).message).toBe(
-                '3 contact(s) sent for approval — 2 Account Owner(s) notified.'
+                '3 invitee(s) sent for approval — 2 approver(s) notified.'
             );
         });
 
@@ -477,65 +495,112 @@ describe('c-contact-selector', () => {
             expect(element.shadowRoot.textContent).toContain('Sam AM');
             expect(element.shadowRoot.textContent).not.toContain('Sam AM (me)');
         });
+
+        it('shows the invitee type so Contact and Lead rows are told apart', async () => {
+            inviteesAdapter.emit([
+                { ...INVITEES[0], inviteeType: 'Contact', accountName: 'Acme' },
+                {
+                    inviteeId: 'a02000000000005',
+                    contactName: 'Hélène Dubois',
+                    accountName: 'Université de Genève',
+                    inviteeType: 'Lead',
+                    status: 'Pending Approval',
+                    mine: true,
+                    addedByName: 'Alex AM'
+                }
+            ]);
+            await flush(1);
+            const text = element.shadowRoot.textContent;
+            expect(text).toContain('Université de Genève');
+            expect(text).toContain('Lead');
+        });
     });
 
-    describe('exporting', () => {
-        const clickExport = async () => {
-            buttonStartingWith(element, 'Export Approved List').dispatchEvent(
+    /**
+     * The Leads tab exists because an Account means a transacting customer: a professor
+     * has no Account, and a Contact without one would be a private contact nobody else
+     * on the shared event could see.
+     */
+    describe('adding leads', () => {
+        const leadBoxes = () =>
+            rowBoxes(element).filter((b) => String(b.dataset.id).startsWith('00Q'));
+
+        const clickAddLeads = async () => {
+            buttonStartingWith(element, 'Add Selected Leads').dispatchEvent(
                 new CustomEvent('click')
             );
             await flush();
         };
 
-        it('hides the export until something is approved', async () => {
-            inviteesAdapter.emit([INVITEES[0]]); // Draft only
+        beforeEach(async () => {
+            emitLeads(LEADS);
             await flush(1);
-            expect(buttonStartingWith(element, 'Export Approved List')).toBeUndefined();
         });
 
-        it('shows the export once a row is Approved or Exported', async () => {
-            inviteesAdapter.emit(INVITEES);
-            await flush(1);
-            expect(buttonStartingWith(element, 'Export Approved List')).toBeDefined();
+        it('lists the leads I own, grouped by their company text', () => {
+            expect(leadBoxes()).toHaveLength(2);
+            const headers = groupHeaders(element);
+            expect(headers.some((h) => h.includes('Université de Genève'))).toBe(true);
+            expect(headers.some((h) => h.includes('TU Berlin'))).toBe(true);
         });
 
-        it('exports the whole approved list for this event, unfiltered by date', async () => {
-            // The Approved Exports tab is where a decision-date range applies.
-            inviteesAdapter.emit(INVITEES);
-            await flush(1);
-            await clickExport();
-            expect(exportApproved).toHaveBeenCalledWith({
+        it('sends the selected lead ids, not contact ids', async () => {
+            await fire(leadBoxes()[0], 'change', undefined);
+            leadBoxes()[0].checked = true;
+            await fire(leadBoxes()[0], 'change');
+            await clickAddLeads();
+            expect(addLeadInvitees).toHaveBeenCalledWith({
                 eventId: EVENT_ID,
-                fromDate: null,
-                toDate: null
+                leadIds: ['00Q000000000001']
             });
+            expect(addInvitees).not.toHaveBeenCalled();
         });
 
-        it('hands the csv to the downloader and reports the count', async () => {
-            inviteesAdapter.emit(INVITEES);
-            await flush(1);
-            await clickExport();
-            expect(downloadCsv).toHaveBeenCalledWith('Name,Email\r\nJane,j@x.com', 'approved.csv');
-            expect(toasts.at(-1).message).toBe('2 approved contact(s) exported.');
+        it('is disabled until something is selected', () => {
+            expect(buttonStartingWith(element, 'Add Selected Leads').disabled).toBe(true);
         });
 
-        it('refreshes the invitee list so statuses flip to Exported', async () => {
-            inviteesAdapter.emit(INVITEES);
+        it('keeps lead and contact selections apart', async () => {
+            emitSelectable(SELECTABLE);
             await flush(1);
-            await clickExport();
-            expect(refreshApex).toHaveBeenCalledTimes(1);
+            const contactBox = rowBoxes(element).find((b) =>
+                String(b.dataset.id).startsWith('003')
+            );
+            contactBox.checked = true;
+            await fire(contactBox, 'change');
+            // A contact selection must not arm the leads button.
+            expect(buttonStartingWith(element, 'Add Selected Leads').disabled).toBe(true);
+            expect(buttonStartingWith(element, 'Add Selected').label).toBe('Add Selected (1)');
         });
 
-        it('surfaces an export failure without downloading', async () => {
-            inviteesAdapter.emit(INVITEES);
-            await flush(1);
-            exportApproved.mockRejectedValue({});
-            await clickExport();
+        it('reports how many were added and clears the selection', async () => {
+            leadBoxes()[1].checked = true;
+            await fire(leadBoxes()[1], 'change');
+            await clickAddLeads();
             expect(toasts.at(-1)).toMatchObject({
-                variant: 'error',
-                message: 'Unexpected error'
+                variant: 'success',
+                message: '1 lead(s) added as Draft.'
             });
-            expect(downloadCsv).not.toHaveBeenCalled();
+            expect(buttonStartingWith(element, 'Add Selected Leads').label).toBe(
+                'Add Selected Leads (0)'
+            );
+        });
+
+        it('surfaces an Apex failure and keeps the selection', async () => {
+            addLeadInvitees.mockRejectedValue({ body: { message: 'lead not yours' } });
+            leadBoxes()[0].checked = true;
+            await fire(leadBoxes()[0], 'change');
+            await clickAddLeads();
+            expect(toasts.at(-1)).toMatchObject({ variant: 'error', message: 'lead not yours' });
+            expect(buttonStartingWith(element, 'Add Selected Leads').label).toBe(
+                'Add Selected Leads (1)'
+            );
+        });
+
+        it('says so when the lead list is truncated', async () => {
+            emitLeads(LEADS, true);
+            await flush(1);
+            expect(element.shadowRoot.textContent).toContain('Showing the first 2000 leads');
         });
     });
 });

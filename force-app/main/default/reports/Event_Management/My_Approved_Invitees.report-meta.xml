@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="http://soap.sforce.com/2006/04/metadata">
+    <name>My Approved Invitees</name>
+    <description>The approved invitees this user added, across every event — what the &quot;Only invitees I added&quot; toggle used to do. Like that toggle, this is a convenience filter and not a security boundary: Event_Invitee__c is ControlledByParent, so record visibility is set by the event&apos;s sharing, not by this filter.</description>
+    <reportType>Marketing_Events_with_Invitees</reportType>
+    <format>Summary</format>
+    <scope>organization</scope>
+
+    <groupingsDown>
+        <dateGranularity>Day</dateGranularity>
+        <field>Marketing_Event__c$Name</field>
+        <sortOrder>Asc</sortOrder>
+    </groupingsDown>
+
+    <columns><field>Event_Invitees__r$Invitee_Name__c</field></columns>
+    <columns><field>Event_Invitees__r$Invitee_Title__c</field></columns>
+    <columns><field>Event_Invitees__r$Invitee_Org__c</field></columns>
+    <columns><field>Event_Invitees__r$Invitee_Email__c</field></columns>
+    <columns><field>Event_Invitees__r$Invitee_Type__c</field></columns>
+    <columns><field>Event_Invitees__r$Approver__c</field></columns>
+    <columns><field>Event_Invitees__r$Decided_At__c</field></columns>
+    <columns><field>Marketing_Event__c$Event_Date__c</field></columns>
+
+    <filter>
+        <criteriaItems>
+            <column>Event_Invitees__r$Status__c</column>
+            <operator>equals</operator>
+            <value>Approved</value>
+        </criteriaItems>
+        <criteriaItems>
+            <column>Event_Invitees__r$Added_By_Me__c</column>
+            <operator>equals</operator>
+            <value>1</value>
+        </criteriaItems>
+    </filter>
+
+    <timeFrameFilter>
+        <dateColumn>Event_Invitees__r$Decided_At__c</dateColumn>
+        <interval>INTERVAL_CUSTOM</interval>
+    </timeFrameFilter>
+
+    <sortColumn>Event_Invitees__r$Invitee_Name__c</sortColumn>
+    <sortOrder>Asc</sortOrder>
+    <showDetails>true</showDetails>
+    <showGrandTotal>true</showGrandTotal>
+    <showSubTotals>true</showSubTotals>
+</Report>

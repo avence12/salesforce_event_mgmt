@@ -19,12 +19,6 @@
     <flexiPageRegions>
         <itemInstances>
             <componentInstance>
-                <componentName>approvalConsole</componentName>
-                <identifier>c_approvalConsole</identifier>
-            </componentInstance>
-        </itemInstances>
-        <itemInstances>
-            <componentInstance>
                 <componentName>contactSelector</componentName>
                 <identifier>c_contactSelector</identifier>
             </componentInstance>

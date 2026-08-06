@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>61.0</apiVersion>
+    <description>Fires the &quot;your batch has been fully reviewed&quot; notification once an invitee is decided. The Flow is only the trigger — the aggregate condition (&quot;does this AM have zero Pending rows left on this event?&quot;) is counted in Apex, because a per-record Flow cannot ask a question about sibling records without going wrong under bulk updates. Mass-approving 40 invitees fires this 40 times in one transaction; the invocable receives all 40 ids in one call and sends one email.</description>
+    <environments>Default</environments>
+    <interviewLabel>Invitee Decision Completion {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Invitee Decision Completion</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+
+    <actionCalls>
+        <name>Notify_AM_If_Fully_Reviewed</name>
+        <label>Notify AM If Fully Reviewed</label>
+        <locationX>176</locationX>
+        <locationY>287</locationY>
+        <actionName>EventNotificationService</actionName>
+        <actionType>apex</actionType>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>inviteeIds</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+        <nameSegment>EventNotificationService</nameSegment>
+    </actionCalls>
+
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Notify_AM_If_Fully_Reviewed</targetReference>
+        </connector>
+        <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+        <filterLogic>1 OR 2</filterLogic>
+        <filters>
+            <field>Status__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Approved</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Status__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Rejected</stringValue>
+            </value>
+        </filters>
+        <object>Event_Invitee__c</object>
+        <recordTriggerType>Update</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+</Flow>

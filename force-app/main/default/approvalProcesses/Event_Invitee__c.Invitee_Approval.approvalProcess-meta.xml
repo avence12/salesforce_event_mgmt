@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Invitee_Approval</fullName>
+    <label>Invitee Approval</label>
+    <active>true</active>
+    <description>Screen 4. Replaces the approvalConsole LWC and ApprovalConsoleController. Routing is the Approver__c Related User Field, resolved by InviteeSelectorController at submit time — an approval process can only address a stored User lookup on the record, which is why &quot;the Account Owner&quot; had to become a field before this was buildable.</description>
+
+    <!--
+      No entryCriteria: submission is always explicit, from Screen 3, and the submitting
+      Apex has already checked ownership, resolved the approver and stamped Submitted_At__c.
+      A duplicate entry test here would only be able to repeat that less precisely.
+    -->
+
+    <allowRecall>true</allowRecall>
+    <allowedSubmitters>
+        <type>owner</type>
+    </allowedSubmitters>
+    <enableMobileDeviceAccess>true</enableMobileDeviceAccess>
+    <showApprovalHistory>true</showApprovalHistory>
+
+    <!--
+      No <emailTemplate>: Option 1 was chosen for notification volume. Approvers set
+      "Receive Approval Request Emails = Never" and are told once per submission by the
+      aggregated email + bell from EventNotificationService, instead of once per invitee.
+      Restoring per-request emails means adding a template here AND flipping that user
+      setting back — the two must move together or approvers hear nothing at all.
+    -->
+
+    <approvalPageFields>
+        <field>Invitee_Name__c</field>
+        <field>Invitee_Title__c</field>
+        <field>Invitee_Org__c</field>
+        <field>Invitee_Type__c</field>
+        <field>Added_By__c</field>
+        <field>Marketing_Event__c</field>
+    </approvalPageFields>
+
+    <initialSubmissionActions>
+        <action>
+            <name>Set_Status_Pending_Approval</name>
+            <type>FieldUpdate</type>
+        </action>
+    </initialSubmissionActions>
+
+    <approvalStep>
+        <fullName>Approver_Decision</fullName>
+        <label>Approver Decision</label>
+        <name>Approver_Decision</name>
+        <description>Single step. The approver is whoever Approver__c names: the Account Owner for a customer Contact, otherwise the Lead Owner or the submitter&apos;s manager.</description>
+        <allowDelegate>true</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>Approver__c</name>
+                <type>relatedUserField</type>
+            </approver>
+        </assignedApprover>
+        <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+
+    <finalApprovalActions>
+        <action>
+            <name>Set_Status_Approved</name>
+            <type>FieldUpdate</type>
+        </action>
+        <action>
+            <name>Stamp_Decided_At</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalApprovalActions>
+    <finalApprovalRecordLock>false</finalApprovalRecordLock>
+
+    <finalRejectionActions>
+        <action>
+            <name>Set_Status_Rejected</name>
+            <type>FieldUpdate</type>
+        </action>
+        <action>
+            <name>Stamp_Decided_At</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalRejectionActions>
+    <!--
+      Unlocked on rejection so re-adding a rejected invitee can still reset the row to
+      Draft (the rule from Screen 3, unchanged). Locked-on-approval would be tidier but
+      would break that path for a rejected-then-re-added contact.
+    -->
+    <finalRejectionRecordLock>false</finalRejectionRecordLock>
+
+    <recordEditability>AdminOnly</recordEditability>
+    <processOrder>1</processOrder>
+</ApprovalProcess>

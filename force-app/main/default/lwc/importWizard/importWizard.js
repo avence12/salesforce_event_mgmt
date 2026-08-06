@@ -32,7 +32,7 @@ const HEADER_MAP = {
     cell: 'mobile'
 };
 
-const APPLYABLE = new Set(['NEW_CONTACT', 'UPDATE']);
+const APPLYABLE = new Set(['NEW_CONTACT', 'NEW_LEAD', 'UPDATE', 'UPDATE_LEAD']);
 
 // Preview order: rows needing a human decision first, then what will be applied,
 // then the rows there is nothing to say about. With a 500-row file the two that
@@ -41,8 +41,10 @@ const SORT_RANK = {
     COMPANY_CHANGE: 0, // manual review — the whole reason to read this table
     SKIPPED: 1, // invalid input the user may want to fix and re-upload
     UPDATE: 2,
-    NEW_CONTACT: 3,
-    UNCHANGED: 4
+    UPDATE_LEAD: 3,
+    NEW_CONTACT: 4,
+    NEW_LEAD: 5,
+    UNCHANGED: 6
 };
 
 export default class ImportWizard extends LightningElement {
@@ -274,6 +276,7 @@ export default class ImportWizard extends LightningElement {
     buildPreview(results) {
         const stats = {
             newCount: 0,
+            newLeadCount: 0,
             updateCount: 0,
             unchangedCount: 0,
             companyChangeCount: 0,
@@ -282,7 +285,8 @@ export default class ImportWizard extends LightningElement {
         this.previewRows = results.map((r, idx) => {
             const cls = r.classification;
             if (cls === 'NEW_CONTACT') stats.newCount++;
-            else if (cls === 'UPDATE') stats.updateCount++;
+            else if (cls === 'NEW_LEAD') stats.newLeadCount++;
+            else if (cls === 'UPDATE' || cls === 'UPDATE_LEAD') stats.updateCount++;
             else if (cls === 'UNCHANGED') stats.unchangedCount++;
             else if (cls === 'COMPANY_CHANGE') stats.companyChangeCount++;
             else stats.skippedCount++;
@@ -295,8 +299,10 @@ export default class ImportWizard extends LightningElement {
                 classification: cls,
                 typeLabel:
                     {
-                        NEW_CONTACT: 'New',
+                        NEW_CONTACT: 'New Contact',
+                        NEW_LEAD: 'New Lead',
                         UPDATE: 'Update',
+                        UPDATE_LEAD: 'Update Lead',
                         UNCHANGED: 'Unchanged',
                         COMPANY_CHANGE: 'Manual',
                         SKIPPED: 'Skipped'

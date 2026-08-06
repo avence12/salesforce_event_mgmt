@@ -317,20 +317,35 @@ describe('c-import-wizard', () => {
         };
 
         const fiveRows = `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,\nD,4,d@x.com,,,\nE,5,e@x.com,,,`;
+        const sixRows = `${fiveRows}\nF,6,f@x.com,,,`;
 
         const statValues = () =>
             [...element.shadowRoot.querySelectorAll('.stat b')].map((n) => n.textContent);
 
+        // Tiles, in order: new contacts, new leads, changed, unchanged, company change, skipped.
         it('counts each classification into its own tile', async () => {
-            classify(['NEW_CONTACT', 'UPDATE', 'UNCHANGED', 'COMPANY_CHANGE', 'SKIPPED']);
-            await upload(element, fiveRows);
-            expect(statValues()).toEqual(['1', '1', '1', '1', '1']);
+            classify([
+                'NEW_CONTACT',
+                'NEW_LEAD',
+                'UPDATE',
+                'UNCHANGED',
+                'COMPANY_CHANGE',
+                'SKIPPED'
+            ]);
+            await upload(element, sixRows);
+            expect(statValues()).toEqual(['1', '1', '1', '1', '1', '1']);
+        });
+
+        it('counts a lead update alongside a contact update', async () => {
+            classify(['UPDATE', 'UPDATE_LEAD']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
+            expect(statValues()[2]).toBe('2');
         });
 
         it('counts an unknown classification as skipped rather than dropping it', async () => {
             classify(['SOMETHING_NEW']);
             await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
-            expect(statValues()[4]).toBe('1');
+            expect(statValues()[5]).toBe('1');
         });
 
         it('renders one table row per preview row', async () => {
@@ -347,9 +362,23 @@ describe('c-import-wizard', () => {
 
             it('puts the rows needing a decision above the rest', async () => {
                 // Server order deliberately buries the two that matter.
-                classify(['UNCHANGED', 'NEW_CONTACT', 'SKIPPED', 'UPDATE', 'COMPANY_CHANGE']);
-                await upload(element, fiveRows);
-                expect(typeColumn()).toEqual(['Manual', 'Skipped', 'Update', 'New', 'Unchanged']);
+                classify([
+                    'UNCHANGED',
+                    'NEW_CONTACT',
+                    'SKIPPED',
+                    'UPDATE',
+                    'COMPANY_CHANGE',
+                    'NEW_LEAD'
+                ]);
+                await upload(element, sixRows);
+                expect(typeColumn()).toEqual([
+                    'Manual',
+                    'Skipped',
+                    'Update',
+                    'New Contact',
+                    'New Lead',
+                    'Unchanged'
+                ]);
             });
 
             it('keeps file order within one classification', async () => {

