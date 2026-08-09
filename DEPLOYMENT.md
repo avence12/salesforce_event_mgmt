@@ -422,7 +422,24 @@ is not optional: R3 removes a value from a restricted picklist that existing rec
 - [ ] Re-run the count query and confirm `Exported` is now zero
 - [ ] Note how many rows are `Pending Approval` — section D7 adopts exactly those
 
-### C. Deploy
+### C. Deploy — fresh org
+
+Nothing to delete, so no manifests: naming a component that does not exist in the org can
+fail the whole deploy.
+
+- [ ] Validate — compiles the Apex and checks the metadata without touching the org:
+  ```bash
+  sf project deploy start -o poc-sandbox --dry-run
+  ```
+- [ ] Deploy, once the dry run is clean:
+  ```bash
+  sf project deploy start -o poc-sandbox
+  ```
+- [ ] `sf apex run test -o poc-sandbox --wait 10 --code-coverage` — the first org-side run of the R3 Apex
+
+Then skip to section D.
+
+### C-upgrade. Deploy — existing R2 org
 
 - [ ] **Validate first.** Deletions cannot be undone, and this deploy contains six:
   ```bash
