@@ -41,6 +41,11 @@ sf project deploy start -o poc-sandbox
 sf apex run test -o poc-sandbox --wait 10 --code-coverage
 ```
 
+**Upgrading an org that already has the pre-R3 build?** Use the
+[R3 upgrade checklist](DEPLOYMENT.md#part-6--r3-upgrade-checklist) instead — R3 deletes
+components and removes a restricted picklist value, so it needs the destructive manifests
+in `manifest/` and a data migration on either side of the deploy.
+
 Can't complete a browser login? [DEPLOYMENT.md](DEPLOYMENT.md#step-2-authenticate-to-the-sandbox)
 covers device flow, auth URL, JWT and access-token logins.
 
