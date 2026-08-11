@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Event_History_Is_Contact_Xor_Lead</fullName>
+    <active>true</active>
+    <description>Exactly one parent. Both blank is a tag against nobody; both set is two identities on one row, and the Attendee_* formulas would silently prefer the Contact. Equality of the two ISBLANKs is true in precisely those two cases. Note: if a SetNull delete cascade re-fires this rule, deleting a tagged person will fail — see Open Question 14.</description>
+    <errorConditionFormula>ISBLANK(Contact__c) = ISBLANK(Lead__c)</errorConditionFormula>
+    <errorMessage>An event history row must point at either a Contact or a Lead — not both, and not neither.</errorMessage>
+</ValidationRule>

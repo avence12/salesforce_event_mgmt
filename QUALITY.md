@@ -132,6 +132,12 @@ Mutation       9/9 as expected
 Apex tests     not run — needs an org
 ```
 
+**R4 update:** `ContactImportControllerTest` was rewritten around the negative assertions —
+*no Contact created, updated or deleted* and *no Account created*. Those are the requirement
+itself rather than a detail of it, so they assert on `LastModifiedDate` and row counts rather
+than on the controller's own return values: a controller that lies about what it did cannot
+make them pass.
+
 **The PMD baseline is stale and must be re-recorded on the first machine that has PMD.**
 It was pruned of the 11 findings belonging to the two deleted classes (84 → 73), but the
 Lead DML added to `ContactImportController` and `InviteeSelectorController` will almost

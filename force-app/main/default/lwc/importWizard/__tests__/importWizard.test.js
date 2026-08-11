@@ -65,18 +65,24 @@ const text = (element, selector) => {
     return node ? node.textContent.trim() : null;
 };
 
-const HEADER = 'First Name,Last Name,Email,Title,Company,Mobile';
+const HEADER = 'First Name,Last Name,Email,Title,Company,Mobile,Event';
 
-/** Minimal previewMatches response echoing each row back as NEW_CONTACT. */
+/** Minimal previewMatches response echoing each row back as a matched contact. */
 const echoPreview = (rows) =>
-    rows.map((row) => ({ row, classification: 'NEW_CONTACT', changes: [], reason: '' }));
+    rows.map((row) => ({
+        row,
+        classification: 'MATCHED_CONTACT',
+        matchBasis: 'Name',
+        candidates: [],
+        reason: ''
+    }));
 
 describe('c-import-wizard', () => {
     let element;
 
     beforeEach(() => {
         previewMatches.mockImplementation(({ rows }) => Promise.resolve(echoPreview(rows)));
-        applyChanges.mockResolvedValue({ created: 0, updated: 0 });
+        applyChanges.mockResolvedValue({ tagsRecorded: 0, leadsCreated: 0 });
         element = mountWizard();
     });
 
@@ -215,30 +221,48 @@ describe('c-import-wizard', () => {
     });
 
     describe('row de-duplication', () => {
-        it('collapses duplicate emails, last occurrence winning', async () => {
-            await upload(element, `${HEADER}\nOld,Name,j@x.com,,Acme,\nNew,Name,j@x.com,,Globex,`);
+        // The key is the whole person plus the event: an email is no longer a row's
+        // identity, and the same person at two events is two facts, not a duplicate.
+        it('collapses rows identical in person and event, last occurrence winning', async () => {
+            await upload(
+                element,
+                `${HEADER}\nJane,Doe,j@x.com,,Acme,,Summit\nJane,Doe,j@x.com,,Acme,,Summit`
+            );
             expect(sentRows()).toHaveLength(1);
-            expect(sentRows()[0]).toMatchObject({ firstName: 'New', company: 'Globex' });
         });
 
-        it('matches emails case-insensitively when de-duplicating', async () => {
-            await upload(element, `${HEADER}\nOld,Name,J@X.com,,,\nNew,Name,j@x.com,,,`);
-            expect(sentRows()).toHaveLength(1);
-            expect(sentRows()[0].firstName).toBe('New');
+        it('keeps the same person at two different events', async () => {
+            await upload(
+                element,
+                `${HEADER}\nJane,Doe,j@x.com,,Acme,,Summit\nJane,Doe,j@x.com,,Acme,,DevCon`
+            );
+            expect(sentRows()).toHaveLength(2);
+            expect(sentRows().map((r) => r.event)).toEqual(['Summit', 'DevCon']);
         });
 
-        it('keeps every email-less row rather than collapsing them', async () => {
-            await upload(element, `${HEADER}\nA,One,,,,\nB,Two,,,,`);
+        it('keeps two different people who share an email', async () => {
+            await upload(
+                element,
+                `${HEADER}\nJane,Doe,shared@x.com,,Acme,,Summit\nJohn,Roe,shared@x.com,,Acme,,Summit`
+            );
             expect(sentRows()).toHaveLength(2);
         });
 
-        it('orders emailed rows ahead of the email-less ones', async () => {
-            await upload(element, `${HEADER}\nNoMail,One,,,,\nHas,Mail,j@x.com,,,`);
-            expect(sentRows().map((r) => r.firstName)).toEqual(['Has', 'NoMail']);
+        it('keeps rows with no event so the server can report them as skipped', async () => {
+            await upload(element, `${HEADER}\nA,One,a@x.com,,,,\nB,Two,b@x.com,,,,`);
+            expect(sentRows()).toHaveLength(2);
+        });
+
+        it('orders keyed rows ahead of the unkeyed ones', async () => {
+            await upload(
+                element,
+                `${HEADER}\nNoEvent,One,a@x.com,,,,\nHas,Event,b@x.com,,,,Summit`
+            );
+            expect(sentRows().map((r) => r.firstName)).toEqual(['Has', 'NoEvent']);
         });
 
         it('skips a fully empty data line', async () => {
-            await upload(element, `${HEADER}\n,,,,,\nJane,Doe,j@x.com,,,`);
+            await upload(element, `${HEADER}\n,,,,,,\nJane,Doe,j@x.com,,,,Summit`);
             expect(sentRows()).toHaveLength(1);
         });
     });
@@ -309,47 +333,36 @@ describe('c-import-wizard', () => {
                     rows.map((row, i) => ({
                         row,
                         classification: classifications[i],
-                        changes: [],
+                        matchBasis: '',
+                        candidates: [],
                         reason: ''
                     }))
                 )
             );
         };
 
-        const fiveRows = `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,\nD,4,d@x.com,,,\nE,5,e@x.com,,,`;
-        const sixRows = `${fiveRows}\nF,6,f@x.com,,,`;
+        const fiveRows =
+            `${HEADER}\nA,1,a@x.com,,,,Summit\nB,2,b@x.com,,,,Summit\nC,3,c@x.com,,,,Summit` +
+            `\nD,4,d@x.com,,,,Summit\nE,5,e@x.com,,,,Summit`;
 
         const statValues = () =>
             [...element.shadowRoot.querySelectorAll('.stat b')].map((n) => n.textContent);
 
-        // Tiles, in order: new contacts, new leads, changed, unchanged, company change, skipped.
+        // Tiles, in order: matched contacts, matched leads, new leads, ambiguous, skipped.
         it('counts each classification into its own tile', async () => {
-            classify([
-                'NEW_CONTACT',
-                'NEW_LEAD',
-                'UPDATE',
-                'UNCHANGED',
-                'COMPANY_CHANGE',
-                'SKIPPED'
-            ]);
-            await upload(element, sixRows);
-            expect(statValues()).toEqual(['1', '1', '1', '1', '1', '1']);
-        });
-
-        it('counts a lead update alongside a contact update', async () => {
-            classify(['UPDATE', 'UPDATE_LEAD']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
-            expect(statValues()[2]).toBe('2');
+            classify(['MATCHED_CONTACT', 'MATCHED_LEAD', 'NEW_LEAD', 'AMBIGUOUS', 'SKIPPED']);
+            await upload(element, fiveRows);
+            expect(statValues()).toEqual(['1', '1', '1', '1', '1']);
         });
 
         it('counts an unknown classification as skipped rather than dropping it', async () => {
             classify(['SOMETHING_NEW']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
-            expect(statValues()[5]).toBe('1');
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
+            expect(statValues()[4]).toBe('1');
         });
 
         it('renders one table row per preview row', async () => {
-            classify(['NEW_CONTACT', 'UPDATE', 'UNCHANGED', 'COMPANY_CHANGE', 'SKIPPED']);
+            classify(['MATCHED_CONTACT', 'MATCHED_LEAD', 'NEW_LEAD', 'AMBIGUOUS', 'SKIPPED']);
             await upload(element, fiveRows);
             expect(element.shadowRoot.querySelectorAll('tbody tr')).toHaveLength(5);
         });
@@ -362,28 +375,23 @@ describe('c-import-wizard', () => {
 
             it('puts the rows needing a decision above the rest', async () => {
                 // Server order deliberately buries the two that matter.
-                classify([
-                    'UNCHANGED',
-                    'NEW_CONTACT',
-                    'SKIPPED',
-                    'UPDATE',
-                    'COMPANY_CHANGE',
-                    'NEW_LEAD'
-                ]);
-                await upload(element, sixRows);
+                classify(['MATCHED_LEAD', 'MATCHED_CONTACT', 'SKIPPED', 'NEW_LEAD', 'AMBIGUOUS']);
+                await upload(element, fiveRows);
                 expect(typeColumn()).toEqual([
-                    'Manual',
+                    'Ambiguous',
                     'Skipped',
-                    'Update',
-                    'New Contact',
-                    'New Lead',
-                    'Unchanged'
+                    'Matched',
+                    'Matched Lead',
+                    'New Lead'
                 ]);
             });
 
             it('keeps file order within one classification', async () => {
-                classify(['UPDATE', 'COMPANY_CHANGE', 'UPDATE']);
-                await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,`);
+                classify(['MATCHED_CONTACT', 'AMBIGUOUS', 'MATCHED_CONTACT']);
+                await upload(
+                    element,
+                    `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S\nC,3,c@x.com,,,,S`
+                );
                 const names = [...element.shadowRoot.querySelectorAll('tbody tr')].map((r) =>
                     r.querySelector('td:nth-child(2)').textContent.trim()
                 );
@@ -392,13 +400,13 @@ describe('c-import-wizard', () => {
 
             it('still applies the row the user unticks after the reorder', async () => {
                 // Sorting must not desynchronise a row from its checkbox.
-                classify(['UNCHANGED', 'UPDATE', 'COMPANY_CHANGE', 'NEW_CONTACT']);
+                classify(['SKIPPED', 'MATCHED_LEAD', 'AMBIGUOUS', 'MATCHED_CONTACT']);
                 await upload(
                     element,
-                    `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,\nD,4,d@x.com,,,`
+                    `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S\nC,3,c@x.com,,,,S\nD,4,d@x.com,,,,S`
                 );
                 const boxes = [...element.shadowRoot.querySelectorAll('tbody input')];
-                const updateBox = boxes[2]; // Manual, Skipped-free order: Manual, Update, New, Unchanged
+                const updateBox = boxes[3]; // order: Ambiguous, Skipped, Matched, Matched Lead
                 updateBox.checked = false;
                 updateBox.dispatchEvent(new CustomEvent('change'));
                 await flush(1);
@@ -410,14 +418,14 @@ describe('c-import-wizard', () => {
         });
 
         it.each([
-            ['NEW_CONTACT', true],
-            ['UPDATE', true],
-            ['UNCHANGED', false],
-            ['COMPANY_CHANGE', false],
+            ['MATCHED_CONTACT', true],
+            ['MATCHED_LEAD', true],
+            ['NEW_LEAD', true],
+            ['AMBIGUOUS', false],
             ['SKIPPED', false]
         ])('pre-selects %s rows: %s', async (classification, selected) => {
             classify([classification]);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const box = element.shadowRoot.querySelector('tbody input[type="checkbox"]');
             expect(box.checked).toBe(selected);
             expect(box.disabled).toBe(!selected);
@@ -430,93 +438,101 @@ describe('c-import-wizard', () => {
         });
 
         it('joins first and last name for display', async () => {
-            classify(['NEW_CONTACT']);
-            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,,`);
+            classify(['MATCHED_CONTACT']);
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,,,Summit`);
             expect(text(element, 'tbody tr td:nth-child(2)')).toBe('Jane Doe');
         });
 
         it('warns visually on rows that need a human', async () => {
-            classify(['COMPANY_CHANGE', 'NEW_CONTACT']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
+            classify(['AMBIGUOUS', 'MATCHED_CONTACT']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S`);
             const badges = element.shadowRoot.querySelectorAll('tbody tr td:nth-child(5) span');
             expect(badges[0].className).toContain('warning');
             expect(badges[1].className).not.toContain('warning');
         });
 
-        it('prefers the change list over the reason in the change column', async () => {
+        it('names the candidates it could not separate, above anything else', async () => {
             previewMatches.mockResolvedValue([
                 {
                     row: { firstName: 'A', lastName: '1', email: 'a@x.com' },
-                    classification: 'UPDATE',
-                    changes: ['Title: A → B'],
-                    reason: 'ignored'
+                    classification: 'AMBIGUOUS',
+                    matchBasis: '',
+                    candidates: ['Jane Doe (Acme)', 'Jane Doe (Globex)'],
+                    reason: 'ignored when candidates are known'
                 }
             ]);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
-            expect(text(element, 'tbody tr td:nth-child(4)')).toBe('Title: A → B');
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
+            expect(text(element, 'tbody tr td:nth-child(4)')).toBe(
+                'Could not separate: Jane Doe (Acme) | Jane Doe (Globex)'
+            );
         });
 
-        it('falls back to the reason when there are no changes', async () => {
+        it('says how a match was reached, so a name-only match does not look certain', async () => {
+            previewMatches.mockResolvedValue([
+                {
+                    row: { firstName: 'A', lastName: '1', email: 'a@x.com' },
+                    classification: 'MATCHED_CONTACT',
+                    matchBasis: 'Name',
+                    candidates: [],
+                    reason: ''
+                }
+            ]);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
+            expect(text(element, 'tbody tr td:nth-child(4)')).toBe('Matched on Name');
+        });
+
+        it('falls back to the reason when there is neither', async () => {
             previewMatches.mockResolvedValue([
                 {
                     row: { firstName: 'A', lastName: '1', email: '' },
                     classification: 'SKIPPED',
-                    changes: [],
-                    reason: 'No email address'
+                    matchBasis: '',
+                    candidates: [],
+                    reason: 'No event value'
                 }
             ]);
-            await upload(element, `${HEADER}\nA,1,,,,`);
-            expect(text(element, 'tbody tr td:nth-child(4)')).toBe('No email address');
-        });
-
-        it('joins multiple changes with a semicolon', async () => {
-            previewMatches.mockResolvedValue([
-                {
-                    row: { firstName: 'A', lastName: '1', email: 'a@x.com' },
-                    classification: 'UPDATE',
-                    changes: ['Title: A → B', 'Mobile: → 0912'],
-                    reason: ''
-                }
-            ]);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
-            expect(text(element, 'tbody tr td:nth-child(4)')).toBe('Title: A → B; Mobile: → 0912');
+            await upload(element, `${HEADER}\nA,1,,,,,`);
+            expect(text(element, 'tbody tr td:nth-child(4)')).toBe('No event value');
         });
 
         it('labels the apply button with the selected count, pluralised', async () => {
-            classify(['NEW_CONTACT', 'UPDATE', 'SKIPPED']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,\nC,3,c@x.com,,,`);
+            classify(['MATCHED_CONTACT', 'MATCHED_LEAD', 'SKIPPED']);
+            await upload(
+                element,
+                `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S\nC,3,c@x.com,,,,S`
+            );
             const buttons = [...element.shadowRoot.querySelectorAll('lightning-button')];
             expect(buttons.some((b) => b.label === 'Apply 2 Changes')).toBe(true);
         });
 
         it('singularises the apply label for one change', async () => {
-            classify(['NEW_CONTACT', 'SKIPPED']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
+            classify(['MATCHED_CONTACT', 'SKIPPED']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S`);
             const buttons = [...element.shadowRoot.querySelectorAll('lightning-button')];
             expect(buttons.some((b) => b.label === 'Apply 1 Change')).toBe(true);
         });
 
         it('disables apply when nothing is selectable', async () => {
             classify(['SKIPPED']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find((b) =>
                 String(b.label).startsWith('Apply')
             );
             expect(apply.disabled).toBe(true);
         });
 
-        it('offers the manual-review download only when there are company changes', async () => {
-            classify(['NEW_CONTACT']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+        it('offers the manual-review download only when something is ambiguous', async () => {
+            classify(['MATCHED_CONTACT']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const labels = [...element.shadowRoot.querySelectorAll('lightning-button')].map(
                 (b) => b.label
             );
             expect(labels).not.toContain('Download Manual-Review List');
         });
 
-        it('offers the manual-review download when a company change is present', async () => {
-            classify(['COMPANY_CHANGE']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+        it('offers the manual-review download when a row is ambiguous', async () => {
+            classify(['AMBIGUOUS']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const labels = [...element.shadowRoot.querySelectorAll('lightning-button')].map(
                 (b) => b.label
             );
@@ -524,8 +540,8 @@ describe('c-import-wizard', () => {
         });
 
         it('deselecting a row lowers the apply count', async () => {
-            classify(['NEW_CONTACT', 'UPDATE']);
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
+            classify(['MATCHED_CONTACT', 'MATCHED_LEAD']);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S`);
             const box = element.shadowRoot.querySelector('tbody input[type="checkbox"]');
             box.checked = false;
             box.dispatchEvent(new CustomEvent('change'));
@@ -543,13 +559,14 @@ describe('c-import-wizard', () => {
                 Promise.resolve(
                     rows.map((row, i) => ({
                         row,
-                        classification: i === 0 ? 'NEW_CONTACT' : 'SKIPPED',
-                        changes: [],
+                        classification: i === 0 ? 'MATCHED_CONTACT' : 'SKIPPED',
+                        matchBasis: '',
+                        candidates: [],
                         reason: ''
                     }))
                 )
             );
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,\nB,2,b@x.com,,,`);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,S\nB,2,b@x.com,,,,S`);
             const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find((b) =>
                 String(b.label).startsWith('Apply')
             );
@@ -558,11 +575,13 @@ describe('c-import-wizard', () => {
             expect(applyChanges).toHaveBeenCalledTimes(1);
             expect(applyChanges.mock.calls[0][0].rows).toHaveLength(1);
             expect(applyChanges.mock.calls[0][0].rows[0].email).toBe('a@x.com');
+            // The file name travels with the rows so a questionable tag can be traced back.
+            expect(applyChanges.mock.calls[0][0].sourceFile).toBe('contacts.csv');
         });
 
-        it('shows the created and updated counts on success', async () => {
-            applyChanges.mockResolvedValue({ created: 3, updated: 2 });
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+        it('shows the tag and lead counts on success', async () => {
+            applyChanges.mockResolvedValue({ tagsRecorded: 3, leadsCreated: 2 });
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find((b) =>
                 String(b.label).startsWith('Apply')
             );
@@ -574,7 +593,7 @@ describe('c-import-wizard', () => {
 
         it('surfaces an apply failure without advancing the step', async () => {
             applyChanges.mockRejectedValue({ body: { message: 'row locked' } });
-            await upload(element, `${HEADER}\nA,1,a@x.com,,,`);
+            await upload(element, `${HEADER}\nA,1,a@x.com,,,,Summit`);
             const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find((b) =>
                 String(b.label).startsWith('Apply')
             );
@@ -591,43 +610,45 @@ describe('c-import-wizard', () => {
                 .find((b) => b.label === 'Download Manual-Review List')
                 .dispatchEvent(new CustomEvent('click'));
 
-        const companyChangeOnly = (changes = ['Acme → Globex']) => {
+        const ambiguousOnly = (candidates = ['Jane Doe (Acme)', 'Jane Doe (Globex)']) => {
             previewMatches.mockImplementation(({ rows }) =>
                 Promise.resolve(
                     rows.map((row) => ({
                         row,
-                        classification: 'COMPANY_CHANGE',
-                        changes,
+                        classification: 'AMBIGUOUS',
+                        matchBasis: '',
+                        candidates,
                         reason: ''
                     }))
                 )
             );
         };
 
-        it('writes a header row and one line per company change', async () => {
-            companyChangeOnly();
-            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,`);
+        it('writes a header row and one line per ambiguous row', async () => {
+            ambiguousOnly();
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,,Summit`);
             clickManualDownload();
             const [csv, fileName] = downloadCsv.mock.calls[0];
             expect(csv.split('\r\n')).toEqual([
-                'Name,Email,Current → New Company',
-                'Jane Doe,j@x.com,Acme → Globex'
+                'Name,Email,Company,Event,Could not separate',
+                'Jane Doe,j@x.com,Acme,Summit,Jane Doe (Acme) | Jane Doe (Globex)'
             ]);
-            expect(fileName).toBe('company_change_manual_review.csv');
+            expect(fileName).toBe('ambiguous_matches_manual_review.csv');
         });
 
-        it('excludes rows that are not company changes', async () => {
+        it('excludes rows that were not ambiguous', async () => {
             previewMatches.mockImplementation(({ rows }) =>
                 Promise.resolve(
                     rows.map((row, i) => ({
                         row,
-                        classification: i === 0 ? 'COMPANY_CHANGE' : 'NEW_CONTACT',
-                        changes: i === 0 ? ['Acme → Globex'] : [],
+                        classification: i === 0 ? 'AMBIGUOUS' : 'MATCHED_CONTACT',
+                        matchBasis: i === 0 ? '' : 'Name',
+                        candidates: i === 0 ? ['One', 'Two'] : [],
                         reason: ''
                     }))
                 )
             );
-            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,,\nJohn,Roe,r@x.com,,,`);
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,,,S\nJohn,Roe,r@x.com,,,,S`);
             clickManualDownload();
             const [csv] = downloadCsv.mock.calls[0];
             expect(csv.split('\r\n')).toHaveLength(2);
@@ -637,8 +658,8 @@ describe('c-import-wizard', () => {
         it('neutralises a formula smuggled in through the uploaded name', async () => {
             // Every value here came out of an untrusted .csv, so the file it
             // writes back out must not be executable when Excel opens it.
-            companyChangeOnly();
-            await upload(element, `${HEADER}\n"=HYPERLINK(""http://evil"")",Doe,j@x.com,,,`);
+            ambiguousOnly();
+            await upload(element, `${HEADER}\n"=HYPERLINK(""http://evil"")",Doe,j@x.com,,,,S`);
             clickManualDownload();
             const [csv] = downloadCsv.mock.calls[0];
             expect(csv).toContain('"\'=HYPERLINK(""http://evil"") Doe"');
@@ -649,14 +670,15 @@ describe('c-import-wizard', () => {
             // The results step used to only *mention* the manual-review list and
             // point back at a step with no way to return to it: miss the download
             // once and the list was gone for good.
-            /** One company change plus one applyable row, so Apply is live. */
+            /** One ambiguous row plus one applyable row, so Apply is live. */
             const mixedPreview = () =>
                 previewMatches.mockImplementation(({ rows }) =>
                     Promise.resolve(
                         rows.map((row, i) => ({
                             row,
-                            classification: i === 0 ? 'COMPANY_CHANGE' : 'NEW_CONTACT',
-                            changes: i === 0 ? ['Acme → Globex'] : [],
+                            classification: i === 0 ? 'AMBIGUOUS' : 'MATCHED_CONTACT',
+                            matchBasis: i === 0 ? '' : 'Name',
+                            candidates: i === 0 ? ['Jane Doe (Acme)', 'Jane Doe (Globex)'] : [],
                             reason: ''
                         }))
                     )
@@ -664,8 +686,11 @@ describe('c-import-wizard', () => {
 
             const reachResultsStep = async () => {
                 mixedPreview();
-                applyChanges.mockResolvedValue({ created: 1, updated: 0 });
-                await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,\nJohn,Roe,r@x.com,,,`);
+                applyChanges.mockResolvedValue({ tagsRecorded: 1, leadsCreated: 0 });
+                await upload(
+                    element,
+                    `${HEADER}\nJane,Doe,j@x.com,,Acme,,Summit\nJohn,Roe,r@x.com,,,,Summit`
+                );
                 const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find(
                     (b) => String(b.label).startsWith('Apply')
                 );
@@ -679,14 +704,14 @@ describe('c-import-wizard', () => {
                 await reachResultsStep();
                 clickManualDownload();
                 const [csv] = downloadCsv.mock.calls[0];
-                expect(csv).toContain('Jane Doe,j@x.com,Acme → Globex');
+                expect(csv).toContain('Jane Doe,j@x.com,Acme,Summit,Jane Doe (Acme)');
             });
 
             it('says how many rows were left behind, and that leaving discards them', async () => {
                 await reachResultsStep();
                 const results = element.shadowRoot.textContent;
                 expect(results).toContain('1');
-                expect(results).toContain('company-change row(s) were not applied');
+                expect(results).toContain('could not be told');
                 expect(results).toContain('Starting another import discards it');
             });
         });

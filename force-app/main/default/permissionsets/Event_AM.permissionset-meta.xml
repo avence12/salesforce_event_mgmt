@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Event AM</label>
-    <description>Account Managers: create events, import contact lists, add and submit invitees, export approved lists.</description>
+    <description>Account Managers: create events, import contact lists to record event attendance, add and submit invitees, run the approved-invitee reports. Note what is absent: the import records attendance and creates leads, so this set grants no write access to Contact at all.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <objectPermissions>
         <object>Marketing_Event__c</object>
@@ -23,6 +23,15 @@
     </objectPermissions>
     <objectPermissions>
         <object>Lead</object>
+        <allowCreate>true</allowCreate>
+        <allowRead>true</allowRead>
+        <allowEdit>true</allowEdit>
+        <allowDelete>false</allowDelete>
+        <viewAllRecords>false</viewAllRecords>
+        <modifyAllRecords>false</modifyAllRecords>
+    </objectPermissions>
+    <objectPermissions>
+        <object>Event_History__c</object>
         <allowCreate>true</allowCreate>
         <allowRead>true</allowRead>
         <allowEdit>true</allowEdit>
@@ -142,6 +151,61 @@
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Contact__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Contact__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Lead__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Event_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Imported_On__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Source_File__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Match_Basis__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Unique_Key__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Attendee_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Attendee_Email__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Attendee_Org__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_History__c.Attendee_Type__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

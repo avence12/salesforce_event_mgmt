@@ -47,9 +47,10 @@ is one child record. Three consequences follow, and they are not all obvious:
 
 1. **The risk profile collapses.** No 500-row transaction creating and updating Contacts.
    Server-side re-classification was there because the client could otherwise steer DML
-   against arbitrary records; there is now almost no DML to steer. `Event_AM` stops needing
+   against arbitrary records; there is now almost no DML to steer. Screen 1 stops needing
    **edit** permission on Contact altogether — a real reduction in what the feature can do
-   to the org, not just in what it does do.
+   to the org, not just in what it does do. (That grant lives on the profile rather than in
+   `Event_AM`, so removing it is an org decision, not a metadata change here.)
 2. **The matching key gets weaker, deliberately.** Email is unique-ish; a name is not.
    Matching on name first means a row can genuinely be about two different people, so the
    design needs an explicit "could not tell" outcome that writes nothing, rather than a
@@ -587,7 +588,7 @@ Net: **5 Apex classes → 3**, **5 LWCs → 3**, and the state machine moves fro
 |---|---|
 | Object `Event_History__c` + 10 fields | Two lookups (Contact, Lead) + 4 formulas; OWD Public Read/Write |
 | Validation rule `Event_History_Is_Contact_Xor_Lead` | Exactly one parent |
-| `Event_AM` permission set | Gains CRUD + field access on the new object and Lead; **loses Contact edit** |
+| `Event_AM` permission set | Gains create/read + read-only fields on the new object. **It grants no write access to Contact at all** — worth stating because the permission set never granted Contact edit in the first place (the profile does): what changed is that the feature no longer *needs* it, so the profile grant is now removable without breaking Screen 1. |
 | ~~`Contact.Events_Attended__c`~~ | **Dropped** — a roll-up cannot summarise across a lookup |
 
 **Modified**
@@ -615,7 +616,7 @@ Sequenced so the negative assertions exist before the code that could violate th
 20. Replace `classify()` with the narrowing cascade + `Match_Basis__c`, run over Contacts then Leads → verify: one test per rung on each pass, plus the empty-narrowing rule, the ambiguous case, and Contact-beats-Lead precedence.
 21. Reduce `applyChanges()` to insert-Leads-then-upsert-history → verify: step 19's assertions now pass, and a newly created Lead comes back tagged `Created by import`.
 22. LWC: Event column, five tiles, ambiguous-row download → verify: jest suite green.
-23. Permission set (add the object, **remove Contact edit**), demo CSV, README/QUALITY/DEPLOYMENT updates → verify: full gauntlet.
+23. Permission set (add the object), demo CSV, README/QUALITY/DEPLOYMENT updates → verify: full gauntlet.
 
 ### ★R3 What still needs an org
 

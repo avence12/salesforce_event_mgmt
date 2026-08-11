@@ -44,7 +44,13 @@ List<Contact> contacts = new List<Contact>{
     new Contact(FirstName='Laura',  LastName='Chen',     Email='laura.chen@acmeins.example',     Title='VP, Finance',      AccountId=accId.get('Acme Insurance')),
     new Contact(FirstName='James',  LastName='Mueller',  Email='j.mueller@nordbank.example',     Title='Director',         AccountId=accId.get('Nordbank AG')),
     new Contact(FirstName='Anna',   LastName='Kowalski', Email='a.kowalski@nordbank.example',    Title='Associate',        AccountId=accId.get('Nordbank AG')),
-    new Contact(FirstName='Sophie', LastName='Laurent',  Email='sophie.laurent@globex.example',  Title='CMO',              AccountId=accId.get('Globex'))
+    new Contact(FirstName='Sophie', LastName='Laurent',  Email='sophie.laurent@globex.example',  Title='CMO',              AccountId=accId.get('Globex')),
+    // Two Marie Duponts at one Account, deliberately. A CSV row naming her with no
+    // email cannot be resolved to either, so the import writes nothing and lists both
+    // for manual review — the demo's proof that "could not tell" is a real outcome
+    // rather than a silent guess.
+    new Contact(FirstName='Marie',  LastName='Dupont',   Email='m.dupont@acmecorp.example',      Title='Analyst',          AccountId=accId.get('Acme Corp')),
+    new Contact(FirstName='Marie',  LastName='Dupont',   Email='marie.dupont@acmecorp.example',  Title='Senior Analyst',   AccountId=accId.get('Acme Corp'))
 };
 Set<String> emails = new Set<String>();
 for (Contact c : contacts) { emails.add(c.Email); }

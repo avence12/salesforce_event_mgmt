@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Match_Basis__c</fullName>
+    <label>Match Basis</label>
+    <description>How this person was identified. Exists because matching moved from email to a name-first cascade, so a tag can be wrong: when someone asks why a person shows as having attended, this is the answer. "Created by import" marks a Lead the import created itself, where there was no matching to do.</description>
+    <type>Picklist</type>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Name</fullName><default>false</default><label>Name</label></value>
+            <value><fullName>Name + Company</fullName><default>false</default><label>Name + Company</label></value>
+            <value><fullName>Name + Company + Email</fullName><default>false</default><label>Name + Company + Email</label></value>
+            <value><fullName>Created by import</fullName><default>false</default><label>Created by import</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

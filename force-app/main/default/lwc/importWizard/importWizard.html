@@ -29,8 +29,9 @@
             <!-- STEP 1 -->
             <template lwc:if={isStep1}>
                 <p class="slds-m-bottom_small slds-text-color_weak">
-                    Upload a CSV (.csv) file — comma, semicolon or tab separated. Rows are matched to existing Contacts
-                    by Email. Expected headers: First Name, Last Name, Email, Title, Company, Mobile.
+                    Upload a CSV (.csv) file — comma, semicolon or tab separated. Each row is matched to someone already
+                    in the org by name, then company, then email, and matched people get an event tag. Expected headers:
+                    First Name, Last Name, Email, Company, <b>Event</b> (Title and Mobile optional).
                 </p>
                 <p class="slds-m-bottom_small slds-text-color_weak">
                     Save it as <b>UTF-8</b> (in Excel: File → Save As → “CSV UTF-8”), otherwise accented names cannot be
@@ -50,19 +51,16 @@
 
                 <div class="slds-grid slds-gutters slds-m-bottom_medium slds-wrap">
                     <div class="slds-col">
-                        <div class="stat"><b>{stats.newCount}</b><span>New contacts (at customers)</span></div>
+                        <div class="stat"><b>{stats.matchedCount}</b><span>Matched contacts</span></div>
                     </div>
                     <div class="slds-col">
-                        <div class="stat"><b>{stats.newLeadCount}</b><span>New leads (no customer)</span></div>
+                        <div class="stat"><b>{stats.matchedLeadCount}</b><span>Matched leads</span></div>
                     </div>
                     <div class="slds-col">
-                        <div class="stat"><b>{stats.updateCount}</b><span>Changed (will update)</span></div>
+                        <div class="stat"><b>{stats.newLeadCount}</b><span>New leads (will create)</span></div>
                     </div>
                     <div class="slds-col">
-                        <div class="stat"><b>{stats.unchangedCount}</b><span>Unchanged (skip)</span></div>
-                    </div>
-                    <div class="slds-col">
-                        <div class="stat"><b>{stats.companyChangeCount}</b><span>Company change (manual)</span></div>
+                        <div class="stat"><b>{stats.ambiguousCount}</b><span>Ambiguous (manual)</span></div>
                     </div>
                     <div class="slds-col">
                         <div class="stat"><b>{stats.skippedCount}</b><span>Skipped (invalid)</span></div>
@@ -75,7 +73,7 @@
                             <th scope="col" style="width: 2rem"></th>
                             <th scope="col">Name</th>
                             <th scope="col">Email</th>
-                            <th scope="col">Change</th>
+                            <th scope="col">How it matched</th>
                             <th scope="col">Type</th>
                         </tr>
                     </thead>
@@ -102,7 +100,7 @@
 
                 <div class="slds-grid slds-grid_align-spread slds-m-top_medium">
                     <div>
-                        <template lwc:if={hasCompanyChanges}>
+                        <template lwc:if={hasAmbiguous}>
                             <lightning-button
                                 label="Download Manual-Review List"
                                 onclick={handleDownloadManualList}
@@ -130,14 +128,15 @@
                 <template lwc:if={applyResult}>
                     <div class="slds-text-heading_medium slds-m-bottom_small">Import complete ✅</div>
                     <p>
-                        <b>{applyResult.created}</b> contact(s) created, <b>{applyResult.updated}</b> updated.<br />
-                        <b>{applyResult.leadsCreated}</b> lead(s) created, <b>{applyResult.leadsUpdated}</b> updated —
-                        people whose company is not a customer Account. No Account was created for them.
+                        <b>{applyResult.tagsRecorded}</b> event tag(s) recorded,
+                        <b>{applyResult.leadsCreated}</b> lead(s) created for people who matched nobody.<br />
+                        No contact was created, changed or deleted, and no account was created.
                     </p>
-                    <template lwc:if={hasCompanyChanges}>
+                    <template lwc:if={hasAmbiguous}>
                         <p class="slds-m-top_small slds-text-color_weak">
-                            <b>{stats.companyChangeCount}</b> company-change row(s) were not applied — download the list
-                            and handle those contacts by hand. Starting another import discards it.
+                            <b>{stats.ambiguousCount}</b> row(s) matched more than one person and could not be told
+                            apart, so nothing was written for them — download the list and decide by hand. Starting
+                            another import discards it.
                         </p>
                         <lightning-button
                             class="slds-m-top_x-small"
