@@ -2,7 +2,8 @@
 
 Invite-and-approve workflow for marketing events, built on existing **Account** and **Contact** data —
 plus **Leads** for guests with no customer relationship, because an Account means a transacting customer.
-Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement.md)
+Design doc: [design.md](design.md) · Requirements: [requirement.md](requirement.md) ·
+End-to-end flow diagram: [docs/business-process.md](docs/business-process.md)
 
 ## What it does
 
