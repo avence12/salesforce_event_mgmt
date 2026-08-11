@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Invitee_Org__c</fullName>
+    <label>Invitee Organisation</label>
+    <description>Reads correctly whether the invitee is a Contact or a Lead, so no consumer has to branch. The Screen 5 reports depend on these: a report cannot pick between two lookup paths by itself. The Account snapshot for a Contact, the Lead&apos;s Company text for a Lead.</description>
+    <type>Text</type>
+    <formula>BLANKVALUE(Account__r.Name, Lead__r.Company)</formula>
+    <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackTrending>false</trackTrending>
+</CustomField>

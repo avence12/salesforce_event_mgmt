@@ -32,8 +32,8 @@ MUTANTS=(
   "$LWC/csvDownload/csvDownload.js|UTF8_BOM + csv|csv|UTF-8 BOM dropped|kill"
   "$LWC/importWizard/importWizard.js|if (src[i + 1] === '\"') {|if (false) {|escaped quote handling removed|kill"
   "$LWC/importWizard/importWizard.js|rows.length > MAX_ROWS|false|row cap never enforced|kill"
-  "$LWC/importWizard/importWizard.js|if (key) byEmail.set(key, row);|if (key) byEmail.set(row.email, row);|de-dup becomes case sensitive|kill"
-  "$LWC/approvedExport/approvedExport.js|this.fromDate > this.toDate|false|inverted date range accepted|kill"
+  "$LWC/importWizard/importWizard.js|const key = [row.firstName, row.lastName, row.company, row.email, row.event]|const key = [row.firstName, row.lastName, row.company, row.email]|event drops out of the de-dup key, collapsing one person's two events into one|kill"
+  "$LWC/contactSelector/contactSelector.js|if (event.target.checked) next.add(event.target.dataset.id);|if (false) next.add(event.target.dataset.id);|selection never records a tick|kill"
 
   # Equivalent: dropping the CRLF skip makes '\r' and '\n' two separate
   # terminators, but the empty row that produces is ['']  — which

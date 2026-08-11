@@ -2,11 +2,11 @@ import { LightningElement, api, track, wire } from 'lwc';
 import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getSelectableContacts from '@salesforce/apex/InviteeSelectorController.getSelectableContacts';
+import getSelectableLeads from '@salesforce/apex/InviteeSelectorController.getSelectableLeads';
 import getAllInvitees from '@salesforce/apex/InviteeSelectorController.getAllInvitees';
 import addInvitees from '@salesforce/apex/InviteeSelectorController.addInvitees';
+import addLeadInvitees from '@salesforce/apex/InviteeSelectorController.addLeadInvitees';
 import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitMyInvitees';
-import exportApproved from '@salesforce/apex/EventExportController.exportApproved';
-import { downloadCsv } from 'c/csvDownload';
 
 export default class ContactSelector extends LightningElement {
     @api recordId; // Marketing_Event__c
@@ -14,14 +14,20 @@ export default class ContactSelector extends LightningElement {
     @track searchTerm = '';
     @track accountFilter = '';
     @track selectedIds = new Set();
+    @track leadSearchTerm = '';
+    @track leadCompanyFilter = '';
+    @track selectedLeadIds = new Set();
     @track loading = false;
 
     wiredSelectable;
+    wiredLeads;
     wiredInvitees;
     selectable = [];
+    leads = [];
     invitees = [];
     @track truncated = false;
     @track cap = 0;
+    @track leadsTruncated = false;
 
     @wire(getSelectableContacts, { eventId: '$recordId' })
     handleSelectable(result) {
@@ -29,6 +35,16 @@ export default class ContactSelector extends LightningElement {
         if (result.data) {
             this.selectable = result.data.contacts;
             this.truncated = result.data.truncated;
+            this.cap = result.data.cap;
+        }
+    }
+
+    @wire(getSelectableLeads, { eventId: '$recordId' })
+    handleLeads(result) {
+        this.wiredLeads = result;
+        if (result.data) {
+            this.leads = result.data.contacts;
+            this.leadsTruncated = result.data.truncated;
             this.cap = result.data.cap;
         }
     }
@@ -42,39 +58,18 @@ export default class ContactSelector extends LightningElement {
     // ---------- Add Contacts tab ----------
 
     get accountOptions() {
-        const names = [...new Set(this.selectable.map((c) => c.accountName))].sort();
-        return [{ label: 'All', value: '' }, ...names.map((n) => ({ label: n, value: n }))];
+        return this.groupOptions(this.selectable, 'All');
     }
 
     get filteredGroups() {
-        const term = this.searchTerm.toLowerCase();
-        const rows = this.selectable.filter((c) => {
-            if (this.accountFilter && c.accountName !== this.accountFilter) return false;
-            if (!term) return true;
-            return (
-                (c.name || '').toLowerCase().includes(term) ||
-                (c.email || '').toLowerCase().includes(term) ||
-                (c.title || '').toLowerCase().includes(term)
-            );
-        });
-        const byAccount = new Map();
-        rows.forEach((c) => {
-            if (!byAccount.has(c.accountId)) {
-                byAccount.set(c.accountId, {
-                    accountId: c.accountId,
-                    accountName: c.accountName,
-                    ownerName: c.accountOwnerName,
-                    contacts: []
-                });
-            }
-            byAccount
-                .get(c.accountId)
-                .contacts.push({ ...c, selected: this.selectedIds.has(c.contactId) });
-        });
-        return [...byAccount.values()].map((g) => ({
-            ...g,
-            header: `${g.accountName} (Owner: ${g.ownerName}) — ${g.contacts.filter((c) => c.selected).length}/${g.contacts.length} selected`
-        }));
+        return this.groupRows(
+            this.selectable,
+            this.accountFilter,
+            this.searchTerm,
+            this.selectedIds,
+            (c) => c.contactId,
+            (g) => `${g.accountName} (Owner: ${g.ownerName})`
+        );
     }
 
     get hasSelectable() {
@@ -93,13 +88,7 @@ export default class ContactSelector extends LightningElement {
      * acceptable is the count silently disagreeing with the rows on screen, so say so.
      */
     get hiddenSelectedCount() {
-        const visible = new Set();
-        this.filteredGroups.forEach((g) => g.contacts.forEach((c) => visible.add(c.contactId)));
-        let hidden = 0;
-        this.selectedIds.forEach((id) => {
-            if (!visible.has(id)) hidden++;
-        });
-        return hidden;
+        return this.countHidden(this.filteredGroups, this.selectedIds, (c) => c.contactId);
     }
     get hasHiddenSelected() {
         return this.hiddenSelectedCount > 0;
@@ -113,11 +102,106 @@ export default class ContactSelector extends LightningElement {
         return `Showing the first ${this.cap} contacts — more exist under your accounts. Narrow the list with the account filter or search to reach the rest.`;
     }
 
+    // ---------- Add Leads tab ----------
+
+    get leadCompanyOptions() {
+        return this.groupOptions(this.leads, 'All');
+    }
+
+    get filteredLeadGroups() {
+        return this.groupRows(
+            this.leads,
+            this.leadCompanyFilter,
+            this.leadSearchTerm,
+            this.selectedLeadIds,
+            (l) => l.leadId,
+            // Grouping is by the Lead's Company text, so the header names no owner:
+            // every lead here is one this user owns.
+            (g) => g.accountName || '(no company)'
+        );
+    }
+
+    get hasSelectableLeads() {
+        return this.leads.length > 0;
+    }
+    get addLeadsLabel() {
+        return `Add Selected Leads (${this.selectedLeadIds.size})`;
+    }
+    get addLeadsDisabled() {
+        return this.loading || this.selectedLeadIds.size === 0;
+    }
+    get hiddenSelectedLeadCount() {
+        return this.countHidden(this.filteredLeadGroups, this.selectedLeadIds, (l) => l.leadId);
+    }
+    get hasHiddenSelectedLeads() {
+        return this.hiddenSelectedLeadCount > 0;
+    }
+    get hiddenSelectedLeadsNote() {
+        const n = this.hiddenSelectedLeadCount;
+        return `${n} selected lead${n === 1 ? ' is' : 's are'} outside the current filter and will still be added.`;
+    }
+    get leadTruncationNote() {
+        return `Showing the first ${this.cap} leads — you own more. Narrow the list with the company filter or search to reach the rest.`;
+    }
+
+    // ---------- shared list shaping ----------
+
+    groupOptions(rows, allLabel) {
+        const names = [...new Set(rows.map((r) => r.accountName))].filter(Boolean).sort();
+        return [{ label: allLabel, value: '' }, ...names.map((n) => ({ label: n, value: n }))];
+    }
+
+    groupRows(rows, groupFilter, term, selectedIds, idOf, headerOf) {
+        const needle = term.toLowerCase();
+        const matched = rows.filter((r) => {
+            if (groupFilter && r.accountName !== groupFilter) return false;
+            if (!needle) return true;
+            return (
+                (r.name || '').toLowerCase().includes(needle) ||
+                (r.email || '').toLowerCase().includes(needle) ||
+                (r.title || '').toLowerCase().includes(needle)
+            );
+        });
+        const byGroup = new Map();
+        matched.forEach((r) => {
+            const key = r.accountName || '';
+            if (!byGroup.has(key)) {
+                byGroup.set(key, {
+                    groupKey: key,
+                    accountName: r.accountName,
+                    ownerName: r.accountOwnerName,
+                    contacts: []
+                });
+            }
+            byGroup.get(key).contacts.push({
+                ...r,
+                rowId: idOf(r),
+                selected: selectedIds.has(idOf(r))
+            });
+        });
+        return [...byGroup.values()].map((g) => ({
+            ...g,
+            header: `${headerOf(g)} — ${g.contacts.filter((c) => c.selected).length}/${g.contacts.length} selected`
+        }));
+    }
+
+    countHidden(groups, selectedIds, idOf) {
+        const visible = new Set();
+        groups.forEach((g) => g.contacts.forEach((c) => visible.add(idOf(c))));
+        let hidden = 0;
+        selectedIds.forEach((id) => {
+            if (!visible.has(id)) hidden++;
+        });
+        return hidden;
+    }
+
+    // ---------- submit ----------
+
     get myDraftCount() {
         return this.invitees.filter((i) => i.mine && i.status === 'Draft').length;
     }
     get submitLabel() {
-        return `Submit My Contacts for Approval (${this.myDraftCount})`;
+        return `Submit My Invitees for Approval (${this.myDraftCount})`;
     }
     get submitDisabled() {
         return this.loading || this.myDraftCount === 0;
@@ -129,13 +213,24 @@ export default class ContactSelector extends LightningElement {
     handleAccountFilter(event) {
         this.accountFilter = event.detail.value;
     }
+    handleLeadSearch(event) {
+        this.leadSearchTerm = event.target.value;
+    }
+    handleLeadCompanyFilter(event) {
+        this.leadCompanyFilter = event.detail.value;
+    }
 
     handleToggle(event) {
-        const id = event.target.dataset.id;
-        const next = new Set(this.selectedIds);
-        if (event.target.checked) next.add(id);
-        else next.delete(id);
-        this.selectedIds = next;
+        this.selectedIds = this.toggled(this.selectedIds, event);
+    }
+    handleLeadToggle(event) {
+        this.selectedLeadIds = this.toggled(this.selectedLeadIds, event);
+    }
+    toggled(current, event) {
+        const next = new Set(current);
+        if (event.target.checked) next.add(event.target.dataset.id);
+        else next.delete(event.target.dataset.id);
+        return next;
     }
 
     async handleAdd() {
@@ -155,13 +250,30 @@ export default class ContactSelector extends LightningElement {
         }
     }
 
+    async handleAddLeads() {
+        this.loading = true;
+        try {
+            const n = await addLeadInvitees({
+                eventId: this.recordId,
+                leadIds: [...this.selectedLeadIds]
+            });
+            this.toast('Added', `${n} lead(s) added as Draft.`, 'success');
+            this.selectedLeadIds = new Set();
+            await Promise.all([refreshApex(this.wiredLeads), refreshApex(this.wiredInvitees)]);
+        } catch (e) {
+            this.toast('Error', this.messageOf(e), 'error');
+        } finally {
+            this.loading = false;
+        }
+    }
+
     async handleSubmit() {
         this.loading = true;
         try {
             const res = await submitMyInvitees({ eventId: this.recordId });
             this.toast(
                 'Submitted',
-                `${res.submitted} contact(s) sent for approval — ${res.ownersNotified} Account Owner(s) notified.`,
+                `${res.submitted} invitee(s) sent for approval — ${res.approversNotified} approver(s) notified.`,
                 'success'
             );
             await refreshApex(this.wiredInvitees);
@@ -183,34 +295,6 @@ export default class ContactSelector extends LightningElement {
     }
     get hasInvitees() {
         return this.invitees.length > 0;
-    }
-
-    get exportableCount() {
-        return this.invitees.filter((i) => i.status === 'Approved' || i.status === 'Exported')
-            .length;
-    }
-    get showExport() {
-        return this.exportableCount > 0;
-    }
-
-    async handleExport() {
-        this.loading = true;
-        try {
-            // Whole approved list for this event; the Approved Exports tab is where
-            // a decision-date range can be applied.
-            const res = await exportApproved({
-                eventId: this.recordId,
-                fromDate: null,
-                toDate: null
-            });
-            downloadCsv(res.csv, res.fileName);
-            this.toast('Exported', `${res.rowCount} approved contact(s) exported.`, 'success');
-            await refreshApex(this.wiredInvitees);
-        } catch (e) {
-            this.toast('Error', this.messageOf(e), 'error');
-        } finally {
-            this.loading = false;
-        }
     }
 
     messageOf(e) {

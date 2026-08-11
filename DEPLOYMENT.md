@@ -387,3 +387,128 @@ For this PoC the leftover `sheetjs` is harmless dead weight — `importWizard` n
 | Works in sandbox, fails in Production | Production forces tests; sandbox runs none by default | `--dry-run` against Production before the release window |
 | `INVALID_CROSS_REFERENCE_KEY` on a flexipage | it references a component or tab not yet in the org | deploy the whole package together rather than a subset |
 | `sf org login web` hangs or errors with no browser / connection refused | no local browser, or a proxy/firewall blocks the `localhost` OAuth callback | use device flow, auth URL, JWT, or access-token login instead — [Part 1, Step 2](#step-2-authenticate-to-the-sandbox) |
+
+---
+
+## Part 6 — R3 upgrade checklist
+
+R3 replaced the approval console with a standard **Approval Process** and the export
+screens with **reports**, and made invitees point at either a Contact or a **Lead**.
+Work top to bottom; the ordering is load-bearing in sections B–D.
+
+**Two paths.** On a **fresh org**, skip section B entirely and skip step D7 — there is
+nothing to migrate. On an org that **already has R2**, every step applies, and section B
+is not optional: R3 removes a value from a restricted picklist that existing records sit on.
+
+### A. Before touching an org
+
+- [ ] `git pull` the branch and confirm you are on the R3 commit (`git log --oneline -1`)
+- [ ] `npm install && npm test` — 174 LWC tests pass
+- [ ] `npm run lint` and `npx prettier --check "force-app/**/*.{js,cls}"` — clean
+- [ ] `scripts/quality/run-pmd.sh` — **expect this to fail the first time.** The baseline was pruned of the deleted classes but never re-recorded against the new Lead DML. Read the new findings: if they are the same CRUD/FLS class as the existing ones, `--update`; if they are not, they are real. See [QUALITY.md](QUALITY.md)
+- [ ] Read the *Known PoC limits* in [README.md](README.md) — two capabilities are gone on purpose (download tracking; formula-injection sanitising on the approved-list export)
+
+### B. Pre-deploy data migration — existing orgs only
+
+- [ ] Note the current counts, so you can prove the migration did what it claims:
+  ```bash
+  sf data query -o poc-sandbox \
+    -q "SELECT Status__c, COUNT(Id) FROM Event_Invitee__c GROUP BY Status__c"
+  ```
+- [ ] Move every `Exported` invitee to `Approved` — **a restricted picklist cannot lose a value that records still hold**, so this must happen before the deploy, not after:
+  ```bash
+  sf apex run --file scripts/r3-pre-deploy.apex -o poc-sandbox
+  ```
+- [ ] Re-run the count query and confirm `Exported` is now zero
+- [ ] Note how many rows are `Pending Approval` — section D7 adopts exactly those
+
+### C. Deploy — fresh org
+
+Nothing to delete, so no manifests: naming a component that does not exist in the org can
+fail the whole deploy.
+
+- [ ] Validate — compiles the Apex and checks the metadata without touching the org:
+  ```bash
+  sf project deploy start -o poc-sandbox --dry-run
+  ```
+- [ ] Deploy, once the dry run is clean:
+  ```bash
+  sf project deploy start -o poc-sandbox
+  ```
+- [ ] `sf apex run test -o poc-sandbox --wait 10 --code-coverage` — the first org-side run of the R3 Apex
+
+Then skip to section D.
+
+### C-upgrade. Deploy — existing R2 org
+
+- [ ] **Validate first.** Deletions cannot be undone, and this deploy contains six:
+  ```bash
+  sf project deploy start -o poc-sandbox --dry-run \
+    --manifest manifest/package.xml \
+    --pre-destructive-changes manifest/destructiveChangesPre.xml \
+    --post-destructive-changes manifest/destructiveChangesPost.xml
+  ```
+- [ ] Deploy for real once the dry run is clean:
+  ```bash
+  sf project deploy start -o poc-sandbox \
+    --manifest manifest/package.xml \
+    --pre-destructive-changes manifest/destructiveChangesPre.xml \
+    --post-destructive-changes manifest/destructiveChangesPost.xml
+  ```
+- [ ] `sf apex run test -o poc-sandbox --wait 10 --code-coverage` — **the first org-side run of the R3 Apex.** `EventWorkflowTest` drives `Approval.process()` for real; if the approval process or its field updates are wrong, this is where it shows
+
+> **Why the manifests.** A deploy is an upsert: deleting a component from source does
+> not delete it from the org ([Part 4](#part-4--deleting-metadata-a-deploy-is-an-upsert)).
+> Without them a sandbox keeps a dead *Approved Exports* tab and two orphaned Apex
+> classes. The split matters too — `Exported_Count__c` is a roll-up filtering on
+> `Status__c = 'Exported'`, so it must go **before** the payload that removes that
+> picklist value; everything else is still referenced by metadata the payload rewrites,
+> so it must go **after**.
+
+### D. Post-deploy configuration
+
+Steps 1–6 are also in [README.md](README.md); step 7 is upgrade-only.
+
+- [ ] **1. Activate the record page** — Setup → Object Manager → Marketing Event → Lightning Record Pages → *Marketing Event Record Page* → Activate → **Org Default** (Desktop *and* Phone)
+- [ ] **2. Assign permission sets** — `Event AM` to AMs, `Event Approver` to approvers
+- [ ] **3. Set a Manager on every AM user** (Setup → Users). This is the last rung of the approver ladder. Without it, submitting a self-owned lead is refused — by design, and loudly
+- [ ] **4. Turn off per-request approval emails** for approvers (Setup → Users → *Receive Approval Request Emails* → **Never**). This is **Option 1**: one aggregated email per submission instead of one per invitee. Skipping it is not harmless — a 40-row batch sends 40 emails
+- [ ] **5. Check the Lead OWD** (Setup → Sharing Settings). Under Private, an approver may not see the Lead behind an invitee they are approving and the name/organisation columns render blank. The PoC assumes **Public Read Only**
+- [ ] **6. Share the report folder** — Reports → *Event Management* → share with AM and approver users
+- [ ] **7. Adopt the pre-R3 pending invitees** — existing orgs only:
+  ```bash
+  sf apex run --file scripts/r3-post-deploy.apex -o poc-sandbox
+  ```
+  Rows with an `Account_Owner__c` snapshot get it as their `Approver__c` and enter the
+  approval process; rows without one go back to Draft for the AM to resubmit. Skipping
+  this leaves them pending forever with nobody holding a work item
+- [ ] **8. Seed demo data** (fresh demo orgs) — set the owner usernames at the top of the script first:
+  ```bash
+  sf apex run --file scripts/seed-demo-data.apex -o poc-sandbox
+  ```
+
+### E. Verify — the two assumptions that were never testable from the repo
+
+Do these before demoing anything. A bad answer to the first changes the Screen 4 design.
+
+- [ ] **Mass approve/reject at scale.** Submit ~40 invitees to one approver, open their Approvals list, and try to select and approve them in one action. If it turns out to be one-at-a-time in this org's release, switch to **Option 2**: add an approval assignment email template to `Invitee_Approval`, re-enable *Receive Approval Request Emails*, and enable Setup → Process Automation Settings → **Email Approval Response** so approvers can reply "approve" from a phone. Both halves must move together, or approvers hear nothing at all
+- [ ] **The approval-email setting's real name and options** — confirm D4's wording against the org's UI
+
+### F. Verify — the workflow end to end
+
+- [ ] Import the demo CSV. The preview shows **New Contact** and **New Lead** as separate tiles; after Apply, the Account row count is **unchanged** — no import may ever create an Account
+- [ ] Add contacts from *Add Contacts*, submit; the approver is the Account Owner
+- [ ] Add a lead you own from *Add Leads*, submit; **the approver is your manager, not you.** This is the one that would look identical to success if it were broken — check the `Approver__c` field on the record, not just that the submit succeeded
+- [ ] With no Manager on your user, submitting a self-owned lead fails with a named error and **nothing moves** — no half-submitted batch
+- [ ] Approve on desktop, reject one, and check the **Approval History** related list on a decided invitee
+- [ ] An `Event Approver` user can see a Lead invitee's name and organisation on the approval request (this is the Lead OWD check paying off)
+- [ ] Both AMs get the completion email once their batch has zero pending rows left
+- [ ] Reports → *Event Management* → *Approved Invitees — by Event* lists Contact and Lead invitees together, with `Invitee Type` telling them apart; export as CSV and open it in desktop Excel
+- [ ] Narrow the report's `Decided At` filter to the approval day — same rows; shift it a day — none
+- [ ] Confirm the *Approved Exports* tab is **gone** from the app (this is the destructive manifest paying off)
+
+### G. If it goes wrong
+
+- [ ] A failed deploy rolls back in full — the org is untouched, so fix and re-run ([Part 3](#part-3--how-a-deploy-actually-works))
+- [ ] **A successful deploy does not roll back**, and the destructive half is irreversible. Recovering the deleted components means redeploying them from the pre-R3 commit (`git show 032fce9`), and `Exported_Count__c` would come back empty — a roll-up recalculates from current data, and section B has already moved every Exported row to Approved
+- [ ] So: dry-run in a scratch or throwaway sandbox before running section C anywhere that matters

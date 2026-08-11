@@ -2,11 +2,12 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Contact__c</fullName>
     <label>Contact</label>
+    <description>Set for an invitee who works at a customer Account. No longer required: an invitee with no customer relationship carries Lead__c instead. Exactly one of the two is populated — see the Invitee_Is_Contact_Xor_Lead validation rule.</description>
     <type>Lookup</type>
     <referenceTo>Contact</referenceTo>
     <relationshipLabel>Event Invitees</relationshipLabel>
     <relationshipName>Event_Invitees</relationshipName>
-    <required>true</required>
+    <required>false</required>
     <deleteConstraint>Restrict</deleteConstraint>
     <trackHistory>false</trackHistory>
 </CustomField>

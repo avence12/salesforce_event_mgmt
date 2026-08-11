@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Added_By_Me__c</fullName>
+    <label>Added By Me</label>
+    <description>True for the user looking at the record. Exists because a report filter cannot reference the running user for a lookup field, while a formula can — this is what carries the old &quot;Only invitees I added&quot; toggle into the My Approved Invitees report. Convenience filter, not a security boundary.</description>
+    <type>Checkbox</type>
+    <formula>Added_By__c = $User.Id</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+</CustomField>

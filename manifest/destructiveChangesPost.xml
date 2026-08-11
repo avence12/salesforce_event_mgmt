@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Runs AFTER the main payload. Each of these is still referenced by something the
+  main payload rewrites, so deleting them first would fail:
+
+    ApprovalConsoleController / EventExportController  ← permission set classAccesses
+    approvalConsole (LWC)                              ← Marketing_Event_Record_Page
+    Approved_Exports (tab)                             ← Event_Management app
+    Approved_Exports (flexipage)                       ← the tab above
+
+  Removing a component from source does NOT remove it from an org — see Part 4 of
+  DEPLOYMENT.md. Without this file, a sandbox that already has R2 keeps a dead
+  Approved Exports tab pointing at a page whose Apex still compiles.
+-->
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>ApprovalConsoleController</members>
+        <members>EventExportController</members>
+        <name>ApexClass</name>
+    </types>
+    <types>
+        <members>approvalConsole</members>
+        <members>approvedExport</members>
+        <name>LightningComponentBundle</name>
+    </types>
+    <types>
+        <members>Approved_Exports</members>
+        <name>CustomTab</name>
+    </types>
+    <types>
+        <members>Approved_Exports</members>
+        <name>FlexiPage</name>
+    </types>
+    <version>61.0</version>
+</Package>

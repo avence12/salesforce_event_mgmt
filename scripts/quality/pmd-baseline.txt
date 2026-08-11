@@ -1,9 +1,3 @@
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
-force-app/main/default/classes/ApprovalConsoleController.cls	ApexCRUDViolation:
 force-app/main/default/classes/ContactImportController.cls	ApexCRUDViolation:
 force-app/main/default/classes/ContactImportController.cls	ApexCRUDViolation:
 force-app/main/default/classes/ContactImportController.cls	ApexCRUDViolation:
@@ -22,11 +16,6 @@ force-app/main/default/classes/ContactImportControllerTest.cls	ApexAssertionsSho
 force-app/main/default/classes/ContactImportControllerTest.cls	ApexAssertionsShouldIncludeMessage:
 force-app/main/default/classes/ContactImportControllerTest.cls	ApexAssertionsShouldIncludeMessage:
 force-app/main/default/classes/ContactImportControllerTest.cls	ApexAssertionsShouldIncludeMessage:
-force-app/main/default/classes/EventExportController.cls	ApexCRUDViolation:
-force-app/main/default/classes/EventExportController.cls	ApexCRUDViolation:
-force-app/main/default/classes/EventExportController.cls	ApexCRUDViolation:
-force-app/main/default/classes/EventExportController.cls	CognitiveComplexity:
-force-app/main/default/classes/EventExportController.cls	CyclomaticComplexity:
 force-app/main/default/classes/EventNotificationService.cls	ApexCRUDViolation:
 force-app/main/default/classes/EventNotificationService.cls	AvoidDebugStatements:
 force-app/main/default/classes/EventNotificationService.cls	AvoidDebugStatements:

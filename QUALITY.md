@@ -119,6 +119,33 @@ Mutation       9/9 as expected
 Apex tests     not run — needs an org
 ```
 
+Re-run after the R3 revision (standard Approval Process + reports, Lead invitees):
+
+```
+LWC tests      174 passing   (54 fewer — the approvedExport and approvalConsole suites
+                              went with their components; contactSelector gained a
+                              Leads-tab suite)
+ESLint         clean
+Prettier       clean
+PMD            not run — PMD is not installed in this environment
+Mutation       9/9 as expected
+Apex tests     not run — needs an org
+```
+
+**R4 update:** `ContactImportControllerTest` was rewritten around the negative assertions —
+*no Contact created, updated or deleted* and *no Account created*. Those are the requirement
+itself rather than a detail of it, so they assert on `LastModifiedDate` and row counts rather
+than on the controller's own return values: a controller that lies about what it did cannot
+make them pass.
+
+**The PMD baseline is stale and must be re-recorded on the first machine that has PMD.**
+It was pruned of the 11 findings belonging to the two deleted classes (84 → 73), but the
+Lead DML added to `ContactImportController` and `InviteeSelectorController` will almost
+certainly raise new `ApexCRUDViolation` findings that nobody has seen yet. Run
+`scripts/quality/run-pmd.sh` and expect it to fail before it passes; if the new findings are
+the same CRUD/FLS class as the existing ones, `--update` is the right response, and if they
+are not, they are real.
+
 ### Known gaps, stated plainly
 
 - **Apex has no local test layer.** Apex tests only run inside an org. Everything the gauntlet
@@ -130,6 +157,13 @@ Apex tests     not run — needs an org
   [README.md](README.md) — they are real, not noise, and worth burning down.
 - **No mutation testing for Apex.** No tool exists. Apex correctness rests on the two test classes
   and the org-side coverage bar.
+- **The declarative half of the workflow has no local test at all.** Since R3, approval routing
+  behaviour lives in an Approval Process, the status state machine lives in workflow field
+  updates, and the export lives in two saved reports. `EventWorkflowTest` drives the approval
+  process through `Approval.process()` and so covers the routing and the field updates *when run
+  in an org* — but the reports, the report type and the record-triggered Flow are exercised by
+  nothing. Moving code into configuration moved it out of reach of the test suite; that is a real
+  cost of the standardisation, not a free win.
 - **`importWizard.toast()` is dead code** — defined, never called, and the only reason
   `ShowToastEvent` is imported there. It is the one uncovered line in the LWC suite. Left in place
   rather than removed, because deleting it is a behaviour-neutral change that belongs in its own

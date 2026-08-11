@@ -8,16 +8,24 @@
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Name</field></layoutItems>
             <layoutItems><behavior>Required</behavior><field>Marketing_Event__c</field></layoutItems>
-            <layoutItems><behavior>Required</behavior><field>Contact__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Contact__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Lead__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Invitee_Name__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Invitee_Org__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Invitee_Type__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Status__c</field></layoutItems>
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Added_By__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Account__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Account_Owner__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approver__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Submitted_At__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Decided_At__c</field></layoutItems>
         </layoutColumns>
         <style>TwoColumnsTopToBottom</style>
     </layoutSections>
+    <relatedLists>
+        <relatedList>RelatedProcessHistoryList</relatedList>
+    </relatedLists>
 </Layout>

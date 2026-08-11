@@ -1,49 +1,70 @@
 /**
- * Generates demo-data/FinTech_Summit_2026_Attendees.csv — a 48-row attendee
- * list aligned with scripts/seed-demo-data.apex so the import wizard shows all
- * five classifications:
- *   - UPDATE          (Emily: new title; James: new mobile)
- *   - UNCHANGED       (Robert, Laura, Anna)
- *   - COMPANY_CHANGE  (Sophie: Globex → Acme Corp)
- *   - NEW             (Zoë Müller-Sørensen + 37 generated attendees)
- *   - SKIPPED         (1 missing email, 1 missing last name)
- *   plus 1 in-file duplicate email (deduped client-side, last wins)
+ * Generates demo-data/FinTech_Summit_2026_Attendees.csv — an attendee list aligned
+ * with scripts/seed-demo-data.apex so the import wizard shows all five R4
+ * classifications:
+ *   - MATCHED_CONTACT (Emily, Robert, Laura, Anna, James — tagged, nothing else touched)
+ *   - MATCHED_LEAD    (Hélène, Anke, Tomas, Priya — the seeded conference guests)
+ *   - AMBIGUOUS       (two Sophie Laurents at Globex, no email to separate them)
+ *   - NEW_LEAD        (Zoë Müller-Sørensen + the generated attendees)
+ *   - SKIPPED         (1 missing last name, 1 missing event)
+ *   plus 1 in-file duplicate (same person, same event — collapses)
+ *   and 1 stale-company row (Sophie moved) proving an empty narrowing step is skipped
  *
- * Written UTF-8 with a BOM and CRLF line endings. The Zoë Müller-Sørensen row is
- * deliberately non-ASCII so the demo exercises the wizard's UTF-8 decoding.
+ * Every row carries an Event column: that is what the import records, and a row
+ * without one has nothing to tag.
+ *
+ * Written UTF-8 with a BOM and CRLF line endings. The Zoë Müller-Sørensen and
+ * Hélène Dubois rows are deliberately non-ASCII so the demo exercises the wizard's
+ * UTF-8 decoding.
  *
  * Run:  node scripts/generate-demo-csv.mjs
  */
 import { mkdirSync, writeFileSync } from 'fs';
 
+const EVENT = 'FinTech Summit 2026';
+
 const rows = [
-    ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile'],
-    // UPDATE: title changed vs seed (Manager → Senior Manager)
-    ['Emily', 'Carter', 'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', ''],
-    // UPDATE: mobile added
+    ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile', 'Event'],
+    // MATCHED_CONTACT on name alone — the title and company in this file are ignored,
+    // which is the point: nothing on a Contact is ever written.
+    ['Emily', 'Carter', 'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', '', EVENT],
+    ['James', 'Mueller', 'j.mueller@nordbank.example', 'Director', 'Nordbank AG', '', EVENT],
+    ['Robert', 'Kim', 'robert.kim@acmecorp.example', 'SVP, Operations', 'Acme Corp', '', EVENT],
+    ['Laura', 'Chen', 'laura.chen@acmeins.example', 'VP, Finance', 'Acme Insurance', '', EVENT],
+    ['Anna', 'Kowalski', 'a.kowalski@nordbank.example', 'Associate', 'Nordbank AG', '', EVENT],
+    // Stale company: Sophie is seeded at Globex, the file says Acme Corp. The narrowing
+    // step finds nobody, is skipped, and she still matches on name — Open Question 10.
+    ['Sophie', 'Laurent', 'sophie.laurent@globex.example', 'CMO', 'Acme Corp', '', EVENT],
+    // MATCHED_LEAD: the seeded conference guests, who have no Account and never will.
+    ['Hélène', 'Dubois', 'h.dubois@unige.example', 'Professor', 'Université de Genève', '', EVENT],
+    ['Anke', 'Weber', 'a.weber@tuberlin.example', 'Professor', 'TU Berlin', '', EVENT],
     [
-        'James',
-        'Mueller',
-        'j.mueller@nordbank.example',
-        'Director',
-        'Nordbank AG',
-        '+49 151 2345 678'
+        'Tomas',
+        'Lindqvist',
+        't.lindqvist@kth.example',
+        'Senior Researcher',
+        'KTH Royal Institute',
+        '',
+        EVENT
     ],
-    // UNCHANGED
-    ['Robert', 'Kim', 'robert.kim@acmecorp.example', 'SVP, Operations', 'Acme Corp', ''],
-    ['Laura', 'Chen', 'laura.chen@acmeins.example', 'VP, Finance', 'Acme Insurance', ''],
-    ['Anna', 'Kowalski', 'a.kowalski@nordbank.example', 'Associate', 'Nordbank AG', ''],
-    // COMPANY_CHANGE: seed has Sophie at Globex
-    ['Sophie', 'Laurent', 'sophie.laurent@globex.example', 'CMO', 'Acme Corp', ''],
-    // SKIPPED: missing email
-    ['Ben', 'Nomail', '', 'Analyst', 'Acme Corp', ''],
-    // SKIPPED: new contact without last name
-    ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', ''],
-    // In-file duplicate: first occurrence is superseded by the next row (last wins)
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'Old Title', 'Acme Corp', ''],
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'New Title', 'Acme Corp', ''],
-    // NEW with non-ASCII name — proves the file is read as UTF-8 end to end
-    ['Zoë', 'Müller-Sørensen', 'z.muller@newcolabs.example', 'Head of Analytics', 'NewCo Labs', '']
+    ['Priya', 'Raman', 'p.raman@techpress.example', 'Editor', 'TechPress Media', '', EVENT],
+    // SKIPPED: no last name, so there is nothing to match on
+    ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', '', EVENT],
+    // SKIPPED: no event, so there is nothing to tag this person with
+    ['Ben', 'Noevent', 'ben@acmecorp.example', 'Analyst', 'Acme Corp', '', ''],
+    // In-file duplicate: same person, same event — collapses to one tag
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', '', EVENT],
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', '', EVENT],
+    // NEW_LEAD with non-ASCII name — proves the file is read as UTF-8 end to end
+    [
+        'Zoë',
+        'Müller-Sørensen',
+        'z.muller@newcolabs.example',
+        'Head of Analytics',
+        'NewCo Labs',
+        '',
+        EVENT
+    ]
 ];
 
 const first = [
@@ -92,9 +113,9 @@ const companies = [
     'Bluepeak Bank',
     'Helios Insurance',
     'Quantumsoft',
-    'PoC Unmatched Ltd'
+    'Northwind Systems'
 ];
-for (let i = 0; i < 37; i++) {
+for (let i = 0; i < 33; i++) {
     const f = first[i];
     rows.push([
         f,
@@ -102,9 +123,14 @@ for (let i = 0; i < 37; i++) {
         `${f.toLowerCase()}.a${i + 1}@prospect.example`,
         i % 3 === 0 ? 'Director' : 'Manager',
         companies[i % companies.length],
-        ''
+        '',
+        EVENT
     ]);
 }
+
+// AMBIGUOUS: the seed puts two Marie Duponts under Acme Corp. With no email in this
+// row the cascade runs out of criteria and writes nothing — see seed-demo-data.apex.
+rows.push(['Marie', 'Dupont', '', 'Analyst', 'Acme Corp', '', EVENT]);
 
 function csvCell(value) {
     const text = String(value);

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workflow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!--
+      Field updates invoked by the Invitee_Approval approval process. These carry the
+      status state machine that InviteeSelectorController and ApprovalConsoleController
+      used to run in Apex. They execute in system context, so Status__c staying
+      FLS-read-only for both permission sets is unaffected.
+    -->
+    <fieldUpdates>
+        <fullName>Set_Status_Pending_Approval</fullName>
+        <name>Set Status Pending Approval</name>
+        <description>Initial submission action. Apex resolves Approver__c and stamps Submitted_At__c before calling Approval.process(); the status itself is written here so the picklist follows the approval, not the other way round.</description>
+        <field>Status__c</field>
+        <literalValue>Pending Approval</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Status_Approved</fullName>
+        <name>Set Status Approved</name>
+        <field>Status__c</field>
+        <literalValue>Approved</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Status_Rejected</fullName>
+        <name>Set Status Rejected</name>
+        <field>Status__c</field>
+        <literalValue>Rejected</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Stamp_Decided_At</fullName>
+        <name>Stamp Decided At</name>
+        <description>Shared by the final approval and final rejection actions — the timestamp means &quot;when a decision was reached&quot;, which is the same event either way.</description>
+        <field>Decided_At__c</field>
+        <formula>NOW()</formula>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Formula</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+</Workflow>
