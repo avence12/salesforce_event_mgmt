@@ -7,7 +7,7 @@ End-to-end flow diagram: [docs/business-process.md](docs/business-process.md)
 
 ## What it does
 
-1. **Import** — AM uploads a CSV (.csv) attendee list carrying an **Event** column (comma, semicolon or tab separated; must be UTF-8). Each row is matched to someone already in the org by **name, then company, then email**, with a preview (Matched / Matched lead / New lead / Ambiguous / Skipped) before anything is applied. Matched people get an **event history** row. **No Contact is created, changed or deleted, and no Account is created** — the only records the import writes are event history and Leads for people who match nobody.
+1. **Import** — **BMD** uploads a CSV (.csv) attendee list carrying an **Event** column (comma, semicolon or tab separated; must be UTF-8). Each row is matched to someone already in the org by **name, then company, then email**, with a preview (Matched / Matched lead / New lead / Ambiguous / Skipped) before anything is applied. Matched people get an **event history** row. **No Contact is created, changed or deleted, and no Account is created** — the only records the import writes are event history and Leads for people who match nobody.
 2. **Create & select** — AM creates a Marketing Event and adds **Contacts** from their own accounts and **Leads** they own (professors, speakers, press — guests with no customer relationship). Events are shared: every AM adds their own batch (`Added By` is tracked per invitee).
 3. **Approve** — Each AM submits their batch into the **standard Approval Process**; each approver gets one aggregated email + bell notification and approves/rejects from the standard Approvals list (desktop or Salesforce Mobile App), with a full approval history on every invitee.
 4. **Report** — When an AM's batch is fully reviewed they're notified, and the approved list is read and exported from the **Approved Invitees** reports (one event or every event, any date range, CSV or XLSX).
@@ -62,7 +62,7 @@ See [QUALITY.md](QUALITY.md) for what each layer proves, the anti-gaming rules, 
 ## Post-deploy setup (once, ~10 minutes)
 
 1. **Activate the record page**: Setup → Object Manager → Marketing Event → Lightning Record Pages → *Marketing Event Record Page* → Activate → **Org Default** (desktop + phone).
-2. **Assign permission sets**: `Event AM` to the AM demo users, `Event Approver` to the approver demo users.
+2. **Assign permission sets**: `Event AM` to the AM demo users, `Event Approver` to the approver demo users. The importing **BMD** user also needs `Event AM` today — the *Import Contacts* tab and `ContactImportController` are granted there and have not been split out into their own set yet ([why that matters](docs/business-process.md#what-the-bmd-split-still-needs)).
 3. **Set a Manager on each AM user** (Setup → Users). This is the last rung of the approver ladder; without it, a self-owned lead cannot be submitted.
 4. **Turn off per-request approval emails** for approver users (Setup → Users → *Receive Approval Request Emails* → **Never**). This is **Option 1** from design.md: approvers hear once per submission from the aggregated notification instead of once per invitee. Skipping this step is not harmless — approvers get one email per row.
    *To switch to Option 2 instead:* leave the setting on, add an approval assignment email template to the `Invitee_Approval` process, and enable Setup → Process Automation Settings → **Email Approval Response** so approvers can reply "approve" from a phone. The two halves must move together, or approvers hear nothing at all.
@@ -93,6 +93,12 @@ See [QUALITY.md](QUALITY.md) for what each layer proves, the anti-gaming rules, 
 
 ## Known PoC limits
 
+- **The BMD/AM role split is documented but not built.** The import is BMD's step in the process,
+  yet the code still assumes the importer and the invitee-picker are one person: the import grants
+  live in `Event_AM`, an imported Lead is owned by whoever ran the import, and the *Add Leads* tab
+  lists only Leads the current user owns — so a Lead BMD imports cannot be invited by any AM.
+  The three decisions that unblock it are in
+  [docs/business-process.md](docs/business-process.md#what-the-bmd-split-still-needs).
 - 500-row import cap. Ambiguous matches are listed for manual handling, never guessed at.
 - **A name-first match can tag the wrong person** when a single Contact matches a name that belongs to someone else. Accepted because a tag is append-only history that changes no Contact field and drives no action — see Open Question 12 in design.md, including the condition under which that acceptance expires.
 - **Event history is invisible on the record until an admin adds the related list** to the Contact and Lead layouts. This project does not ship those layouts: overwriting the org's own Contact layout would damage something outside its scope.

@@ -7,11 +7,22 @@ the difference is called out under [Where this departs from the original ask](#w
 
 Source of truth for the detail: [design.md](../design.md). Screen-by-screen summary: [README.md](../README.md).
 
+## Who does what
+
+| Role | Owns |
+|---|---|
+| **BMD** | Step 1 only — uploading the attendee list, reviewing the match preview, applying it |
+| **AM** | Steps 2–4 and 7 — creating the event, choosing invitees, submitting their own batch, exporting the approved list |
+| **Approver** | Step 5 — resolved per invitee: Account Owner, Lead Owner, or the submitting AM's manager |
+
+The BMD/AM split is new and the build does not yet implement it — see
+[What the BMD split still needs](#what-the-bmd-split-still-needs).
+
 ## The process in one paragraph
 
-An AM uploads a CSV of attendees collected elsewhere. The import **identifies** each person
+A BMD user uploads a CSV of attendees collected elsewhere. The import **identifies** each person
 against records already in the org and writes an attendance log — it never creates or edits a
-Contact, and only creates a Lead for someone who matches nobody. Separately, the AM creates a
+Contact, and only creates a Lead for someone who matches nobody. Separately, an AM creates a
 Marketing Event and adds invitees to it from their own Accounts' Contacts and their own Leads.
 Each AM submits **their own batch** into the standard Approval Process, which routes each row
 to a single resolved approver: the Account Owner for a customer Contact, the Lead Owner for
@@ -23,6 +34,7 @@ are notified, and the approved list is read and exported from standard reports.
 
 ```mermaid
 flowchart TD
+    classDef bmd fill:#ede9fe,stroke:#6d28d9,color:#2e1065
     classDef am fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3a
     classDef approver fill:#fef3c7,stroke:#b45309,color:#3a2600
     classDef system fill:#e5e7eb,stroke:#4b5563,color:#111827
@@ -30,19 +42,19 @@ flowchart TD
     classDef stop fill:#fee2e2,stroke:#b91c1c,color:#450a0a
 
     %% ======== 1 · Import ========
-    subgraph IMPORT["1 · Import the attendee list — LWC importWizard"]
+    subgraph IMPORT["1 · Import the attendee list — BMD · LWC importWizard"]
         direction TB
-        I0(["AM has a list collected<br/>outside Salesforce"]):::am
-        I1["Upload .csv — strict UTF-8<br/>delimiter sniffed · max 500 rows<br/>Event name comes per row"]:::am
+        I0(["BMD holds a list collected<br/>outside Salesforce"]):::bmd
+        I1["Upload .csv — strict UTF-8<br/>delimiter sniffed · max 500 rows<br/>Event name comes per row"]:::bmd
         I2["Parse in the browser<br/>de-dup by name + company + email + event"]:::system
         I3{"Row has a name<br/>AND an Event value?"}:::system
         SKIP["Skipped<br/>reason shown, nothing written"]:::stop
         I4["previewMatches — nothing is written<br/>cascade: Name → Company → Email<br/>Contacts first, then unconverted Leads"]:::system
         I5{"How many candidates<br/>survive the cascade?"}:::system
         AMB["Ambiguous — never guessed<br/>manual-review CSV download"]:::stop
-        I6["AM reviews the preview and ticks rows<br/>Ambiguous + Skipped unticked by default"]:::am
+        I6["BMD reviews the preview and ticks rows<br/>Ambiguous + Skipped unticked by default"]:::bmd
         I7["applyChanges — re-classified server-side<br/>1 · insert Leads for the unmatched<br/>2 · upsert history on Unique_Key__c"]:::system
-        NEWLEAD[("New Lead<br/>Company verbatim · owner = importing AM<br/>LeadSource = Event Import")]:::data
+        NEWLEAD[("New Lead<br/>Company verbatim · LeadSource = Event Import<br/>owner = the importing BMD user")]:::data
         HIST[("Event_History__c — attendance log<br/>Match_Basis__c records how it matched<br/>upsert keyed, so a re-run adds nothing")]:::data
         NOWRITE["No Contact created, changed or deleted<br/>No Account ever created"]:::stop
         HISTEND(["Reportable history — and it ends here<br/>premise 13: no link to Event_Invitee__c,<br/>nothing reconciles the two"]):::data
@@ -60,7 +72,7 @@ flowchart TD
     end
 
     %% ======== 2-3 · Event + selection ========
-    subgraph BUILD["2–3 · Create the event, add invitees — LWC contactSelector"]
+    subgraph BUILD["2–3 · Create the event, add invitees — AM · LWC contactSelector"]
         direction TB
         B1(["AM creates Marketing_Event__c<br/>standard record form"]):::am
         B2{"Which invitee<br/>source?"}:::am
@@ -79,7 +91,8 @@ flowchart TD
         B5 -- "yes, still live" --> HIDDEN
     end
 
-    NEWLEAD -.->|"reachable on the Add Leads tab<br/>once owned by this AM"| B4
+    GAP["⚠ Not reachable as built.<br/>The Add Leads tab lists OwnerId = me only,<br/>so a Lead the BMD user imported is invisible<br/>to the AM until ownership moves"]:::stop
+    NEWLEAD -.-> GAP -.-> B4
 
     %% ======== 4 · Submit ========
     subgraph SUBMIT["4 · Submit — each AM submits only their own batch"]
@@ -161,7 +174,8 @@ flowchart TD
 Invitation and approval state lives on `Event_Invitee__c` and only there. Someone can be logged
 as having attended an event they were never invited to, and vice versa; no code reconciles them
 (premise 13). The one thread between the halves is the dotted line from a newly created Lead to
-the *Add Leads* tab — the import is what puts a professor in the org at all.
+the *Add Leads* tab — the import is what puts a professor in the org at all. **Moving the import
+to BMD cuts that thread**, which is why it is drawn through a warning node; see below.
 
 **Status is per invitee, never per event.** Multiple AMs submit independent batches against the
 same event, so an event-level state machine would deadlock: one AM's pending batch would block
@@ -177,6 +191,37 @@ control the workflow exists to provide, for exactly the invitees nobody has vett
 goes to the manual-review list rather than being guessed at; an unroutable submit fails whole
 rather than partially, so the AM's Draft count still matches what they just sent. Both are
 choices, and both cost a manual step to recover from.
+
+## What the BMD split still needs
+
+The diagram shows BMD running step 1. The build does not yet distinguish the two roles — it was
+written when the importer and the invitee-picker were the same person, and three things depend
+on that assumption. None is a large change, but each needs a decision that is not ours to make.
+
+**1 · BMD has no way in.** The *Import Contacts* tab and `ContactImportController` are granted by
+the `Event_AM` permission set only (`Event_AM.permissionset-meta.xml`). A BMD user either gets
+`Event_AM` — which also hands them event creation, the selector and the reports — or the import
+grants split out into an `Event_BMD` set. The second is the point of having two roles.
+
+**2 · Imported Leads land in the wrong hands.** `ContactImportController` does not set `OwnerId`,
+so a new Lead is owned by whoever ran the import. The *Add Leads* tab lists
+`OwnerId = :UserInfo.getUserId()` (`InviteeSelectorController.cls:135`), so under the split every
+Lead the import creates is owned by BMD and **no AM can ever select it**. The professor gets into
+the org and then cannot be invited — the one thing creating them was for. Three ways out, in
+rough order of how much they change:
+
+- assign imported Leads to an AM at apply time (needs a rule for *which* AM — the CSV does not say);
+- widen the tab's scope from ownership to a queue or sharing rule the AMs can read;
+- keep BMD ownership and let AMs invite Leads they do not own, which is the next problem.
+
+**3 · Approval would route back to BMD.** If an AM did somehow submit a BMD-owned Lead, rung 2
+of the ladder — *Lead Owner, unless the submitter owns it* — resolves the approver to **the BMD
+user who ran the import**. That rung exists to reach the person who holds the relationship; a
+marketing-ops importer is not that person and is not an approver at all. Splitting the roles
+means rung 2 needs to say so, or imported Leads need an owner who is a legitimate approver.
+
+Until these are settled, the split is documented but not deployed: today's org still has one role
+doing both jobs.
 
 ## Where this departs from the original ask
 
