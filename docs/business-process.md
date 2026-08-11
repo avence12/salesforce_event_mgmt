@@ -9,37 +9,43 @@ Source of truth for the detail: [design.md](../design.md). Screen-by-screen summ
 
 ## Who does what
 
-| Role | Owns |
-|---|---|
-| **BMD** | Step 1 only — uploading the attendee list, reviewing the match preview, applying it |
-| **AM** | Steps 2–4 and 7 — creating the event, choosing invitees, submitting their own batch, exporting the approved list |
-| **Approver** | Step 5 — resolved per invitee: Account Owner, Lead Owner, or the submitting AM's manager |
+**BMD is a new role.** It runs the whole proposing half of the process — import, event creation,
+and putting forward the attendee list — which leaves the **AM as the approver**, signing off the
+guests from accounts they own. That is the shape [requirement.md](../requirement.md) described
+all along ("送出給 Account Owner"); until now one person did both halves.
 
-The BMD/AM split is new and the build does not yet implement it — see
-[What the BMD split still needs](#what-the-bmd-split-still-needs).
+| Role | Owns | Existing permission set |
+|---|---|---|
+| **BMD** | Steps 1–4 and 7 — import the list, create the event, propose the invitees, submit them, export the approved result | `Event_AM` describes this job, under the wrong name |
+| **AM** — an Account Owner | Step 5 for customer Contacts — approve or reject guests from the accounts they own | `Event_Approver` |
+| **BMD's manager** | Step 5 for Leads — the ladder's fallback rung, since BMD owns the Leads it imported | `Event_Approver` |
+
+The split is documented here and **not yet deployed**: one code path assumes the proposer owns
+accounts, and no BMD user does. See [What the BMD split still needs](#what-the-bmd-split-still-needs).
 
 ## The process in one paragraph
 
 A BMD user uploads a CSV of attendees collected elsewhere. The import **identifies** each person
 against records already in the org and writes an attendance log — it never creates or edits a
-Contact, and only creates a Lead for someone who matches nobody. Separately, an AM creates a
-Marketing Event and adds invitees to it from their own Accounts' Contacts and their own Leads.
-Each AM submits **their own batch** into the standard Approval Process, which routes each row
-to a single resolved approver: the Account Owner for a customer Contact, the Lead Owner for
-someone else's Lead, otherwise the submitter's manager. Approvers decide from the standard
-Approvals list on desktop or the mobile app. When an AM's batch has no pending rows left, they
-are notified, and the approved list is read and exported from standard reports.
+Contact, and only creates a Lead for someone who matches nobody. The same BMD user creates a
+Marketing Event and proposes its invitees: Contacts from the accounts the guests belong to, and
+the Leads the import created for guests with no customer relationship.
+Each BMD user submits **their own batch** into the standard Approval Process, which routes each row
+to a single resolved approver: the **Account Owner — the AM** — for a customer Contact, otherwise
+the submitter's manager, which is where imported Leads land because BMD owns them. AMs decide from the standard
+Approvals list on desktop or the mobile app. When a batch has no pending rows left, its submitter
+is notified, and the approved list is read and exported from standard reports.
 
 ## Flow diagram
 
 ```mermaid
 flowchart TD
     classDef bmd fill:#ede9fe,stroke:#6d28d9,color:#2e1065
-    classDef am fill:#dbeafe,stroke:#1d4ed8,color:#0b1b3a
-    classDef approver fill:#fef3c7,stroke:#b45309,color:#3a2600
+    classDef am fill:#fef3c7,stroke:#b45309,color:#3a2600
     classDef system fill:#e5e7eb,stroke:#4b5563,color:#111827
     classDef data fill:#dcfce7,stroke:#15803d,color:#052e16
     classDef stop fill:#fee2e2,stroke:#b91c1c,color:#450a0a
+    classDef todo fill:#ffedd5,stroke:#c2410c,color:#431407
 
     %% ======== 1 · Import ========
     subgraph IMPORT["1 · Import the attendee list — BMD · LWC importWizard"]
@@ -72,12 +78,12 @@ flowchart TD
     end
 
     %% ======== 2-3 · Event + selection ========
-    subgraph BUILD["2–3 · Create the event, add invitees — AM · LWC contactSelector"]
+    subgraph BUILD["2–3 · Create the event, propose the invitees — BMD · LWC contactSelector"]
         direction TB
-        B1(["AM creates Marketing_Event__c<br/>standard record form"]):::am
-        B2{"Which invitee<br/>source?"}:::am
-        B3["Add Contacts tab<br/>Accounts the AM owns or is on the team of<br/>grouped by Account"]:::am
-        B4["Add Leads tab<br/>Leads the AM owns, unconverted<br/>grouped by Company text"]:::am
+        B1(["BMD creates Marketing_Event__c<br/>standard record form"]):::bmd
+        B2{"Which invitee<br/>source?"}:::bmd
+        B3["Add Contacts tab — grouped by Account<br/>⚠ scoped to Accounts the current user owns or is<br/>on the team of. A BMD user owns none, so as built<br/>this list comes back empty"]:::todo
+        B4["Add Leads tab<br/>Leads BMD owns, unconverted<br/>grouped by Company text"]:::bmd
         B5{"Already an invitee<br/>on this event?"}:::system
         HIDDEN["Filtered out of the list"]:::stop
         B6["Create Event_Invitee__c — Status = Draft<br/>Added_By__c = me<br/>Unique_Key__c forbids duplicates"]:::system
@@ -91,17 +97,16 @@ flowchart TD
         B5 -- "yes, still live" --> HIDDEN
     end
 
-    GAP["⚠ Not reachable as built.<br/>The Add Leads tab lists OwnerId = me only,<br/>so a Lead the BMD user imported is invisible<br/>to the AM until ownership moves"]:::stop
-    NEWLEAD -.-> GAP -.-> B4
+    NEWLEAD -.->|"BMD imported it, so BMD owns it —<br/>and BMD is who proposes invitees"| B4
 
     %% ======== 4 · Submit ========
-    subgraph SUBMIT["4 · Submit — each AM submits only their own batch"]
+    subgraph SUBMIT["4 · Submit — each BMD user submits only their own batch"]
         direction TB
-        S1["Submit My Invitees for Approval<br/>acts on my Draft rows only"]:::am
+        S1["Submit My Invitees for Approval<br/>acts on my Draft rows only"]:::bmd
         S2{"Resolve Approver__c<br/>once, at submit time"}:::system
-        S3["Account Owner<br/>Contact__c is set"]:::system
-        S4["Lead Owner<br/>Lead__c set, owner ≠ submitter"]:::system
-        S5["Submitter's Manager — fallback<br/>incl. self-owned Leads, so no AM<br/>approves their own guests"]:::system
+        S3["Account Owner — the AM<br/>Contact__c is set · the main path"]:::system
+        S4["Lead Owner<br/>Lead__c set, owner ≠ submitter<br/>skipped: BMD owns what BMD imported"]:::system
+        S5["Submitter's Manager — fallback<br/>where imported Leads land, so no BMD user<br/>approves the guests they proposed"]:::system
         S6{"Every row routed?"}:::system
         S9["All-or-nothing refusal<br/>named error · rows stay Draft"]:::stop
         S7["Approval.process — the process's initial<br/>submission action sets Pending Approval<br/>record locked while pending"]:::system
@@ -119,11 +124,11 @@ flowchart TD
     B7 --> S1
 
     %% ======== 5 · Approve ========
-    subgraph APPROVE["5 · Approve — standard Approval Process, no custom code"]
+    subgraph APPROVE["5 · Approve — AM · standard Approval Process, no custom code"]
         direction TB
-        P1["Approver opens the bell or email link,<br/>then the standard Approvals list<br/>desktop or Salesforce Mobile App"]:::approver
-        P2["Mass-select the pending items"]:::approver
-        P3{"Approve or reject?"}:::approver
+        P1["AM opens the bell or email link,<br/>then the standard Approvals list<br/>desktop or Salesforce Mobile App"]:::am
+        P2["Mass-select the pending items"]:::am
+        P3{"Approve or reject?"}:::am
         P4["Status → Approved<br/>Decided_At__c stamped"]:::system
         P5["Status → Rejected<br/>Decided_At__c stamped · final, single step"]:::system
         P6["Back into the pool: re-adding on Screen 3<br/>resets this same row to Draft<br/>a second row is impossible — Unique_Key__c"]:::stop
@@ -140,8 +145,8 @@ flowchart TD
         direction TB
         C1["Flow Invitee_Decision_Completion<br/>after update, Status → Approved or Rejected<br/>the Flow is only the trigger"]:::system
         C2["EventNotificationService.notifyCompletions<br/>bulk-safe: 40 decisions in one transaction,<br/>one call, one email"]:::system
-        C3{"Zero Pending rows left<br/>for this AM on this event?"}:::system
-        C4["Email + bell to the AM<br/>X approved / Y rejected"]:::system
+        C3{"Zero Pending rows left for the<br/>submitting BMD user on this event?"}:::system
+        C4["Email + bell to the BMD submitter<br/>X approved / Y rejected"]:::system
         C5["Say nothing yet"]:::system
         ROLLUP[("Marketing_Event__c roll-ups<br/>Approved / Pending / Rejected counts —<br/>counts, not a status: batches are independent")]:::data
 
@@ -156,11 +161,11 @@ flowchart TD
     P5 -.-> ROLLUP
 
     %% ======== 7 · Report ========
-    subgraph REPORT["7 · Read and export — standard reports, no custom code"]
+    subgraph REPORT["7 · Read and export — BMD · standard reports, no custom code"]
         direction TB
-        R1["Reports → Event Management<br/>Approved Invitees — by Event<br/>My Approved Invitees"]:::am
-        R2["Filter: one event or all events ·<br/>Decided_At range, evaluated in the<br/>running user's timezone by the platform"]:::am
-        R3(["Export → CSV or XLSX"]):::am
+        R1["Reports → Event Management<br/>Approved Invitees — by Event<br/>My Approved Invitees = my own batch"]:::bmd
+        R2["Filter: one event or all events ·<br/>Decided_At range, evaluated in the<br/>running user's timezone by the platform"]:::bmd
+        R3(["Export → CSV or XLSX"]):::bmd
 
         R1 --> R2 --> R3
     end
@@ -174,64 +179,88 @@ flowchart TD
 Invitation and approval state lives on `Event_Invitee__c` and only there. Someone can be logged
 as having attended an event they were never invited to, and vice versa; no code reconciles them
 (premise 13). The one thread between the halves is the dotted line from a newly created Lead to
-the *Add Leads* tab — the import is what puts a professor in the org at all. **Moving the import
-to BMD cuts that thread**, which is why it is drawn through a warning node; see below.
+the *Add Leads* tab — the import is what puts a professor in the org at all. Giving BMD both
+steps is what keeps that thread intact: the Lead is owned by the person who will later pick it.
 
-**Status is per invitee, never per event.** Multiple AMs submit independent batches against the
-same event, so an event-level state machine would deadlock: one AM's pending batch would block
-another's. The event carries roll-up counts instead.
+**Proposing and approving are now different people, which is the point.** BMD builds the list;
+the AM who owns the account decides whether their customer is invited. The approver ladder
+already produces that split with no change — rung 1 resolves a customer Contact to
+`Account.OwnerId`, which *is* the AM. Rung 2 stops firing entirely under this model, because
+BMD owns the Leads it imported and is also the submitter, so imported Leads fall to rung 3 and
+are approved by BMD's manager.
+
+**Status is per invitee, never per event.** Several BMD users can submit independent batches
+against one shared event, so an event-level state machine would deadlock: one pending batch
+would block another's. The event carries roll-up counts instead.
 
 **Routing is resolved once and frozen.** `Approver__c` is written at submit time, not derived.
 An ownership change mid-approval cannot silently reroute an item somebody is already looking at.
 The fallback rung matters most: a Lead the submitter owns routes to their *manager*, because
-"the Lead Owner approves" would otherwise mean the AM approving their own guests — removing the
-control the workflow exists to provide, for exactly the invitees nobody has vetted.
+"the Lead Owner approves" would otherwise mean BMD approving the very guests it just proposed —
+removing the control the workflow exists to provide, for exactly the invitees nobody has vetted.
 
 **Two of the dead ends are refusals, not gaps.** An ambiguous import row writes nothing and
 goes to the manual-review list rather than being guessed at; an unroutable submit fails whole
-rather than partially, so the AM's Draft count still matches what they just sent. Both are
-choices, and both cost a manual step to recover from.
+rather than partially, so the submitter's Draft count still matches what they just sent. Both
+are choices, and both cost a manual step to recover from.
 
 ## What the BMD split still needs
 
-The diagram shows BMD running step 1. The build does not yet distinguish the two roles — it was
-written when the importer and the invitee-picker were the same person, and three things depend
-on that assumption. None is a large change, but each needs a decision that is not ours to make.
+Giving BMD steps 1–4 as a block is a much better fit than splitting the import off on its own:
+because BMD both imports a Lead and picks it, ownership stays with one person and the approver
+ladder lands where it should with no change to the routing code. **One thing does not survive
+the move**, and two are configuration.
 
-**1 · BMD has no way in.** The *Import Contacts* tab and `ContactImportController` are granted by
-the `Event_AM` permission set only (`Event_AM.permissionset-meta.xml`). A BMD user either gets
-`Event_AM` — which also hands them event creation, the selector and the reports — or the import
-grants split out into an `Event_BMD` set. The second is the point of having two roles.
+**1 · The Contacts tab returns nothing for a BMD user.** This is the blocker.
+`getSelectableContacts` narrows to `AccountId IN :getMyAccountIds()`, and `getMyAccountIds`
+(`InviteeSelectorController.cls:452`) is *accounts the running user owns, plus accounts they sit
+on the Account Team of*. That was right when the proposer was the AM. A BMD user owns no
+accounts, so the query is against an empty set and the tab renders an empty list — the whole of
+step 3 for customer Contacts stops working. Two ways out:
 
-**2 · Imported Leads land in the wrong hands.** `ContactImportController` does not set `OwnerId`,
-so a new Lead is owned by whoever ran the import. The *Add Leads* tab lists
-`OwnerId = :UserInfo.getUserId()` (`InviteeSelectorController.cls:135`), so under the split every
-Lead the import creates is owned by BMD and **no AM can ever select it**. The professor gets into
-the org and then cannot be invited — the one thing creating them was for. Three ways out, in
-rough order of how much they change:
+- **Config, no code:** add every BMD user to the Account Team of every account they may propose
+  from. Works today, needs Account Teams enabled, and does not scale past a demo — it is a
+  membership row per BMD user per account, maintained forever.
+- **Code:** give the selector a second scope for proposers — all Contacts, or all Contacts under
+  accounts with an owner — and keep the Account-Team narrowing for anyone who is an AM. The
+  approval routing needs no change either way: rung 1 already resolves each Contact to its own
+  Account Owner, so a BMD user proposing across 50 accounts fans out to 50 approvers correctly.
 
-- assign imported Leads to an AM at apply time (needs a rule for *which* AM — the CSV does not say);
-- widen the tab's scope from ownership to a queue or sharing rule the AMs can read;
-- keep BMD ownership and let AMs invite Leads they do not own, which is the next problem.
+Note that `addInvitees` currently trusts the client's account scoping (already a recorded
+hardening item). Widening the read scope makes server-side re-verification worth doing at the
+same time rather than after.
 
-**3 · Approval would route back to BMD.** If an AM did somehow submit a BMD-owned Lead, rung 2
-of the ladder — *Lead Owner, unless the submitter owns it* — resolves the approver to **the BMD
-user who ran the import**. That rung exists to reach the person who holds the relationship; a
-marketing-ops importer is not that person and is not an approver at all. Splitting the roles
-means rung 2 needs to say so, or imported Leads need an owner who is a legitimate approver.
+**2 · The permission sets are named for the old model, not split wrongly.** `Event_AM` grants
+exactly BMD's new job — the *Import Contacts* tab, `ContactImportController`,
+`InviteeSelectorController`, event create, the reports — and `Event_Approver` grants exactly the
+AM's new job. So the fix is a rename to `Event_BMD`, not a new set. A rename is a delete plus a
+create in metadata terms, so it needs the destructive-changes treatment the
+[R3 upgrade checklist](../DEPLOYMENT.md#part-6--r3-upgrade-checklist) already established, and
+assignments have to be re-applied afterwards. Keeping the old name and just assigning it to BMD
+users also works and costs nothing — at the price of a permission set whose name says AM and
+whose contents say BMD.
 
-Until these are settled, the split is documented but not deployed: today's org still has one role
-doing both jobs.
+**3 · Every BMD user needs a Manager.** It was already true of AM users, but it mattered less:
+the manager rung only caught self-owned Leads. Under this model *every* imported Lead reaches
+rung 3, so a BMD user with no Manager set cannot submit any Lead invitee at all — the validation
+rule refuses the whole batch, loudly and by design.
+
+**Not a problem, worth confirming anyway:** the completion notice and *My Approved Invitees*
+both key off `Added_By__c`, so they follow the submitter. That means BMD — not the AM — is
+notified when a batch finishes and is the one who exports. The AM sees their own decisions in
+the Approval History and the shared *Approved Invitees — by Event* report. If the AM is meant
+to receive the finished list too, that is a report subscription, not code.
 
 ## Where this departs from the original ask
 
 | [requirement.md](../requirement.md) | As built | Why |
 |---|---|---|
+| The **AM** imports the list, picks the guests and submits them | **BMD** does all of it; the AM only approves | The proposing work is a marketing-department job. It also puts the AM on the side of the process requirement.md always had them on — signing off their own accounts' guests |
 | Compare the upload against existing Contacts and **update** those whose title or company changed | The import identifies people and writes an attendance log. **Nothing on a Contact is written.** | R4 premise 11 — reconciling contact data moved out of scope; the import must not own Contact fields |
 | Attendees are Contacts | Contacts **or Leads** | An Account means a transacting customer, so a professor or journalist cannot be a Contact; a Contact with no Account is invisible to everyone but its owner, which a shared event cannot use |
-| Send to the **Account Owner** for sign-off | The `Approver__c` ladder: Account Owner → Lead Owner → submitter's Manager | Account Owner was always a proxy for "the AM's manager", which requirement.md says outright; a Lead has no Account, so the rule had to be made explicit |
+| Send to the **Account Owner** for sign-off | The `Approver__c` ladder: Account Owner → Lead Owner → submitter's Manager | Under the BMD model rung 1 *is* the original rule, and it is now the main path. Rung 2 no longer fires — BMD owns what it imports — so Leads reach rung 3, BMD's manager, which is the other half of what requirement.md asked for |
 | A "select all" button on a custom approval screen | Mass-select in the standard **Approvals** list view | R3 — the custom console was a hand-built reimplementation of a platform feature; the standard one also brings record locking and a full approval history |
-| AM exports the approved contacts from the event | Standard **reports**, filtered to one event or across all | R3 — a report is stateless and re-runnable; it also brings scheduled subscriptions for free |
+| The submitter exports the approved contacts from the event | Standard **reports**, filtered to one event or across all | R3 — a report is stateless and re-runnable; it also brings scheduled subscriptions for free |
 
 Two costs of that last row are real and are not written off: the `Exported` status and
 `Exported_Count__c` roll-up are gone, because a report cannot write back to the rows it exported,
