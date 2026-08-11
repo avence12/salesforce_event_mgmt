@@ -55,9 +55,17 @@ is one child record. Three consequences follow, and they are not all obvious:
    design needs an explicit "could not tell" outcome that writes nothing, rather than a
    best guess. See *Ambiguity is an outcome* below.
 3. **Attendance history is a separate object, not a field on Contact.** The requirement said
-   "field"; the chosen shape is a Master-Detail child, `Contact_Event_History__c`. A person
-   attends many events, and a delimited text blob cannot be reported on, sorted, or filtered
-   without string surgery.
+   "field"; the chosen shape is a child object, `Event_History__c`. A person attends many
+   events, and a delimited text blob cannot be reported on, sorted, or filtered without
+   string surgery.
+
+**Amended after review** — Open Question 11 was answered *"Leads must carry event history
+too"*, and that answer rewrites the object's shape. A Master-Detail relationship has exactly
+one parent, so an attendance row cannot be Master-Detail to both Contact and Lead.
+`Event_History__c` therefore takes **two lookups and a validation rule enforcing exactly one**
+— the same two-headed shape `Event_Invitee__c` already uses, for the same reason, with the
+same kind of formula fields so one report covers both. Open Question 10 was answered *"skip
+the empty narrowing step"*, confirming the cascade as designed.
 
 R4 items are marked ★R4. Screens 2–5 are untouched: the Approval Process, the approver
 ladder, the `Lead__c` junction, the `Invitee_*__c` formulas and both reports are all
@@ -71,7 +79,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) 
 
 ## What Makes This Cool
 
-- **Diff-preview import**: upload a .csv and instantly see New / Changed / Unchanged / Company-change rows before anything touches the database — like a "git diff" for contact data.
+- **Diff-preview import**: upload a .csv and instantly see how every row resolves before anything touches the database. ★R4 The preview survived the requirements change even though what it previews did not: it now shows who was matched, who could not be told apart, and who will be created as a Lead — and, because the import no longer writes to Contacts at all, the thing it mostly proves is what *will not* happen.
 - **Multi-AM collaboration on one Event**: every AM adds contacts from their own accounts; batches are independent, nobody blocks anybody.
 - **Approval that respects org structure**: each Account Owner sees only contacts under their accounts, with Select All → Approve in two taps, on desktop or the Salesforce Mobile App.
 
@@ -85,8 +93,8 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) 
 
 ## Premises (confirmed with user)
 
-1. Matching key for import is **Email**; same email with different title/phone ⇒ update.
-2. **Company change is flagged for manual review**, not auto-moved (target Account may not exist; reparenting is risky).
+1. ~~Matching key for import is **Email**; same email with different title/phone ⇒ update.~~ **Superseded by R4 (premise 11):** matching is a name → company → email cascade, and nothing on a Contact is updated ever.
+2. ~~**Company change is flagged for manual review**, not auto-moved.~~ **Superseded by R4:** the import no longer reads a Contact's Account for comparison, so there is no company change to detect. The manual-review download it justified survives, now carrying ambiguous matches instead.
 3. Approval is **grouped by Account Owner**: each Owner independently approves/rejects only contacts under their own accounts.
 4. iOS approval means the Salesforce Mobile App rendering our LWC — no native app.
 5. Export = CSV download of approved contacts — one event at a time from its record page, or every event at once from a dedicated app page, optionally narrowed to the date range the sign-offs happened in.
@@ -157,40 +165,63 @@ Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
 ```
 
 ```
-★R4  Contact_Event_History__c   (Master-Detail → Contact)
-  Contact__c              (Master-Detail → Contact, required)
+★R4  Event_History__c            (standalone object; two lookups, exactly one populated)
+  Contact__c              (Lookup → Contact, optional)
+  Lead__c                 (Lookup → Lead,    optional)
   Event_Name__c           (Text 255, required — the CSV's value verbatim; not validated)
   Imported_On__c          (DateTime, defaulted to NOW)
   Source_File__c          (Text 255 — the uploaded file's name, so a tag can be traced back)
-  Match_Basis__c          (Picklist: Name / Name + Company / Name + Company + Email)
-  Unique_Key__c           (Text 80, unique external ID = Contact Id + normalised event name)
+  Match_Basis__c          (Picklist: Name / Name + Company / Name + Company + Email / Created by import)
+  Unique_Key__c           (Text 80, unique external ID = Contact or Lead Id + normalised event name)
+  Attendee_Name__c        (Formula — BLANKVALUE(Contact__r.Name, Lead__r.Name))
+  Attendee_Email__c       (Formula — BLANKVALUE(Contact__r.Email, Lead__r.Email))
+  Attendee_Org__c         (Formula — BLANKVALUE(Contact__r.Account.Name, Lead__r.Company))
+  Attendee_Type__c        (Formula — IF(ISBLANK(Contact__c), "Lead", "Contact"))
 ```
 
 ★R4 **Why an object and not a field.** The requirement asked for a field on Contact. A
 delimited text blob would have been quicker and is the wrong shape: attendance is a
 one-to-many fact, and in a blob it cannot be grouped, sorted, filtered or counted without
-string surgery in every consumer. As a child object it is a related list for free, reportable
-for free, and countable by a roll-up. The cost is one more object in a schema that already
-has two, and a related list that has to be added to the Contact layout by hand — see
-*Deliverables*.
+string surgery in every consumer. As a child object it is a related list for free and
+reportable for free.
 
-★R4 **Master-Detail, not Lookup.** An attendance record has no meaning without its Contact,
-so it should not outlive one; and sharing is inherited rather than configured a second time.
+★R4 **Two lookups, not Master-Detail — forced by Open Question 11.** The first draft of this
+design made attendance a Master-Detail child of Contact, which is the better relationship in
+isolation. Requiring Leads to carry history as well removes that option outright: a
+Master-Detail has exactly one parent. So the object takes the shape `Event_Invitee__c`
+already uses — two lookups, a validation rule allowing exactly one, and formula fields that
+read correctly whichever is set:
+
+```
+ISBLANK(Contact__c) = ISBLANK(Lead__c)
+  → "An event history row must point at either a Contact or a Lead — not both, and not neither."
+```
+
+**What that costs, stated plainly.** These are consequences of the requirement, not oversights:
+
+| Master-Detail would have given | With two lookups |
+|---|---|
+| Cascade delete — history dies with its person | Needs an explicit delete constraint. `Restrict` would make our log **block deletion of a standard Contact**, which is bad-neighbour behaviour on an object other teams own. The design uses `SetNull`, accepting that deleting a Contact leaves an orphan row rather than blocking the delete. **Verify in the org whether a SetNull cascade re-fires the XOR validation rule** — if it does, deletion breaks and the constraint has to change. |
+| Sharing inherited from the parent | The object needs its own OWD. PoC: Public Read/Write, matching the permissive posture already taken for the event. |
+| Roll-up summary on the parent | **`Contact.Events_Attended__c` is dropped.** A count across a lookup is not a roll-up; it would need a Flow maintaining a counter, which is more machinery than a count deserves. Use a report. |
+
+The gain is that one object, one report, one code path and one `Unique_Key__c` scheme cover
+Contacts and Leads alike — and Leads get history, which is what was asked for.
 
 ★R4 **`Unique_Key__c` is what makes the import safe to re-run.** Re-uploading the same file,
 or the same person appearing on two lists for one event, must not produce two rows: the fact
 being recorded is *"this person was on the list for this event"*, not *"this person was
 imported N times"*. The apply step upserts on this key rather than inserting. Same technique
-as `Event_Invitee__c.Unique_Key__c`, for the same reason.
+as `Event_Invitee__c.Unique_Key__c`, for the same reason. Because the key is built from
+whichever Id is set, a person who exists as both a Contact and a Lead can accumulate two
+parallel histories — the same known gap already recorded for invitees in Open Question 9.
 
 ★R4 **`Match_Basis__c` exists because the matching got weaker.** Under email matching there
 was nothing to record — a match was a match. Matching on name first means a tag can be wrong,
 so each row carries how it was identified. When somebody eventually asks "why does this
 person show as having attended?", the answer is on the record instead of being unknowable.
-
-★R4 Optional roll-up on Contact: `Events_Attended__c` (COUNT of the child), so attendance is
-visible in list views and reports without opening the related list. Adding a field to Contact
-is safe; adding a *layout* for Contact is not, and this design does neither of the latter.
+The fourth value, *Created by import*, marks rows tagged on a Lead the import itself had just
+created — where there was no matching to do.
 
 ★R3 **Two lookups, not one polymorphic field.** A custom lookup cannot reference two objects,
 so the junction carries both and a validation rule enforces exactly one:
@@ -300,23 +331,38 @@ adding Lead invitees would have made it reachable.
    This is the same posture the retired *Company change* classification took — when the data
    does not say, the system says so instead of picking.
 
+   **The cascade runs twice: Contacts first, then Leads.** A customer Contact outranks a
+   Lead for the same person — the same precedence R3 used. Only when the Contact pass finds
+   nothing at all does the identical name → company → email narrowing run against unconverted
+   Leads. Converted Leads are skipped: their Contact will have matched on the first pass.
+
    Classifications collapse from seven to five:
-   - **Matched** — one Contact identified ⇒ will record an event history row.
-   - **Ambiguous** — several Contacts, could not narrow ⇒ nothing written; manual-review list.
-   - **New — Lead** — no Contact matched and no unconverted Lead carries this email ⇒ will
-     create a **Lead** (`Company` verbatim, `LeadSource = 'Event Import'`, owner = the
-     importing AM). Unchanged from R3, and the only remaining way a non-customer guest
-     enters the org. Leads are **not** tagged — see Open Question 11.
-   - **Already a Lead** — no Contact matched, but an unconverted Lead already has this email
-     ⇒ nothing written. Without this every re-import would grow a fresh duplicate Lead.
+   - **Matched — Contact** — one Contact identified ⇒ records an event history row against it.
+   - **Matched — Lead** ★R4 — no Contact, but the cascade identified one unconverted Lead
+     ⇒ records an event history row against the **Lead**. Before Open Question 11 was
+     answered this case wrote nothing, which meant a professor invited to three conferences
+     accumulated no history at all.
+   - **Ambiguous** — several candidates on either pass, could not narrow ⇒ nothing written;
+     manual-review list.
+   - **New — Lead** — nothing matched anywhere ⇒ creates a **Lead** (`Company` verbatim,
+     `LeadSource = 'Event Import'`, owner = the importing AM) **and tags it**
+     (`Match_Basis__c = Created by import`). Creating the person and then not recording why
+     would lose the only reason they were created.
    - **Skipped (invalid)** — no name, or no event value ⇒ nothing written, with a one-line reason.
 
-   Summary stat cards + per-row checkboxes (Matched and New — Lead checked by default).
+   ★R4 Note what disappeared: the R3 *Already a Lead* classification, which existed only to
+   stop re-imports growing duplicate Leads by doing nothing at all. Now that Leads are
+   taggable, that row is a **Matched — Lead** and gets the history it should always have had;
+   duplicate-Lead prevention is a side effect of the match rather than a special case.
+
+   Summary stat cards + per-row checkboxes (everything but Ambiguous and Skipped checked by
+   default).
 
 3. ★R4 **Apply**: `applyChanges(selectedRows)` re-classifies server-side and then does exactly
-   two things — **upsert** `Contact_Event_History__c` on `Unique_Key__c` for Matched rows, and
-   insert Leads for New — Lead rows. No Contact is created, updated or deleted. The result
-   screen reports tags recorded, leads created, and offers the ambiguous-row download.
+   two things — insert Leads for New — Lead rows, then **upsert** `Event_History__c` on
+   `Unique_Key__c` for every identified row, Contact and Lead alike. Lead insertion has to
+   come first so the new Ids exist to tag. **No Contact is created, updated or deleted.** The
+   result screen reports tags recorded, leads created, and offers the ambiguous-row download.
 
    The server-side re-classification is kept even though the blast radius is now small. It
    costs one function call, and "the client tells the server which Contact to write against"
@@ -539,15 +585,16 @@ Net: **5 Apex classes → 3**, **5 LWCs → 3**, and the state machine moves fro
 
 | Item | Note |
 |---|---|
-| Object `Contact_Event_History__c` + 6 fields | Master-Detail child of Contact |
-| `Contact.Events_Attended__c` | Roll-up COUNT; a field on Contact, never a layout |
-| `Event_AM` permission set | Gains CRUD + field access on the new object; **loses Contact edit** |
+| Object `Event_History__c` + 10 fields | Two lookups (Contact, Lead) + 4 formulas; OWD Public Read/Write |
+| Validation rule `Event_History_Is_Contact_Xor_Lead` | Exactly one parent |
+| `Event_AM` permission set | Gains CRUD + field access on the new object and Lead; **loses Contact edit** |
+| ~~`Contact.Events_Attended__c`~~ | **Dropped** — a roll-up cannot summarise across a lookup |
 
 **Modified**
 
 | File | Change | Est. |
 |---|---|---|
-| `ContactImportController` | `classify()` replaced by the narrowing cascade; `applyChanges()` reduced to one upsert plus the Lead insert; `resolveAccounts` and `classifyUnmatched` deleted; Contact insert/update paths deleted | ~+120 / −130 |
+| `ContactImportController` | `classify()` replaced by the narrowing cascade, run twice (Contacts, then Leads); `applyChanges()` reduced to a Lead insert followed by one history upsert; `resolveAccounts` and `classifyUnmatched` deleted; Contact insert/update paths deleted | ~+160 / −130 |
 | `importWizard.js` / `.html` | Event column in `HEADER_MAP`; de-dup key widened; 6 stat tiles → 5; result copy; manual-review download now carries ambiguous rows and their candidates | ~+70 / −60 |
 | `ContactImportControllerTest` | Rewritten: one test per rung of the cascade, the empty-narrowing rule, upsert idempotency, and the two negative assertions (no Contact touched, no Account created) | rewrite |
 | `importWizard` jest suite | Classification names, tile count, Event column | ~30 lines |
@@ -555,19 +602,20 @@ Net: **5 Apex classes → 3**, **5 LWCs → 3**, and the state machine moves fro
 
 **Not shipped, deliberately**
 
-- **No Contact page layout.** Adding the Event History related list means editing the org's own Contact layout, and shipping one would overwrite whatever the company already has there — damage outside this project, to people who never agreed to it. It goes in the post-deploy steps as a manual action instead (Open Question 13).
-- **No `Lead_Event_History__c`.** See Open Question 11.
+- **No Contact or Lead page layout.** Adding the Event History related list means editing the org's own layouts, and shipping one would overwrite whatever the company already has there — damage outside this project, to people who never agreed to it. Both go in the post-deploy steps as manual actions instead (Open Question 13).
+- **No roll-up count of events attended.** Not possible across a lookup; a report answers it.
 
 ### ★R4 Build order
 
 Sequenced so the negative assertions exist before the code that could violate them.
 
-17. Create `Contact_Event_History__c` + fields + the Contact roll-up → verify: deploys, and a hand-inserted row upserts idempotently on `Unique_Key__c`.
-18. Write the failing tests first — *no Contact created/updated/deleted* and *no Account created* — against the **current** controller, and watch them fail. These two assertions are the requirement; everything else is detail.
-19. Replace `classify()` with the narrowing cascade + `Match_Basis__c`, keeping the Lead paths → verify: one test per rung, plus the empty-narrowing rule and the ambiguous case.
-20. Reduce `applyChanges()` to upsert-history + insert-Lead → verify: step 18's assertions now pass.
-21. LWC: Event column, five tiles, ambiguous-row download → verify: jest suite green.
-22. Permission set (add the object, **remove Contact edit**), demo CSV, README/QUALITY updates → verify: full gauntlet.
+17. Create `Event_History__c` + 10 fields + the XOR validation rule → verify: deploys; a hand-inserted row upserts idempotently on `Unique_Key__c`; both-set and neither-set are refused.
+18. **In the org, delete a tagged Contact and a tagged Lead** (Open Question 14). This is step two, not step twenty, because a bad answer changes the delete constraint and therefore the object — and finding that out after the controller is written means rewriting both.
+19. Write the failing tests first — *no Contact created/updated/deleted* and *no Account created* — against the **current** controller, and watch them fail. These two assertions are the requirement; everything else is detail.
+20. Replace `classify()` with the narrowing cascade + `Match_Basis__c`, run over Contacts then Leads → verify: one test per rung on each pass, plus the empty-narrowing rule, the ambiguous case, and Contact-beats-Lead precedence.
+21. Reduce `applyChanges()` to insert-Leads-then-upsert-history → verify: step 19's assertions now pass, and a newly created Lead comes back tagged `Created by import`.
+22. LWC: Event column, five tiles, ambiguous-row download → verify: jest suite green.
+23. Permission set (add the object, **remove Contact edit**), demo CSV, README/QUALITY/DEPLOYMENT updates → verify: full gauntlet.
 
 ### ★R3 What still needs an org
 
@@ -617,10 +665,11 @@ and the reports. That containment is the single design decision this revision re
 7. ★R3 What is the org's **Lead OWD**? Under Private, approvers may not be able to see the Lead behind an invitee they are approving. PoC assumes Public Read Only.
 8. ★R3 Who should own Leads created by the import (Screen 1)? Currently the importing AM — which then routes their approval to *their own manager* by ladder rule 2's exclusion. That is intended, but it means a large academic import concentrates approval work on one manager.
 9. ★R3 Should the same person existing as both a Contact (at a customer) and a Lead (personal/academic capacity) be prevented from being invited twice to one event? `Unique_Key__c` cannot catch this — the two rows have different keys. Deliberately out of PoC scope; flagged because a professor who consults for a customer is exactly the person this happens to.
-10. ★R4 **Should a narrowing step that empties the candidate set be skipped, or end the match?** The design skips it, on the reading that a stale or differently-spelled company should not erase a person who was found by name. Strict AND across all three criteria is the alternative: far simpler, and it drops exactly the people who have changed jobs — the ones a conference list is most likely to be out of date about. **Awaiting confirmation.**
-11. ★R4 **Should Leads carry event history too?** As designed they do not: a guest who is already a Lead is left completely untouched, so a professor invited to three conferences accumulates no history at all. Making Leads symmetrical means a second child object (`Lead_Event_History__c`) or reworking the child to a polymorphic parent, which Master-Detail cannot do. The requirement only ever said "Contact"; this restraint may be exactly right, or may be a gap that shows up the first time someone asks which conferences a professor has been to. **Awaiting confirmation.**
-12. ★R4 **Is a name-first match acceptable given it can tag the wrong person?** Two people with the same name at the same company, in a file with no email, are indistinguishable and land in Ambiguous — that case is handled. The unhandled one is a *single* Contact matching a name that actually belongs to somebody else entirely: it will be tagged, wrongly, with no signal. The judgement is that this is tolerable because a tag is append-only history — it destroys nothing, changes no Contact data, and has no effect on invitation or approval. That is a claim about the business's tolerance, not a technical fact. **Awaiting confirmation.**
-13. ★R4 Should the event history be visible on the Contact at all in this PoC? The related list requires a Contact page-layout change, which this project deliberately does not ship (see *Deliverables*). Until an admin adds it by hand, the data exists and is reportable but is invisible on the record.
+10. ★R4 ~~Should a narrowing step that empties the candidate set be skipped, or end the match?~~ **Settled: skipped.** A stale or differently-spelled company does not erase a person found by name. Strict AND was the alternative and would have dropped exactly the people who changed jobs.
+11. ★R4 ~~Should Leads carry event history too?~~ **Settled: yes.** This is what forced `Event_History__c` off Master-Detail and onto two lookups, with the costs tabled under *Data model* — no cascade delete, its own OWD, and no roll-up count on Contact. Worth re-reading that table: the answer bought symmetry and paid for it in three places.
+12. ★R4 ~~Is a name-first match acceptable given it can tag the wrong person?~~ **Settled: accepted.** A single Contact matching a name that belongs to somebody else is tagged wrongly with no signal, and that is understood. What makes it survivable is that a tag is append-only history: it destroys nothing, changes no Contact field, and has no effect on invitation or approval. `Match_Basis__c` records how each tag was reached so a wrong one can at least be explained afterwards. **If a name-only match is ever used for something that acts on people — a mailing, an invitation, a report someone bills from — this decision needs revisiting first.**
+13. ★R4 Should the event history be visible on the Contact at all in this PoC? The related list requires a Contact page-layout change, which this project deliberately does not ship (see *Deliverables*). Until an admin adds it by hand, the data exists and is reportable but is invisible on the record. The same now applies to the Lead layout.
+14. ★R4 Does a `SetNull` delete constraint re-fire the `Event_History_Is_Contact_Xor_Lead` validation rule when a Contact or Lead is deleted? If it does, deleting a tagged person fails and the constraint must change — and every alternative is worse (`Restrict` blocks deleting standard records; `Cascade` may not be permitted to a standard object at all). **Must be tested in the org before this is called done.**
 
 ## Success Criteria
 
