@@ -19,8 +19,8 @@
     <flexiPageRegions>
         <itemInstances>
             <componentInstance>
-                <componentName>contactSelector</componentName>
-                <identifier>c_contactSelector</identifier>
+                <componentName>attendeeSelector</componentName>
+                <identifier>c_attendeeSelector</identifier>
             </componentInstance>
         </itemInstances>
         <mode>Replace</mode>

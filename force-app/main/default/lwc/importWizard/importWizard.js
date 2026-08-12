@@ -1,12 +1,14 @@
 import { LightningElement, track } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
-import previewMatches from '@salesforce/apex/ContactImportController.previewMatches';
-import applyChanges from '@salesforce/apex/ContactImportController.applyChanges';
+import previewMatches from '@salesforce/apex/AttendeeImportController.previewMatches';
+import applyChanges from '@salesforce/apex/AttendeeImportController.applyChanges';
 import { downloadCsv, csvRow } from 'c/csvDownload';
 
 const MAX_ROWS = 500;
 
-// Header detection: normalized header cell → canonical field
+// Header detection: normalized header cell → canonical field.
+// `event` is gone with R5: an import records people, not attendance, so a file's
+// Event column is simply an unrecognised header now and is ignored like any other.
 const HEADER_MAP = {
     firstname: 'firstName',
     first: 'firstName',
@@ -29,22 +31,17 @@ const HEADER_MAP = {
     mobile: 'mobile',
     mobilephone: 'mobile',
     phone: 'mobile',
-    cell: 'mobile',
-    event: 'event',
-    eventname: 'event',
-    campaign: 'event'
+    cell: 'mobile'
 };
 
-const APPLYABLE = new Set(['MATCHED_CONTACT', 'MATCHED_LEAD', 'NEW_LEAD']);
+const APPLYABLE = new Set(['NEW_ATTENDEE', 'EXISTING_ATTENDEE']);
 
-// Preview order: rows needing a human decision first, then what will be applied.
+// Preview order: rows the user may want to fix first, then what will be applied.
 // With a 500-row file the ones that matter would otherwise be buried mid-wall.
 const SORT_RANK = {
-    AMBIGUOUS: 0, // manual review — the whole reason to read this table
-    SKIPPED: 1, // invalid input the user may want to fix and re-upload
-    MATCHED_CONTACT: 2,
-    MATCHED_LEAD: 3,
-    NEW_LEAD: 4
+    SKIPPED: 0, // invalid input the user may want to fix and re-upload
+    NEW_ATTENDEE: 1,
+    EXISTING_ATTENDEE: 2
 };
 
 export default class ImportWizard extends LightningElement {
@@ -53,10 +50,8 @@ export default class ImportWizard extends LightningElement {
     @track rowCount = 0;
     @track previewRows = [];
     @track stats = {
-        matchedCount: 0,
-        matchedLeadCount: 0,
-        newLeadCount: 0,
-        ambiguousCount: 0,
+        newCount: 0,
+        existingCount: 0,
         skippedCount: 0
     };
     @track applyResult = null;
@@ -92,13 +87,13 @@ export default class ImportWizard extends LightningElement {
         return this.previewRows.filter((r) => r.selected).length;
     }
     get applyLabel() {
-        return `Apply ${this.selectedCount} Change${this.selectedCount === 1 ? '' : 's'}`;
+        return `Import ${this.selectedCount} Attendee${this.selectedCount === 1 ? '' : 's'}`;
     }
     get applyDisabled() {
         return this.loading || this.selectedCount === 0;
     }
-    get hasAmbiguous() {
-        return this.stats.ambiguousCount > 0;
+    get hasSkipped() {
+        return this.stats.skippedCount > 0;
     }
 
     async handleFileChange(event) {
@@ -111,7 +106,7 @@ export default class ImportWizard extends LightningElement {
             const rows = await this.parseFile(file);
             if (rows.length === 0)
                 throw new Error(
-                    'No data rows found. Expected headers like: First Name, Last Name, Email, Company, Event.'
+                    'No data rows found. Expected headers like: First Name, Last Name, Email, Company.'
                 );
             if (rows.length > MAX_ROWS)
                 throw new Error(
@@ -242,15 +237,16 @@ export default class ImportWizard extends LightningElement {
                 ] || null
         );
         // Naming what was actually read beats "no data rows found" — the usual causes
-        // are a delimiter we could not sniff or a file that is not the contact list.
+        // are a delimiter we could not sniff or a file that is not an attendee list.
         if (!headers.some(Boolean)) {
             throw new Error(
                 `No recognised column headers. The first row read as: ${raw[0].join(' | ')}. ` +
-                    'Expected: First Name, Last Name, Email, Company, Event (Title and Mobile are optional).'
+                    'Expected: First Name, Last Name, Email, Company (Title and Mobile are optional).'
             );
         }
-        // In-file de-dup is by person AND event: an email is no longer a row's identity,
-        // and the same person at two events is two facts rather than a duplicate.
+        // In-file de-dup mirrors the server's Unique_Key__c exactly: name, company and
+        // email are the person's identity, so collapsing here and collapsing there
+        // cannot disagree about how many people the file contains.
         const seen = new Map(); // last occurrence wins
         const unkeyed = [];
         for (let i = 1; i < raw.length; i++) {
@@ -260,8 +256,7 @@ export default class ImportWizard extends LightningElement {
                 email: '',
                 title: '',
                 company: '',
-                mobile: '',
-                event: ''
+                mobile: ''
             };
             headers.forEach((field, col) => {
                 if (field && raw[i][col] !== undefined && raw[i][col] !== null) {
@@ -269,29 +264,21 @@ export default class ImportWizard extends LightningElement {
                 }
             });
             if (!row.firstName && !row.lastName && !row.email) continue; // fully empty line
-            const key = [row.firstName, row.lastName, row.company, row.email, row.event]
-                .map((v) => v.toLowerCase().trim())
+            const key = [row.lastName, row.firstName, row.company, row.email]
+                .map((v) => v.toLowerCase().trim().replace(/\s+/g, ' '))
                 .join('|');
-            if (row.lastName && row.event) seen.set(key, row);
+            if (row.lastName) seen.set(key, row);
             else unkeyed.push(row); // kept so the server reports them as SKIPPED
         }
         return [...seen.values(), ...unkeyed];
     }
 
     buildPreview(results) {
-        const stats = {
-            matchedCount: 0,
-            matchedLeadCount: 0,
-            newLeadCount: 0,
-            ambiguousCount: 0,
-            skippedCount: 0
-        };
+        const stats = { newCount: 0, existingCount: 0, skippedCount: 0 };
         this.previewRows = results.map((r, idx) => {
             const cls = r.classification;
-            if (cls === 'MATCHED_CONTACT') stats.matchedCount++;
-            else if (cls === 'MATCHED_LEAD') stats.matchedLeadCount++;
-            else if (cls === 'NEW_LEAD') stats.newLeadCount++;
-            else if (cls === 'AMBIGUOUS') stats.ambiguousCount++;
+            if (cls === 'NEW_ATTENDEE') stats.newCount++;
+            else if (cls === 'EXISTING_ATTENDEE') stats.existingCount++;
             else stats.skippedCount++;
             const name = [r.row.firstName, r.row.lastName].filter(Boolean).join(' ') || '(no name)';
             return {
@@ -299,29 +286,16 @@ export default class ImportWizard extends LightningElement {
                 row: r.row,
                 name,
                 email: r.row.email,
+                company: r.row.company,
                 classification: cls,
                 typeLabel:
                     {
-                        MATCHED_CONTACT: 'Matched',
-                        MATCHED_LEAD: 'Matched Lead',
-                        NEW_LEAD: 'New Lead',
-                        AMBIGUOUS: 'Ambiguous',
+                        NEW_ATTENDEE: 'New',
+                        EXISTING_ATTENDEE: 'Already known',
                         SKIPPED: 'Skipped'
                     }[cls] || cls,
-                badgeClass:
-                    cls === 'SKIPPED' || cls === 'AMBIGUOUS'
-                        ? 'slds-badge slds-theme_warning'
-                        : 'slds-badge',
-                // For a match, say how it was reached — a name-only match is the one
-                // that can be wrong, so it should not look identical to a full match.
-                changeText:
-                    (r.candidates && r.candidates.length
-                        ? `Could not separate: ${r.candidates.join(' | ')}`
-                        : '') ||
-                    (r.matchBasis ? `Matched on ${r.matchBasis}` : '') ||
-                    r.reason ||
-                    '',
-                candidates: r.candidates || [],
+                badgeClass: cls === 'SKIPPED' ? 'slds-badge slds-theme_warning' : 'slds-badge',
+                changeText: r.reason || '',
                 selectable: APPLYABLE.has(cls),
                 selected: APPLYABLE.has(cls),
                 disabled: !APPLYABLE.has(cls)
@@ -362,23 +336,13 @@ export default class ImportWizard extends LightningElement {
         }
     }
 
-    handleDownloadManualList() {
+    handleDownloadSkippedList() {
         // Every value here came out of the uploaded .csv, so it is quoted and
         // formula-guarded rather than trusted — see c/csvDownload.
-        const rows = this.previewRows.filter((r) => r.classification === 'AMBIGUOUS');
-        const lines = ['Name,Email,Company,Event,Could not separate'];
-        rows.forEach((r) =>
-            lines.push(
-                csvRow([
-                    r.name,
-                    r.email,
-                    r.row.company,
-                    r.row.event,
-                    (r.candidates || []).join(' | ')
-                ])
-            )
-        );
-        downloadCsv(lines.join('\r\n'), 'ambiguous_matches_manual_review.csv');
+        const rows = this.previewRows.filter((r) => r.classification === 'SKIPPED');
+        const lines = ['Name,Email,Company,Why it was skipped'];
+        rows.forEach((r) => lines.push(csvRow([r.name, r.email, r.row.company, r.changeText])));
+        downloadCsv(lines.join('\r\n'), 'skipped_rows_manual_review.csv');
     }
 
     handleBack() {

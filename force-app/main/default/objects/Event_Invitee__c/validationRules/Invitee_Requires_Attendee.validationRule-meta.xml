@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Invitee_Requires_Attendee</fullName>
+    <active>true</active>
+    <description>Replaces Invitee_Is_Contact_Xor_Lead. With one head instead of two there is no XOR left to enforce — only that the head is populated, because an invitee pointing at nobody has a blank name in every report and approval screen it reaches. Enforced here rather than by making the lookup required so that the field can be added to an org whose Event_Invitee__c already has rows: a required field would fail that deploy outright, and the R5 upgrade migrates those rows before this rule can bite.</description>
+    <errorConditionFormula>ISBLANK(Event_Attendee__c)</errorConditionFormula>
+    <errorMessage>An invitee must point at an Event Attendee.</errorMessage>
+</ValidationRule>

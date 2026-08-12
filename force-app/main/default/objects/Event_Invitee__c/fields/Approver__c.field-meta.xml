@@ -2,7 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Approver__c</fullName>
     <label>Approver</label>
-    <description>Who must sign this invitee off. Resolved once at submit time and frozen: Account Owner for a Contact invitee; Lead Owner for a Lead invitee unless the submitter owns that Lead; otherwise the submitter&apos;s manager. This is the Approval Process&apos;s Related User Field — an Approval Process can only route to a stored User lookup, which is why this is not a formula.</description>
+    <description>Who must sign this invitee off: the submitter&apos;s manager. Resolved once at submit time and frozen, so an org-chart change mid-approval cannot reroute an item somebody is already looking at. R5 collapsed the three-rung ladder to this one rung — the Account Owner rung died with the Account, and the Lead Owner rung with the Lead, leaving what requirement.md asked for in the first place. This is the Approval Process&apos;s Related User Field; an approval process can only route to a stored User lookup, which is why it is not a formula.</description>
     <type>Lookup</type>
     <referenceTo>User</referenceTo>
     <relationshipLabel>Invitees To Approve</relationshipLabel>

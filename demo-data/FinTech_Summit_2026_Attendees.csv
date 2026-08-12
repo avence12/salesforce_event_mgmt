@@ -1,50 +1,50 @@
-﻿First Name,Last Name,Email,Title,Company,Mobile,Event
-Emily,Carter,emily.carter@acmecorp.example,Senior Manager,Acme Corp,,FinTech Summit 2026
-James,Mueller,j.mueller@nordbank.example,Director,Nordbank AG,,FinTech Summit 2026
-Robert,Kim,robert.kim@acmecorp.example,"SVP, Operations",Acme Corp,,FinTech Summit 2026
-Laura,Chen,laura.chen@acmeins.example,"VP, Finance",Acme Insurance,,FinTech Summit 2026
-Anna,Kowalski,a.kowalski@nordbank.example,Associate,Nordbank AG,,FinTech Summit 2026
-Sophie,Laurent,sophie.laurent@globex.example,CMO,Acme Corp,,FinTech Summit 2026
-Hélène,Dubois,h.dubois@unige.example,Professor,Université de Genève,,FinTech Summit 2026
-Anke,Weber,a.weber@tuberlin.example,Professor,TU Berlin,,FinTech Summit 2026
-Tomas,Lindqvist,t.lindqvist@kth.example,Senior Researcher,KTH Royal Institute,,FinTech Summit 2026
-Priya,Raman,p.raman@techpress.example,Editor,TechPress Media,,FinTech Summit 2026
-Solo,,solo@startup.example,Founder,Startup GmbH,,FinTech Summit 2026
-Ben,Noevent,ben@acmecorp.example,Analyst,Acme Corp,,
-Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,,FinTech Summit 2026
-Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,,FinTech Summit 2026
-Zoë,Müller-Sørensen,z.muller@newcolabs.example,Head of Analytics,NewCo Labs,,FinTech Summit 2026
-David,Attendee1,david.a1@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Nina,Attendee2,nina.a2@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Oscar,Attendee3,oscar.a3@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Priya,Attendee4,priya.a4@prospect.example,Director,Helios Insurance,,FinTech Summit 2026
-Lukas,Attendee5,lukas.a5@prospect.example,Manager,Quantumsoft,,FinTech Summit 2026
-Maya,Attendee6,maya.a6@prospect.example,Manager,Northwind Systems,,FinTech Summit 2026
-Ethan,Attendee7,ethan.a7@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Clara,Attendee8,clara.a8@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Hugo,Attendee9,hugo.a9@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Ines,Attendee10,ines.a10@prospect.example,Director,Helios Insurance,,FinTech Summit 2026
-Felix,Attendee11,felix.a11@prospect.example,Manager,Quantumsoft,,FinTech Summit 2026
-Zoe,Attendee12,zoe.a12@prospect.example,Manager,Northwind Systems,,FinTech Summit 2026
-Adam,Attendee13,adam.a13@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Lena,Attendee14,lena.a14@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Marco,Attendee15,marco.a15@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Julia,Attendee16,julia.a16@prospect.example,Director,Helios Insurance,,FinTech Summit 2026
-Tom,Attendee17,tom.a17@prospect.example,Manager,Quantumsoft,,FinTech Summit 2026
-Elsa,Attendee18,elsa.a18@prospect.example,Manager,Northwind Systems,,FinTech Summit 2026
-Noah,Attendee19,noah.a19@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Vera,Attendee20,vera.a20@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Leo,Attendee21,leo.a21@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Ida,Attendee22,ida.a22@prospect.example,Director,Helios Insurance,,FinTech Summit 2026
-Max,Attendee23,max.a23@prospect.example,Manager,Quantumsoft,,FinTech Summit 2026
-Ruth,Attendee24,ruth.a24@prospect.example,Manager,Northwind Systems,,FinTech Summit 2026
-Sam,Attendee25,sam.a25@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Eva,Attendee26,eva.a26@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Karl,Attendee27,karl.a27@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Amy,Attendee28,amy.a28@prospect.example,Director,Helios Insurance,,FinTech Summit 2026
-Paul,Attendee29,paul.a29@prospect.example,Manager,Quantumsoft,,FinTech Summit 2026
-Mia,Attendee30,mia.a30@prospect.example,Manager,Northwind Systems,,FinTech Summit 2026
-Erik,Attendee31,erik.a31@prospect.example,Director,NewCo Labs,,FinTech Summit 2026
-Sara,Attendee32,sara.a32@prospect.example,Manager,Vertex Capital,,FinTech Summit 2026
-Ivan,Attendee33,ivan.a33@prospect.example,Manager,Bluepeak Bank,,FinTech Summit 2026
-Marie,Dupont,,Analyst,Acme Corp,,FinTech Summit 2026
+﻿First Name,Last Name,Email,Title,Company,Mobile
+Emily,Carter,emily.carter@acmecorp.example,Senior Manager,Acme Corp,
+James,Mueller,j.mueller@nordbank.example,Director,Nordbank AG,
+Robert,Kim,robert.kim@acmecorp.example,"SVP, Operations",Acme Corp,
+Laura,Chen,laura.chen@acmeins.example,"VP, Finance",Acme Insurance,
+Anna,Kowalski,a.kowalski@nordbank.example,Associate,Nordbank AG,
+Hélène,Dubois,h.dubois@unige.example,Professor,Université de Genève,
+Anke,Weber,a.weber@tuberlin.example,Professor,TU Berlin,
+Tomas,Lindqvist,t.lindqvist@kth.example,Senior Researcher,KTH Royal Institute,
+Priya,Raman,p.raman@techpress.example,Editor,TechPress Media,
+Solo,,solo@startup.example,Founder,Startup GmbH,
+,,anonymous@startup.example,,Startup GmbH,
+Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,
+Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,
+Marie,Dupont,m.dupont@acmecorp.example,Analyst,Acme Corp,
+Marie,Dupont,marie.dupont@acmecorp.example,Senior Analyst,Acme Corp,
+Sophie,Laurent,,CMO,Globex,
+Sophie,Laurent,,Head of Brand,Globex,
+Marco,Rossi,m.rossi@vertex.example,Partner,Vertex Capital,
+Marco,Rossi,m.rossi@vertex.example,Advisor,Bluepeak Bank,
+Ben,Nomail,n/a,Analyst,Acme Corp,
+Zoë,Müller-Sørensen,z.muller@newcolabs.example,Head of Analytics,NewCo Labs,
+David,Attendee1,david.a1@prospect.example,Director,NewCo Labs,
+Nina,Attendee2,nina.a2@prospect.example,Manager,Vertex Capital,
+Oscar,Attendee3,oscar.a3@prospect.example,Manager,Bluepeak Bank,
+Priya,Attendee4,priya.a4@prospect.example,Director,Helios Insurance,
+Lukas,Attendee5,lukas.a5@prospect.example,Manager,Quantumsoft,
+Maya,Attendee6,maya.a6@prospect.example,Manager,Northwind Systems,
+Ethan,Attendee7,ethan.a7@prospect.example,Director,NewCo Labs,
+Clara,Attendee8,clara.a8@prospect.example,Manager,Vertex Capital,
+Hugo,Attendee9,hugo.a9@prospect.example,Manager,Bluepeak Bank,
+Ines,Attendee10,ines.a10@prospect.example,Director,Helios Insurance,
+Felix,Attendee11,felix.a11@prospect.example,Manager,Quantumsoft,
+Zoe,Attendee12,zoe.a12@prospect.example,Manager,Northwind Systems,
+Adam,Attendee13,adam.a13@prospect.example,Director,NewCo Labs,
+Lena,Attendee14,lena.a14@prospect.example,Manager,Vertex Capital,
+Marco,Attendee15,marco.a15@prospect.example,Manager,Bluepeak Bank,
+Julia,Attendee16,julia.a16@prospect.example,Director,Helios Insurance,
+Tom,Attendee17,tom.a17@prospect.example,Manager,Quantumsoft,
+Elsa,Attendee18,elsa.a18@prospect.example,Manager,Northwind Systems,
+Noah,Attendee19,noah.a19@prospect.example,Director,NewCo Labs,
+Vera,Attendee20,vera.a20@prospect.example,Manager,Vertex Capital,
+Leo,Attendee21,leo.a21@prospect.example,Manager,Bluepeak Bank,
+Ida,Attendee22,ida.a22@prospect.example,Director,Helios Insurance,
+Max,Attendee23,max.a23@prospect.example,Manager,Quantumsoft,
+Ruth,Attendee24,ruth.a24@prospect.example,Manager,Northwind Systems,
+Sam,Attendee25,sam.a25@prospect.example,Director,NewCo Labs,
+Eva,Attendee26,eva.a26@prospect.example,Manager,Vertex Capital,
+Karl,Attendee27,karl.a27@prospect.example,Manager,Bluepeak Bank,
+Amy,Attendee28,amy.a28@prospect.example,Director,Helios Insurance,

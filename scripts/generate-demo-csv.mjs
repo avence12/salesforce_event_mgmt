@@ -1,17 +1,18 @@
 /**
- * Generates demo-data/FinTech_Summit_2026_Attendees.csv — an attendee list aligned
- * with scripts/seed-demo-data.apex so the import wizard shows all five R4
- * classifications:
- *   - MATCHED_CONTACT (Emily, Robert, Laura, Anna, James — tagged, nothing else touched)
- *   - MATCHED_LEAD    (Hélène, Anke, Tomas, Priya — the seeded conference guests)
- *   - AMBIGUOUS       (two Sophie Laurents at Globex, no email to separate them)
- *   - NEW_LEAD        (Zoë Müller-Sørensen + the generated attendees)
- *   - SKIPPED         (1 missing last name, 1 missing event)
- *   plus 1 in-file duplicate (same person, same event — collapses)
- *   and 1 stale-company row (Sophie moved) proving an empty narrowing step is skipped
+ * Generates demo-data/FinTech_Summit_2026_Attendees.csv — an attendee list that
+ * exercises every R5 classification in the import wizard:
+ *   - NEW_ATTENDEE      (everyone, on a first run against a clean org)
+ *   - EXISTING_ATTENDEE (seen on a second run, and on the rows scripts/seed-demo-data.apex pre-creates)
+ *   - SKIPPED           (2 rows with no last name)
+ *   plus an in-file duplicate that collapses (same name, company and email),
+ *   a same-name pair that stays two people because their emails differ,
+ *   a same-name pair that collapses because neither row has an email,
+ *   one row whose Email column is junk rather than an address,
+ *   and one row repeated at a second company, which is deliberately two attendees.
  *
- * Every row carries an Event column: that is what the import records, and a row
- * without one has nothing to tag.
+ * There is no Event column: R5 imports people, and which event they attend is
+ * decided later on the event itself. A file that still has one imports fine — the
+ * column is simply ignored.
  *
  * Written UTF-8 with a BOM and CRLF line endings. The Zoë Müller-Sørensen and
  * Hélène Dubois rows are deliberately non-ASCII so the demo exercises the wizard's
@@ -21,50 +22,52 @@
  */
 import { mkdirSync, writeFileSync } from 'fs';
 
-const EVENT = 'FinTech Summit 2026';
-
 const rows = [
-    ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile', 'Event'],
-    // MATCHED_CONTACT on name alone — the title and company in this file are ignored,
-    // which is the point: nothing on a Contact is ever written.
-    ['Emily', 'Carter', 'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', '', EVENT],
-    ['James', 'Mueller', 'j.mueller@nordbank.example', 'Director', 'Nordbank AG', '', EVENT],
-    ['Robert', 'Kim', 'robert.kim@acmecorp.example', 'SVP, Operations', 'Acme Corp', '', EVENT],
-    ['Laura', 'Chen', 'laura.chen@acmeins.example', 'VP, Finance', 'Acme Insurance', '', EVENT],
-    ['Anna', 'Kowalski', 'a.kowalski@nordbank.example', 'Associate', 'Nordbank AG', '', EVENT],
-    // Stale company: Sophie is seeded at Globex, the file says Acme Corp. The narrowing
-    // step finds nobody, is skipped, and she still matches on name — Open Question 10.
-    ['Sophie', 'Laurent', 'sophie.laurent@globex.example', 'CMO', 'Acme Corp', '', EVENT],
-    // MATCHED_LEAD: the seeded conference guests, who have no Account and never will.
-    ['Hélène', 'Dubois', 'h.dubois@unige.example', 'Professor', 'Université de Genève', '', EVENT],
-    ['Anke', 'Weber', 'a.weber@tuberlin.example', 'Professor', 'TU Berlin', '', EVENT],
+    ['First Name', 'Last Name', 'Email', 'Title', 'Company', 'Mobile'],
+    // Ordinary attendees from customer organisations. Nothing about "customer"
+    // exists in the data any more — Acme Corp is a string, not an Account.
+    ['Emily', 'Carter', 'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', ''],
+    ['James', 'Mueller', 'j.mueller@nordbank.example', 'Director', 'Nordbank AG', ''],
+    ['Robert', 'Kim', 'robert.kim@acmecorp.example', 'SVP, Operations', 'Acme Corp', ''],
+    ['Laura', 'Chen', 'laura.chen@acmeins.example', 'VP, Finance', 'Acme Insurance', ''],
+    ['Anna', 'Kowalski', 'a.kowalski@nordbank.example', 'Associate', 'Nordbank AG', ''],
+    // Conference guests. In R4 these had to be Leads to exist at all; now they are
+    // attendees on exactly the same terms as everybody above.
+    ['Hélène', 'Dubois', 'h.dubois@unige.example', 'Professor', 'Université de Genève', ''],
+    ['Anke', 'Weber', 'a.weber@tuberlin.example', 'Professor', 'TU Berlin', ''],
     [
         'Tomas',
         'Lindqvist',
         't.lindqvist@kth.example',
         'Senior Researcher',
         'KTH Royal Institute',
-        '',
-        EVENT
+        ''
     ],
-    ['Priya', 'Raman', 'p.raman@techpress.example', 'Editor', 'TechPress Media', '', EVENT],
-    // SKIPPED: no last name, so there is nothing to match on
-    ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', '', EVENT],
-    // SKIPPED: no event, so there is nothing to tag this person with
-    ['Ben', 'Noevent', 'ben@acmecorp.example', 'Analyst', 'Acme Corp', '', ''],
-    // In-file duplicate: same person, same event — collapses to one tag
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', '', EVENT],
-    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', '', EVENT],
-    // NEW_LEAD with non-ASCII name — proves the file is read as UTF-8 end to end
-    [
-        'Zoë',
-        'Müller-Sørensen',
-        'z.muller@newcolabs.example',
-        'Head of Analytics',
-        'NewCo Labs',
-        '',
-        EVENT
-    ]
+    ['Priya', 'Raman', 'p.raman@techpress.example', 'Editor', 'TechPress Media', ''],
+    // SKIPPED: no last name, so there is no identity to key on
+    ['Solo', '', 'solo@startup.example', 'Founder', 'Startup GmbH', ''],
+    ['', '', 'anonymous@startup.example', '', 'Startup GmbH', ''],
+    // In-file duplicate: same name, company and email — one attendee, not two
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', ''],
+    ['Dana', 'Duplicate', 'dana@dupe.example', 'Analyst', 'Acme Corp', ''],
+    // Two Marie Duponts at one company, told apart by their emails: two attendees.
+    ['Marie', 'Dupont', 'm.dupont@acmecorp.example', 'Analyst', 'Acme Corp', ''],
+    ['Marie', 'Dupont', 'marie.dupont@acmecorp.example', 'Senior Analyst', 'Acme Corp', ''],
+    // Two Sophie Laurents at one company with no email at all. R4 called this
+    // Ambiguous and wrote nothing; R5 has no matching to be ambiguous about, so
+    // they collapse into one attendee. Shown in the demo precisely because it is
+    // the cost of the change, not a bug.
+    ['Sophie', 'Laurent', '', 'CMO', 'Globex', ''],
+    ['Sophie', 'Laurent', '', 'Head of Brand', 'Globex', ''],
+    // The same person listed at two companies: two attendees, because company is
+    // part of who an attendee is.
+    ['Marco', 'Rossi', 'm.rossi@vertex.example', 'Partner', 'Vertex Capital', ''],
+    ['Marco', 'Rossi', 'm.rossi@vertex.example', 'Advisor', 'Bluepeak Bank', ''],
+    // Junk in the Email column. The person is imported; the address is not stored,
+    // and the preview says so on that row.
+    ['Ben', 'Nomail', 'n/a', 'Analyst', 'Acme Corp', ''],
+    // Non-ASCII name — proves the file is read as UTF-8 end to end
+    ['Zoë', 'Müller-Sørensen', 'z.muller@newcolabs.example', 'Head of Analytics', 'NewCo Labs', '']
 ];
 
 const first = [
@@ -115,7 +118,7 @@ const companies = [
     'Quantumsoft',
     'Northwind Systems'
 ];
-for (let i = 0; i < 33; i++) {
+for (let i = 0; i < 28; i++) {
     const f = first[i];
     rows.push([
         f,
@@ -123,14 +126,9 @@ for (let i = 0; i < 33; i++) {
         `${f.toLowerCase()}.a${i + 1}@prospect.example`,
         i % 3 === 0 ? 'Director' : 'Manager',
         companies[i % companies.length],
-        '',
-        EVENT
+        ''
     ]);
 }
-
-// AMBIGUOUS: the seed puts two Marie Duponts under Acme Corp. With no email in this
-// row the cascade runs out of criteria and writes nothing — see seed-demo-data.apex.
-rows.push(['Marie', 'Dupont', '', 'Analyst', 'Acme Corp', '', EVENT]);
 
 function csvCell(value) {
     const text = String(value);

@@ -30,7 +30,6 @@
         <field>Invitee_Name__c</field>
         <field>Invitee_Title__c</field>
         <field>Invitee_Org__c</field>
-        <field>Invitee_Type__c</field>
         <field>Added_By__c</field>
         <field>Marketing_Event__c</field>
     </approvalPageFields>
@@ -46,7 +45,7 @@
         <fullName>Approver_Decision</fullName>
         <label>Approver Decision</label>
         <name>Approver_Decision</name>
-        <description>Single step. The approver is whoever Approver__c names: the Account Owner for a customer Contact, otherwise the Lead Owner or the submitter&apos;s manager.</description>
+        <description>Single step. The approver is whoever Approver__c names, which as of R5 is always the submitter&apos;s manager — an attendee has no account owner and no lead owner to route to instead.</description>
         <allowDelegate>true</allowDelegate>
         <assignedApprover>
             <approver>

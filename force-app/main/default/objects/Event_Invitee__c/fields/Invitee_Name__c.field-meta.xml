@@ -2,9 +2,9 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Invitee_Name__c</fullName>
     <label>Invitee Name</label>
-    <description>Reads correctly whether the invitee is a Contact or a Lead, so no consumer has to branch. The Screen 5 reports depend on these: a report cannot pick between two lookup paths by itself.</description>
+    <description>Reads through the attendee. These four formulas existed in R3 to hide a two-headed junction from every consumer; in R5 there is only one head, so they are now a plain convenience — the reports and the approval page keep working unchanged, which is the point of keeping them rather than repointing a dozen consumers at Event_Attendee__r.</description>
     <type>Text</type>
-    <formula>BLANKVALUE(Contact__r.Name, Lead__r.Name)</formula>
+    <formula>Event_Attendee__r.Name</formula>
     <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
     <required>false</required>
     <unique>false</unique>

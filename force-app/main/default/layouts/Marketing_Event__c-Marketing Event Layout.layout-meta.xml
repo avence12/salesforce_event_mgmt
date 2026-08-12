@@ -36,10 +36,9 @@
         <fields>NAME</fields>
         <fields>Invitee_Name__c</fields>
         <fields>Invitee_Org__c</fields>
-        <fields>Invitee_Type__c</fields>
         <fields>Status__c</fields>
         <fields>Added_By__c</fields>
-        <fields>Account__c</fields>
+        <fields>Approver__c</fields>
         <relatedList>Event_Invitee__c.Marketing_Event__c</relatedList>
     </relatedLists>
 </Layout>

@@ -2,7 +2,7 @@
 <ReportType xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Marketing_Events_with_Invitees</fullName>
     <label>Marketing Events with Event Invitees</label>
-    <description>Screen 5. Replaces EventExportController and the approvedExport LWC: filtering, grouping, column choice, date ranges and CSV/XLSX export are all things a report already does. The Invitee_* formula fields are what make one report cover Contact and Lead invitees at once.</description>
+    <description>Screen 5. Replaces EventExportController and the approvedExport LWC: filtering, grouping, column choice, date ranges and CSV/XLSX export are all things a report already does. The Invitee_* formula fields read through to the Event Attendee, so the report needs no join past the junction.</description>
     <baseObject>Marketing_Event__c</baseObject>
     <category>other</category>
     <deployed>true</deployed>
@@ -27,14 +27,11 @@
         <columns><field>Invitee_Title__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Invitee_Org__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Invitee_Email__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
-        <columns><field>Invitee_Type__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Status__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Approver__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Decided_At__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Added_By__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Submitted_At__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
-        <columns><field>Account__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
-        <columns><field>Contact__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
-        <columns><field>Lead__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Event_Attendee__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
     </sections>
 </ReportType>

@@ -104,10 +104,14 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) 
 8. ★R3 Consequently, an invitee who has no customer relationship is a **Lead**. `Lead.Company` is a plain text field, so "National Taiwan University" lives there without creating anything on Account. Lead is the standard object for exactly this state, and **Lead Convert** is the built-in promotion path on the day that institution *does* become a customer.
 9. ★R3 Approval routing is a resolved field (`Approver__c`), not a derivation from Account. Account Owner remains the answer for customer Contacts; it is simply no longer the only answer.
 10. ★R3 Minimising custom code outranks preserving the current screen experience for Screens 4 and 5. Where a standard feature is close-but-not-identical, the standard feature wins and the delta is recorded under *What R3 gives up*.
-11. ★R4 **The import may not create, update or delete Contacts, nor edit any field on a Contact.** Its only write against a matched Contact is a child `Contact_Event_History__c` row. Reconciling contact data — the original point of Screen 1 — is out of scope as of R4.
-12. ★R4 The event a tag names arrives **in the CSV, per row**, as free text. It is not validated against `Marketing_Event__c` and does not have to correspond to an event that exists in the org: the log has to be able to record a 2019 roadshow nobody ever created a record for.
-13. ★R4 The event history is a **pure historical annotation with no relationship to `Event_Invitee__c`**. The two may disagree — someone can be tagged as having been on a list without ever being invited, and vice versa — and no code reconciles them. Invitation and approval state lives on `Event_Invitee__c` and only there.
-14. ★R4 Creating **Leads** for people who match no Contact survives from R3. Without it nothing would put a professor into the org at all, and Screen 3's *Add Leads* tab would have nothing to offer.
+11. ★R4 **The import may not create, update or delete Contacts, nor edit any field on a Contact.** ★R5 **Widened, not relaxed:** it may not touch Contact, Lead *or* Account, in any way, including reading them.
+12. ★R4 ~~The event a tag names arrives in the CSV, per row, as free text.~~ **Superseded by R5:** there is no Event column. An import records people; which event they attend is decided later, on the event.
+13. ★R4 ~~The event history is a pure historical annotation with no relationship to `Event_Invitee__c`.~~ **Superseded by R5:** `Event_History__c` is deleted and the invitee row *is* the record of who was put forward for what.
+14. ★R4 ~~Creating Leads for people who match no Contact survives from R3.~~ **Superseded by R5:** nobody becomes a Lead. Everyone imported becomes an `Event_Attendee__c`, which is what Lead was being borrowed to do.
+15. ★R5 **Everyone in an imported file becomes an `Event_Attendee__c`** — a person on a list, on this project's own object, bound to no Account and mirrored by no Contact.
+16. ★R5 **`Marketing_Event__c` relates to people through `Event_Attendee__c` and nothing else.** `Event_Invitee__c` keeps its Master-Detail to the event and carries a single lookup to the attendee.
+17. ★R5 **Premise 7 stops being a constraint the design has to work around and becomes one it cannot violate.** R3 and R4 both had to argue their way past "an Account means a transacting customer" — with Leads, with a two-headed junction, with a history object. R5 never reaches an Account at all, so the premise is satisfied by construction rather than by care.
+18. ★R5 **De-duplication is by `last|first|company|email`, normalised.** This is the whole of it; there is no matching, no cascade and no ambiguity. Its two known costs are in Open Question 16 and asserted in the tests.
 
 ## Approaches Considered
 
@@ -149,80 +153,69 @@ Marketing_Event__c
   Approved_Count__c / Pending_Count__c / Rejected_Count__c / Exported_Count__c  (Roll-up summaries)
 
 Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
-  Contact__c              (Lookup → Contact; OPTIONAL as of R3 — set for invitees at a customer Account)
-  Lead__c              ★R3 (Lookup → Lead;    optional — set for invitees with no customer relationship)
+  Event_Attendee__c    ★R5 (Lookup → Event_Attendee__c, deleteConstraint Restrict — replaces Contact__c + Lead__c)
   Status__c               (Picklist: Draft, Pending Approval, Approved, Rejected)   ← "Exported" retired in R3, see Screen 5
   Added_By__c             (Lookup → User; defaulted to creator)
-  Account__c              (Lookup → Account; populated by Apex at add time — a snapshot, deliberately NOT a formula so a later Contact reparent doesn't rewrite history. Always null for Lead invitees.)
-  Account_Owner__c        (Lookup → User; snapshot of Contact.Account.OwnerId at submit time — R3: audit trail only, no longer the routing source)
   Approver__c          ★R3 (Lookup → User; resolved at submit time; the Approval Process's Related User Field)
   Submitted_At__c / Decided_At__c (DateTime)
-  Unique_Key__c           (Text, unique external ID = Event Id + Contact Id, or Event Id + Lead Id — prevents duplicate invitees)
-  Invitee_Name__c      ★R3 (Formula, Text — BLANKVALUE(Contact__r.Name,  Lead__r.Name))
-  Invitee_Email__c     ★R3 (Formula, Text — BLANKVALUE(Contact__r.Email, Lead__r.Email))
-  Invitee_Title__c     ★R3 (Formula, Text — BLANKVALUE(Contact__r.Title, Lead__r.Title))
-  Invitee_Org__c       ★R3 (Formula, Text — BLANKVALUE(Account__r.Name,  Lead__r.Company))
-  Invitee_Type__c      ★R3 (Formula, Text — IF(ISBLANK(Contact__c), "Lead", "Contact"))
+  Unique_Key__c           (Text, unique external ID = Event Id + Attendee Id — prevents duplicate invitees)
+  Invitee_Name__c      ★R5 (Formula, Text — Event_Attendee__r.Name)
+  Invitee_Email__c     ★R5 (Formula, Text — Event_Attendee__r.Email__c)
+  Invitee_Title__c     ★R5 (Formula, Text — Event_Attendee__r.Title__c)
+  Invitee_Org__c       ★R5 (Formula, Text — Event_Attendee__r.Company__c)
+  ~~Contact__c / Lead__c / Account__c / Account_Owner__c / Invitee_Type__c~~  ★R5 dropped
 ```
 
 ```
-★R4  Event_History__c            (standalone object; two lookups, exactly one populated)
-  Contact__c              (Lookup → Contact, optional)
-  Lead__c                 (Lookup → Lead,    optional)
-  Event_Name__c           (Text 255, required — the CSV's value verbatim; not validated)
-  Imported_On__c          (DateTime, defaulted to NOW)
-  Source_File__c          (Text 255 — the uploaded file's name, so a tag can be traced back)
-  Match_Basis__c          (Picklist: Name / Name + Company / Name + Company + Email / Created by import)
-  Unique_Key__c           (Text 80, unique external ID = Contact or Lead Id + normalised event name)
-  Attendee_Name__c        (Formula — BLANKVALUE(Contact__r.Name, Lead__r.Name))
-  Attendee_Email__c       (Formula — BLANKVALUE(Contact__r.Email, Lead__r.Email))
-  Attendee_Org__c         (Formula — BLANKVALUE(Contact__r.Account.Name, Lead__r.Company))
-  Attendee_Type__c        (Formula — IF(ISBLANK(Contact__c), "Lead", "Contact"))
+★R5  Event_Attendee__c            (standalone object; one row per person, reused across events)
+  Name                    (Text 80 — "First Last", assembled by the import; what a human reads)
+  First_Name__c           (Text 40)
+  Last_Name__c            (Text 80, required)
+  Email__c                (Email, optional, NOT unique)
+  Title__c                (Text 128)
+  Company__c              (Text 255 — free text; no lookup to Account, by design)
+  Mobile__c               (Phone)
+  Source_File__c          (Text 255 — the upload this record last came in on)
+  Imported_On__c          (DateTime — when it was last seen in a file)
+  Unique_Key__c           (Text 255, unique external ID = normalised last|first|company|email)
+  OWD: Public Read/Write
 ```
 
-★R4 **Why an object and not a field.** The requirement asked for a field on Contact. A
-delimited text blob would have been quicker and is the wrong shape: attendance is a
-one-to-many fact, and in a blob it cannot be grouped, sorted, filtered or counted without
-string surgery in every consumer. As a child object it is a related list for free and
-reportable for free.
+★R5 **The object above replaces `Event_History__c`, which is deleted.** R4 had just
+built it — a two-headed attendance log hanging off Contact and Lead — and R5 removes it
+after one revision. That is worth being honest about rather than quietly dropping: R4
+solved *"record that this person was on a list"* while still treating Contact and Lead as
+where people live. Once imported people get an object of their own, the attendance fact and
+the invitation fact are the same row (`Event_Invitee__c`), and a separate log is a second
+place to keep the same thing. The R4 work was not wasted — it is what made the requirement
+legible — but it was one step short.
 
-★R4 **Two lookups, not Master-Detail — forced by Open Question 11.** The first draft of this
-design made attendance a Master-Detail child of Contact, which is the better relationship in
-isolation. Requiring Leads to carry history as well removes that option outright: a
-Master-Detail has exactly one parent. So the object takes the shape `Event_Invitee__c`
-already uses — two lookups, a validation rule allowing exactly one, and formula fields that
-read correctly whichever is set:
+★R5 **What "not bound to Account, no Contacts" actually buys.** Three things that were
+structural problems in R3 and R4 stop existing rather than getting better:
 
-```
-ISBLANK(Contact__c) = ISBLANK(Lead__c)
-  → "An event history row must point at either a Contact or a Lead — not both, and not neither."
-```
-
-**What that costs, stated plainly.** These are consequences of the requirement, not oversights:
-
-| Master-Detail would have given | With two lookups |
+| Was | Is |
 |---|---|
-| Cascade delete — history dies with its person | Needs an explicit delete constraint. `Restrict` would make our log **block deletion of a standard Contact**, which is bad-neighbour behaviour on an object other teams own. The design uses `SetNull`, accepting that deleting a Contact leaves an orphan row rather than blocking the delete. **Verify in the org whether a SetNull cascade re-fires the XOR validation rule** — if it does, deletion breaks and the constraint has to change. |
-| Sharing inherited from the parent | The object needs its own OWD. PoC: Public Read/Write, matching the permissive posture already taken for the event. |
-| Roll-up summary on the parent | **`Contact.Events_Attended__c` is dropped.** A count across a lookup is not a roll-up; it would need a Flow maintaining a counter, which is more machinery than a count deserves. Use a report. |
+| Two lookups, a XOR validation rule, and five formula fields whose whole job was hiding the fork from consumers | One lookup. The four surviving formulas are convenience, not load-bearing |
+| A person who was both a customer Contact and a Lead could be invited to one event twice, because the two rows had different `Unique_Key__c` values (Open Question 9) | One kind of invitee, one key per person per event. Settled |
+| The import needed write access to Contact (R2) and then to Lead (R4) | It reads and writes exactly one object, and that object belongs to this project. The `Event_AM` permission set now grants no standard-object permission at all |
+| A guest with no customer relationship needed a Lead, which needed an owner, which needed the approver ladder to grow a rung and an exclusion rule to stop self-approval | Attendees have no owner in the routing sense. The ladder is one rung: the submitter's manager |
 
-The gain is that one object, one report, one code path and one `Unique_Key__c` scheme cover
-Contacts and Leads alike — and Leads get history, which is what was asked for.
+★R5 **The price, stated plainly.** These are consequences of the requirement, not oversights:
 
-★R4 **`Unique_Key__c` is what makes the import safe to re-run.** Re-uploading the same file,
-or the same person appearing on two lists for one event, must not produce two rows: the fact
-being recorded is *"this person was on the list for this event"*, not *"this person was
-imported N times"*. The apply step upserts on this key rather than inserting. Same technique
-as `Event_Invitee__c.Unique_Key__c`, for the same reason. Because the key is built from
-whichever Id is set, a person who exists as both a Contact and a Lead can accumulate two
-parallel histories — the same known gap already recorded for invitees in Open Question 9.
+| Given up | Consequence |
+|---|---|
+| **Any link to existing customer data.** An attendee who is also a Contact is now two unrelated records. | Nobody can answer "which of tonight's guests are customers?" from this system. That question was answerable in R4 and is not now. **If it turns out to matter, the cheapest recovery is an optional `Contact__c` lookup on the attendee populated by a separate reconciliation job — not putting matching back into the import.** |
+| **The narrowing cascade, `Match_Basis__c`, and the Ambiguous outcome.** | With nothing to match against, there is nothing to be uncertain about. The preview loses a category and gains nothing to replace it. |
+| **Organisation is free text with nothing behind it.** | "Acme Corp" and "ACME Corp." are two organisations in the selector's grouping, and no report can roll them up. R3 had this only for Leads; R5 has it for everybody. |
+| **De-duplication rests entirely on `Unique_Key__c`.** | Two same-named people at one company with no email collapse into one attendee; one person whose email changed between two files becomes two. Both are visible in the demo file on purpose. |
+| **The selector is no longer scoped per AM.** | Account ownership and Account Team membership were what "my contacts" meant. Every AM now sees every attendee, bounded only by the object's sharing model. Deliberate — a shared event whose pool each AM could only half see is worse — but it *is* a widening, and an org that needs scoping has to invent a new basis for it. |
 
-★R4 **`Match_Basis__c` exists because the matching got weaker.** Under email matching there
-was nothing to record — a match was a match. Matching on name first means a tag can be wrong,
-so each row carries how it was identified. When somebody eventually asks "why does this
-person show as having attended?", the answer is on the record instead of being unknowable.
-The fourth value, *Created by import*, marks rows tagged on a Lead the import itself had just
-created — where there was no matching to do.
+★R5 **Why one row per person, and not one per person-per-event.** The alternative — an
+attendee row for every line of every uploaded file — is simpler to write and wrong to live
+with: the same professor at four events is four records, "have we invited them before?"
+becomes a report over near-duplicates, and correcting a misspelt name fixes one of four
+copies. Person-level costs a de-duplication key and gives the Event Attendee page a related
+list of every event they have ever been put forward for.
 
 ★R3 **Two lookups, not one polymorphic field.** A custom lookup cannot reference two objects,
 so the junction carries both and a validation rule enforces exactly one:
@@ -251,153 +244,133 @@ intact and readable).
 
 **Snapshot rationale:** `Account_Owner__c` is copied at submit time so an ownership change mid-approval doesn't silently reroute pending items.
 
-### ★R3 Approval routing — the `Approver__c` ladder
+### ★R5 Approval routing — one rung
 
-The original design had one routing rule: *the Account Owner approves*. A Lead has no Account,
-so routing becomes an ordered resolution evaluated once, at submit time, and frozen into
-`Approver__c`:
+R3 built a three-rung ladder because a Lead has no Account. R5 removes both of the
+things the ladder climbed past:
 
-| # | Condition | Approver | Rationale |
-|---|---|---|---|
-| 1 | `Contact__c` is set | `Contact.Account.OwnerId` | Existing behaviour, unchanged for every customer invitee |
-| 2 | `Lead__c` is set **and** `Lead.OwnerId ≠ submitter` | `Lead.OwnerId` | A Lead always has an owner; that owner is the person who holds the relationship |
-| 3 | otherwise | `Submitter.ManagerId` (standard User field) | Fallback |
+| # | R3 condition | R5 |
+|---|---|---|
+| 1 | `Contact__c` set → `Contact.Account.OwnerId` | Gone — an attendee has no Account |
+| 2 | `Lead__c` set and `Lead.OwnerId` ≠ submitter → `Lead.OwnerId` | Gone — an attendee has no Lead |
+| 3 | otherwise → `Submitter.ManagerId` | **The whole rule** |
 
-**Rule 2's exclusion is the subtle one.** Leads are usually owned by the AM who created them,
-so the naive rule "Lead invitees are approved by the Lead Owner" degenerates into *the AM
-approving their own submission* — the control the whole workflow exists to provide, silently
-removed for exactly the invitees nobody has vetted yet. When the submitter owns the Lead,
-routing falls through to their manager, which is what requirement.md asked for in the first
-place ("送出給 Account Owner (Salesforce內定義的角色, 一般是AM的manager/director)"). Account
-Owner was always a proxy for "the AM's manager"; R3 just makes the real rule explicit.
+What is left is what requirement.md asked for in the first place — *"送出給 Account Owner
+(Salesforce內定義的角色, 一般是AM的manager/director)"*. Account Owner was always a proxy
+for "the AM's manager"; R3 made the real rule explicit as a fallback, and R5 finds that the
+fallback was the rule.
 
-**Rule 3 can fail** — a user with no manager set resolves to nothing. That is caught rather
-than tolerated: a validation rule forbids `Status__c = 'Pending Approval'` while `Approver__c`
-is blank, so the submit Flow surfaces "No approver could be determined for N invitees — set a
-Manager on your user record" instead of creating rows that are pending forever.
+**The self-approval exclusion disappears with the rung that needed it, not by being
+relaxed.** R3's subtle bug was that "the Lead Owner approves" degenerated into "the AM
+approves their own submission" whenever the AM owned the Lead, which was usually. There is
+no owner-based routing left to degenerate, so a submitter can never be their own approver
+unless somebody makes a user their own manager.
 
-**This fixes a live defect.** In the current code (`InviteeSelectorController.cls:195-200`) an
-invitee whose `Account__c` is null is stamped `Account_Owner__c = null`, moved to Pending
-Approval, and then never appears in `approvalConsole` (which filters on
-`Account_Owner__c = current user`) — an orphan row, un-approvable, with nobody notified.
-Today that path is unreachable because Screen 3 only lists contacts under the AM's accounts;
-adding Lead invitees would have made it reachable.
+**Resolution can still fail, and now it is the *only* way it can fail.** A user with no
+Manager resolves to nobody. That is caught rather than tolerated, in two places: the submit
+refuses up front with a named error and leaves everything in Draft, and the
+`Approver_Required_When_Pending` validation rule forbids the state at the database. What
+used to be an edge case is now the single failure mode, so it matters more than it did.
 
-### Screen 1 — Import External Contact List (LWC wizard, App page)
+**What this gives up:** the Account Owner — the person who actually holds the customer
+relationship — no longer sees invitees to their own customers. In R3 that was the primary
+control; in R5 nobody outside the submitter's reporting line reviews anything. Whether that
+is acceptable depends on what the approval is *for*. If it is "does this person belong at
+our event?", a manager can answer it. If it is "is it appropriate to invite **my** customer?",
+this revision removed the only person who could answer, and the recovery is a second
+approval step keyed off something other than the attendee — because the attendee no longer
+knows whose customer they are. **Open Question 15.**
 
-1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw File to JS. Parsed **client-side** with a minimal RFC 4180 CSV parser built into the LWC (quoted fields, `""` escapes, CR / LF / CRLF row terminators) → rows. Expected columns: First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected, case-insensitive). Rows within the file are de-duplicated by Email before preview (last occurrence wins).
+### Screen 1 — Import External Attendee List (LWC wizard, App page)
 
-   Two properties of real-world CSV are handled explicitly, because unlike `.xlsx` — a zip of UTF-8 XML with one unambiguous reading — a CSV file does not describe its own encoding or delimiter:
-   - **Delimiter is sniffed from the header line** (comma, semicolon or tab). Excel in most EU locales writes **semicolons**, because the comma is the decimal separator there; with an AM audience that is largely EU-based, assuming a comma would have failed on a large share of real files.
-   - **The bytes are decoded as strict UTF-8** (`TextDecoder('utf-8', {fatal: true})` over an ArrayBuffer, not `readAsText`). Excel's plain "CSV" writes the local ANSI codepage, which decodes to U+FFFD and would silently store *Müller* as *M�ller*; failing with "re-save as CSV UTF-8" is the one honest option, since guessing between cp1252, Big5 and Shift-JIS is not reliable. A file that is not the contact list at all is likewise rejected by name — the wizard echoes the header row it actually read instead of reporting "no data rows found".
-   ★R4 The expected columns gain **Event**: `Event` / `Event Name` / `Campaign` are all
-   accepted as headers. Each row carries its own event value, so one file may span several
-   events; a row with no event value cannot be tagged and is Skipped. `Title` and `Mobile`
-   are still parsed but no longer used for anything — kept so existing demo files and real
-   exports do not have to be reshaped for a feature that stopped writing those fields.
+1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT
+   `lightning-file-upload`, which uploads straight to ContentVersion and never exposes the raw
+   File to JS. Parsed **client-side** with a minimal RFC 4180 CSV parser built into the LWC
+   (quoted fields, `""` escapes, CR / LF / CRLF row terminators) → rows. Expected columns:
+   First Name, Last Name, Email, Title, Company, Mobile (header row auto-detected,
+   case-insensitive).
 
-   ★R4 In-file de-duplication is now by **name + company + email + event** rather than by
-   email alone: an email is no longer the identity of a row, and two rows for the same person
-   at different events are two distinct facts, not a duplicate.
+   Two properties of real-world CSV are handled explicitly, because unlike `.xlsx` — a zip of
+   UTF-8 XML with one unambiguous reading — a CSV file does not describe its own encoding or
+   delimiter:
+   - **Delimiter is sniffed from the header line** (comma, semicolon or tab). Excel in most EU
+     locales writes **semicolons**, because the comma is the decimal separator there; with an AM
+     audience that is largely EU-based, assuming a comma would have failed on a large share of
+     real files.
+   - **The bytes are decoded as strict UTF-8** (`TextDecoder('utf-8', {fatal: true})` over an
+     ArrayBuffer, not `readAsText`). Excel's plain "CSV" writes the local ANSI codepage, which
+     decodes to U+FFFD and would silently store *Müller* as *M?ller*; failing with "re-save as
+     CSV UTF-8" is the one honest option. A file that is not an attendee list at all is likewise
+     rejected by name — the wizard echoes the header row it actually read instead of reporting
+     "no data rows found".
 
-2. ★R4 **Preview**: `ContactImportController.previewMatches(rows)` identifies the Contact by
-   progressive narrowing, then classifies. Nothing is written at this stage.
+   ★R5 The **Event** column R4 required is gone. An import records people; which event they
+   attend is decided later, on the event, by an AM. An R4-era file still imports — its Event
+   column is simply an unrecognised header now. **Title** and **Mobile** stop being dead
+   weight: R4 parsed and discarded them for want of anywhere to put them that was not a
+   Contact, and they now land on the attendee.
 
-   **The matching cascade.** Each criterion narrows the candidate set from the last:
+   ★R5 In-file de-duplication is by **last + first + company + email**, normalised for case
+   and whitespace — deliberately identical to the server's `Unique_Key__c`, so the client and
+   the server cannot disagree about how many people a file contains.
 
-   ```
-   candidates = Contacts whose name matches
-     ├ 0        → no Contact; fall through to the Lead path
-     ├ 1        → MATCHED (basis: Name)
-     └ >1       → narrow by Company
-                    ├ 1    → MATCHED (basis: Name + Company)
-                    └ >1   → narrow by Email
-                               ├ 1  → MATCHED (basis: Name + Company + Email)
-                               └ >1 → AMBIGUOUS — nothing written
-   ```
+2. **Preview**: three outcomes, down from R4's five.
 
-   **A narrowing step that empties the set is skipped, and the previous candidates carry
-   forward.** This is the one genuinely debatable rule in R4. If three people share a name
-   and none of them sits at the company the CSV claims, the honest reading is not "this
-   person does not exist" — it is that the company column is stale or spelled differently,
-   which is exactly what happens when someone changes jobs. Treating an empty intersection
-   as a dead end would silently drop the people most likely to have moved. The alternative —
-   strict AND across all three — is simpler and misses more; it is recorded as Open Question 10.
+   | Classification | Meaning |
+   |---|---|
+   | **New** | Nobody with this key exists — will be created |
+   | **Already known** | An attendee with this key exists — title, mobile and source file will be refreshed |
+   | **Skipped** | No last name, so there is no identity to key on. Writes nothing |
 
-   Criteria the row leaves blank are skipped rather than treated as an empty-string match.
+   ★R5 **Ambiguous is gone, and so is `Match_Basis__c`.** Both existed because R4 matched
+   against Contacts and Leads and could be uncertain which person a row meant. With nothing to
+   match against there is no uncertainty to record. The manual-review download survives,
+   repointed at Skipped rows — with the CSV-formula guard in `c/csvDownload` intact, because
+   its input is still an untrusted uploaded file.
 
-   **Ambiguity is an outcome, not an error.** With email matching there was no such state.
-   Now there is, and the design refuses to guess: an ambiguous row writes nothing and appears
-   in the manual-review download with the names of the candidates it could not choose between.
-   This is the same posture the retired *Company change* classification took — when the data
-   does not say, the system says so instead of picking.
+3. **Apply**: one `upsert ... Unique_Key__c` against `Event_Attendee__c`, and nothing else.
+   No Contact, Lead or Account is created, read, updated or deleted. Re-running a file
+   refreshes the attendees it names rather than duplicating them.
 
-   **The cascade runs twice: Contacts first, then Leads.** A customer Contact outranks a
-   Lead for the same person — the same precedence R3 used. Only when the Contact pass finds
-   nothing at all does the identical name → company → email narrowing run against unconverted
-   Leads. Converted Leads are skipped: their Contact will have matched on the first pass.
-
-   Classifications collapse from seven to five:
-   - **Matched — Contact** — one Contact identified ⇒ records an event history row against it.
-   - **Matched — Lead** ★R4 — no Contact, but the cascade identified one unconverted Lead
-     ⇒ records an event history row against the **Lead**. Before Open Question 11 was
-     answered this case wrote nothing, which meant a professor invited to three conferences
-     accumulated no history at all.
-   - **Ambiguous** — several candidates on either pass, could not narrow ⇒ nothing written;
-     manual-review list.
-   - **New — Lead** — nothing matched anywhere ⇒ creates a **Lead** (`Company` verbatim,
-     `LeadSource = 'Event Import'`, owner = the importing AM) **and tags it**
-     (`Match_Basis__c = Created by import`). Creating the person and then not recording why
-     would lose the only reason they were created.
-   - **Skipped (invalid)** — no name, or no event value ⇒ nothing written, with a one-line reason.
-
-   ★R4 Note what disappeared: the R3 *Already a Lead* classification, which existed only to
-   stop re-imports growing duplicate Leads by doing nothing at all. Now that Leads are
-   taggable, that row is a **Matched — Lead** and gets the history it should always have had;
-   duplicate-Lead prevention is a side effect of the match rather than a special case.
-
-   Summary stat cards + per-row checkboxes (everything but Ambiguous and Skipped checked by
-   default).
-
-3. ★R4 **Apply**: `applyChanges(selectedRows)` re-classifies server-side and then does exactly
-   two things — insert Leads for New — Lead rows, then **upsert** `Event_History__c` on
-   `Unique_Key__c` for every identified row, Contact and Lead alike. Lead insertion has to
-   come first so the new Ids exist to tag. **No Contact is created, updated or deleted.** The
-   result screen reports tags recorded, leads created, and offers the ambiguous-row download.
-
-   The server-side re-classification is kept even though the blast radius is now small. It
-   costs one function call, and "the client tells the server which Contact to write against"
-   is the shape of the bug worth never having.
-
-**Contact query strategy** ★R4: candidates are fetched with `WHERE LastName IN :lastNames` —
-`LastName` is indexed, whereas filtering the compound `Name` field across 500 values is neither
-indexed nor reliably selective — and first names are compared in memory. The 500-row cap keeps
-this to a single query regardless of file size.
-
-PoC scale guard: cap 500 rows per file (friendly error above cap).
+   ★R5 **The one new failure mode, handled rather than discovered.** Routing every row into
+   typed fields means a spreadsheet's Email column — which really does contain `n/a`, `-` and
+   trailing notes — now meets a typed `Email__c` field that refuses them. Failing a 500-row
+   upload over one such cell would be the wrong trade, and so would silently binning the
+   address. The row keeps the person, drops the unstorable address, and says so on that row in
+   the preview. Oversized values are clipped to their field lengths for the same reason: a CSV
+   is not obliged to respect our schema.
 
 ### Screen 2 — Create Marketing Event
 
 Standard object create form (Lightning record page with a curated layout is sufficient for the PoC; a custom LWC wrapper is optional polish). Fields per data model; Save → navigates to the Event record page (Screen 3 lives there). Status is *not* on this form — see design note above.
 
-### Screen 3 — Contact Selector (LWC on the Event record page)
+### Screen 3 — Attendee Selector (LWC on the Event record page)
 
-Screen 3 stays a custom LWC in R3 — the standardisation pass covers Screens 4 and 5 only.
-Two changes land here: a Lead source, and a submit action that hands off to the Approval Process.
+★R5 `c/contactSelector` becomes `c/attendeeSelector`, and its three tabs become two.
 
-- Three tabs ★R3: **"Add Contacts"**, **"Add Leads"** and **"All Invitees"**.
-- **Add Leads** ★R3: lists `Lead` records where `OwnerId` = current user, `IsConverted = false`,
-  and not already invited to this event. Note the asymmetry with the Contacts tab, which scopes
-  by Account ownership *or* Account Team membership: Lead has no team object, so ownership is
-  the only scope available without building one. Grouped by `Company` — the
-  text field, which is why grouping here is by name rather than by a record Id as it is on the
-  Contacts tab; two spellings of the same university will group separately, and that is
-  accepted for the PoC. **Add Selected** creates `Event_Invitee__c` rows with `Lead__c` set,
-  `Contact__c` and `Account__c` left null.
-- **Add Contacts**: lists Contacts under Accounts where `Account.OwnerId` is in the current AM's management scope — PoC definition: Accounts the AM owns **or** where the AM is in the Account Team. Grouped by Account (header shows Owner + selected count); filters: Account picklist, Title keyword, name/email search. Checkbox select → **Add Selected** creates `Event_Invitee__c` rows in Draft, `Added_By__c` = current user. Contacts already invited (Draft/Pending/Approved/Exported, by anyone) are filtered out of the list. **Rejected contacts reappear in the list**; re-adding one resets the *existing* row (Rejected → Draft, decision timestamps cleared, `Added_By__c` updated) — a new row is impossible because `Unique_Key__c` is unique per Event+Contact.
-- **Submit My Invitees for Approval** ★R3 (renamed — it now covers Contacts *and* Leads): acts on *only the current AM's Draft rows*. For each row it resolves `Approver__c` via the ladder above, stamps `Account_Owner__c` (Contact rows only, audit) + `Submitted_At__c`, and then calls the **standard `Approval.process()`** rather than setting `Status__c` itself. `Status__c = 'Pending Approval'` is now written by the Approval Process's *Initial Submission Action*, not by our code — the state machine has moved into configuration. Rows that resolve to no approver are rejected up front with a named error and stay in Draft. Other AMs' rows are untouched.
-- **Notification on submit** ★R3: unchanged in behaviour — one aggregated email + bell per distinct approver, still via `EventNotificationService.notifyOwnersOfSubmission`, still linking to the Event record page (record-page navigation is reliable on desktop and the Salesforce Mobile App, unlike parameterized App Pages). The Approval Process *also* wants to send its own assignment email, once per work item; see *Screen 4 → Notification volume* for how that conflict is settled.
-- **All Invitees** tab: read-only table of everyone's invitees with Status and Added By. ★R3 It reads the `Invitee_*__c` formula fields, so one flat query renders both Contact and Lead rows with no branching, and gains a **Type** column (Contact / Lead) and an **Organisation** column that shows the Account name or the Lead's Company as appropriate.
+- **Add Attendees** replaces *Add Contacts* and *Add Leads*. With one kind of invitee there is
+  nothing for two tabs to tell apart, and the duplicated filter / search / selection state that
+  came with them goes too. Lists every `Event_Attendee__c` not already on this event, grouped
+  by `Company__c` — the text, so two spellings of one organisation group separately (accepted
+  for the PoC; there is no record to key on, by design). Filters: organisation picklist,
+  name / email / title search. Capped at 2,000 with an explicit truncation notice.
+- **Selections survive a filter change**, and the component says so when the Add count includes
+  rows that are off-screen — a count silently disagreeing with the table is worse than a note.
+- **Rejected invitees reappear** in the list; re-adding one resets the *existing* row (Rejected
+  → Draft, timestamps and approver cleared, `Added_By__c` updated). A second row is impossible:
+  `Unique_Key__c` is unique per Event+Attendee.
+- **Submit My Invitees for Approval** acts on *only the current AM's Draft rows*. It stamps
+  `Approver__c` (the submitter's manager) and `Submitted_At__c`, then calls the standard
+  `Approval.process()`. `Status__c = 'Pending Approval'` is written by the Approval Process's
+  Initial Submission Action, not by our code. A submitter with no manager is refused up front
+  with a named error and nothing moves.
+- **All Invitees** tab: read-only table of everyone's invitees with Status and Added By, read
+  through the `Invitee_*__c` formulas. ★R5 The **Type** column is gone — every invitee is an
+  attendee, so a column that always says the same word is noise.
+
+★R5 **What Screen 3 lost:** per-AM scoping. Accounts owned or team-membership was the whole
+definition of "my contacts", and there is no Account to ask. See the price table under
+*Data model*.
 
 ### Screen 4 — Approval (★R3: standard Approval Process, no custom code)
 
@@ -533,9 +506,17 @@ Two Permission Sets: `Event_AM` (create events, import contacts, add/submit invi
 
 ★R3 **Report visibility replaces `with sharing` as the export boundary.** The custom exporter was `with sharing`, so a download could never exceed what the user could open by hand. Reports enforce the same record-level sharing, so that property holds — but the *report definitions* now live in a folder whose sharing must be set deliberately. `Event_Invitee__c` is `ControlledByParent` under a `ReadWrite` event, which in the PoC still means everyone sees everything; the "My Approved Invitees" report's `Added By = $User.Id` filter is a convenience filter, **not** a security boundary, exactly as the old toggle was. Tightening the event's OWD remains the production lever.
 
-★R3 **Lead sharing is a new surface.** Leads have their own OWD, independent of the event. Under a Private Lead OWD an approver may be unable to see the Lead behind an invitee they are being asked to approve — the formula columns go blank and the decision is made on a name alone. PoC assumption: Lead OWD is Public Read Only. **Flagged as Open Question 7.**
+★R5 **Both sets change again, and one of the changes is worth pausing on:**
+
+- `Event_AM` — **loses** Lead Create/Read/Edit and everything to do with `Event_History__c`; **gains** Create/Read/Edit on `Event_Attendee__c`. The result is that this permission set now grants **no permission on any standard object whatsoever**. R4 could say "the import no longer needs Contact edit"; R5 can say the feature does not need a standard object at all, which is a much stronger claim and the reason it can be handed to an org that would never let an import near its customer data.
+- `Event_Approver` — **loses** Read on `Lead`; **gains** Read on `Event_Attendee__c`. This is not decoration: the `Invitee_*__c` formulas traverse `Event_Attendee__r`, and without read access the name and organisation columns render blank on the exact screen the approval is made from. Same failure R3 had with Lead, on a different object.
+- `Event_Attendee__c.Source_File__c`, `Imported_On__c` and `Unique_Key__c` are FLS **read-only** for both sets even though the import writes them. Apex DML does not enforce FLS unless asked to, so the import still sets them; the point is that a hand-edit cannot make `Source_File__c` a lie.
+
+★R5 **Lead sharing stops being a surface, and attendee sharing becomes one.** Open Question 7 asked what the org's Lead OWD was, because under a Private OWD an approver could not see the Lead behind an invitee. That question is resolved by deletion — but the identical risk now lives on `Event_Attendee__c`, whose OWD this project sets itself to Public Read/Write. That is a decision made here rather than inherited, which is an improvement in one way (nothing outside the project can break it) and a widening in another: every AM can read every attendee. Tightening it is a production lever, but it cannot be tightened without giving AMs some other route to each other's attendees — see *Screen 3*.
 
 ### Deliverables / repo layout
+
+*As originally designed. Superseded three times over by the R3, R4 and R5 deltas below — read those for what the repo actually contains.*
 
 SFDX project in `salesforce_event_mgmt/` (force-app structure): 2 custom objects + fields, **4 LWCs** (import wizard — app page; contact selector — event record page; approval console — event record page; approved exports — app page) plus `c/csvDownload`, a JS-only bundle both download paths import so the BOM/CRLF/revoke handling lives in one place; 4 Apex controllers and 1 notification/decision service (+ tests), **1 Flow** (submit notification; completion notification lives in the Apex decision service), 2 app pages (`Import_Contacts`, `Approved_Exports` flexipages + tabs), 2 permission sets, demo seed-data script (`scripts/seed-demo-data.apex` with Western-name sample Accounts/Contacts incl. the "PoC Unassigned" bucket Account), deploy instructions in README. Screen 2 (event creation) is a standard record form with a curated layout — not an LWC.
 
@@ -618,6 +599,79 @@ Sequenced so the negative assertions exist before the code that could violate th
 22. LWC: Event column, five tiles, ambiguous-row download → verify: jest suite green.
 23. Permission set (add the object), demo CSV, README/QUALITY/DEPLOYMENT updates → verify: full gauntlet.
 
+### ★R5 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| Object `Event_Attendee__c` + 9 fields | Person-level; OWD Public Read/Write; `Unique_Key__c` is the only de-duplication |
+| Tab + layout for `Event_Attendee__c` | The layout's Event Invitees related list is what answers "which events has this person been put forward for" — the question `Event_History__c` used to hold |
+| `Event_Invitee__c.Event_Attendee__c` lookup | `Restrict` delete, so an invited attendee cannot vanish mid-approval. Unlike the old Contact/Lead constraints this only ever blocks deleting a record this project owns |
+| Validation rule `Invitee_Requires_Attendee` | Replaces the XOR rule. Enforced by rule rather than a required lookup so the field can land on an org whose invitees already have rows |
+| `AttendeeImportController` / `AttendeeImportControllerTest` | Renamed from `ContactImportController`: a class called "contact import" that imports no contacts is a comment that lies |
+| `c/attendeeSelector` | Renamed from `c/contactSelector`, three tabs → two |
+
+**Removed**
+
+| Item | Why |
+|---|---|
+| Object `Event_History__c` + 10 fields + its validation rule | Attendance and invitation are the same row now. One revision old; see the note under *Data model* |
+| `Event_Invitee__c.Contact__c` / `Lead__c` / `Account__c` / `Account_Owner__c` | Nothing left to point at or snapshot |
+| `Event_Invitee__c.Invitee_Type__c` | A column that always reads "Attendee" is noise — dropped from the report type, both reports, the approval page and the All Invitees table |
+| `Event_AM`'s Lead object permission | The import no longer touches a single standard object. Worth stating: this permission set now grants **nothing** outside this project's own objects |
+| Account / Contact / Lead tabs in the Event Management app | The workflow does not read them |
+| `Match_Basis__c`, the narrowing cascade, the Ambiguous outcome | Nothing to match against |
+
+**Modified**
+
+| File | Change | Est. |
+|---|---|---|
+| `InviteeSelectorController` | `getSelectableContacts` + `getSelectableLeads` → `getSelectableAttendees`; `addInvitees` + `addLeadInvitees` → `addAttendees`; the approver ladder collapses to one rung; `getMyAccountIds` deleted | ~−140 |
+| The four `Invitee_*__c` formulas | `BLANKVALUE(Contact__r.X, Lead__r.X)` → `Event_Attendee__r.X` | small |
+| `importWizard.js` / `.html` | Event column out of `HEADER_MAP`; de-dup key mirrors `Unique_Key__c`; 5 tiles → 3; manual-review download repointed at Skipped rows | ~+40 / −80 |
+| `EventWorkflowTest` | Setup seeds attendees instead of Accounts/Contacts/Leads; the two ladder tests become one no-manager test; new tests for the Restrict constraint and the required-attendee rule | rewrite |
+| Both permission sets, report type, 2 reports, invitee layout, approval process, app, record page, import tab | Drop `Invitee_Type__c` and the Contact/Lead grants; add `Event_Attendee__c` | small each |
+| `seed-demo-data.apex` | Creates no Account, Contact or Lead at all — 7 attendees keyed the way the import keys them, so a demo re-run shows a New/Already-known mix | rewrite |
+| `demo-data/*.csv` + `generate-demo-csv.mjs` | Event column dropped; adds the collapsing same-name pair, the separable same-name pair, a junk email and a two-company row | rewrite |
+
+**Not shipped, deliberately**
+
+- **No reconciliation between attendees and Contacts.** Named as the recovery path in the price
+  table rather than half-built here — a matching pass that runs on a schedule is a different
+  feature from an import, and building it into the import is what R5 exists to undo.
+- **No roll-up of attendee counts on the event.** `Event_Invitee__c` already provides the three
+  status counters; an attendee count is the same number before approval.
+
+### ★R5 Build order
+
+Sequenced so the assertions land before the code that could violate them, and so the
+irreversible metadata deletions happen last.
+
+24. Create `Event_Attendee__c` + 9 fields + tab + layout → verify: deploys; a hand-inserted
+    row upserts idempotently on `Unique_Key__c`; a second row with the same key is refused.
+25. Add `Event_Invitee__c.Event_Attendee__c` and `Invitee_Requires_Attendee` **alongside** the
+    existing Contact/Lead fields — the destructive manifests are a separate deploy, so both
+    shapes are present at once. This is what makes step 27 a migration rather than a leap.
+    Note the window it opens: the validation rule is live while existing invitees still have
+    a blank attendee, so any update to one fails until step 27 has run. Both go in one
+    maintenance slot.
+26. Write the failing tests first — *no Contact, Lead or Account created, updated or deleted*
+    — against the **current** controller, and watch them fail. That assertion is the
+    requirement; everything else is detail.
+27. **Migrate existing invitees in the org** (DEPLOYMENT.md Part 7): one `Event_Attendee__c`
+    per invited Contact/Lead, then back-fill `Event_Attendee__c` on every invitee. Do this
+    before anything is deleted — after `destructiveChangesPre` runs there is no record of who
+    an invitee was.
+28. Replace `ContactImportController` with `AttendeeImportController` → verify: step 26's
+    assertions pass; re-running a file creates nobody new; junk in the Email column costs the
+    address and not the person.
+29. Repoint the four formulas, rework `InviteeSelectorController`, rebuild the two LWCs →
+    verify: jest green, `EventWorkflowTest` green, the approval page still shows a name.
+30. Report type, reports, permission sets, app, record page → verify: the Approved Invitees
+    report renders with no blank name or organisation column.
+31. Run both destructive manifests → verify: full gauntlet, then the demo script end to end.
+
 ### ★R3 What still needs an org
 
 Two things in this revision cannot be verified from the repo, and both were flagged before
@@ -655,6 +709,29 @@ consumer must handle both heads. The `Invitee_*__c` formula fields confine that 
 field definitions instead of spreading `IF (Contact) … ELSE (Lead)` through the LWCs, the Apex
 and the reports. That containment is the single design decision this revision rests on.
 
+### ★R5 postscript to the rejected alternatives
+
+The table above rejected three ways of holding a non-customer *inside the standard objects*,
+and landed on Lead as the least-bad standard home. R5 rejects the shared assumption behind
+all four: that an invited person has to be represented by a standard object at all.
+
+Lead was a good answer to "which standard object holds a person who is not yet a customer".
+It was a poor answer to "where do imported event attendees live", and the tell was visible in
+R3 and R4 without being named: a two-headed junction, five formula fields whose only job was
+to hide the fork, an approver ladder that grew a rung and then an exclusion rule to stop the
+rung from letting AMs approve themselves, and `Lead.Company` doing the work of an
+organisation field on an object that also carries a sales pipeline nobody here uses. Each of
+those was a reasonable local fix. Together they were the design saying it had the wrong
+container.
+
+**What is still true from that table:** Premise 7 holds absolutely, and none of the three
+rejected options becomes acceptable in R5 — they are simply no longer tempting, because
+nothing needs a standard object to point at. **Lead Convert is what is genuinely lost.** R3
+valued it as the no-code promotion path for the day an institution becomes a customer; an
+`Event_Attendee__c` has no such path, and promoting one means creating the Account and
+Contact by hand. That is a real regression for the academic-guest case, and it is the second
+strongest argument (after Open Question 15) for an attendee → Contact link one day.
+
 ## Open Questions
 
 1. Exact CSV column headers from the real source system (assumed: First Name, Last Name, Email, Title, Company, Mobile) — confirm with one real file before the demo.
@@ -665,29 +742,57 @@ and the reports. That containment is the single design decision this revision re
 6. ★R3 Which notification option for Screen 4 — Option 1 (aggregate email, per-request approval emails off) or Option 2 (pure standard, plus Email Approval Response so approvers can reply from a phone)? Option 1 is the design's recommendation; Option 2 is more standard and enables email approval.
 7. ★R3 What is the org's **Lead OWD**? Under Private, approvers may not be able to see the Lead behind an invitee they are approving. PoC assumes Public Read Only.
 8. ★R3 Who should own Leads created by the import (Screen 1)? Currently the importing AM — which then routes their approval to *their own manager* by ladder rule 2's exclusion. That is intended, but it means a large academic import concentrates approval work on one manager.
-9. ★R3 Should the same person existing as both a Contact (at a customer) and a Lead (personal/academic capacity) be prevented from being invited twice to one event? `Unique_Key__c` cannot catch this — the two rows have different keys. Deliberately out of PoC scope; flagged because a professor who consults for a customer is exactly the person this happens to.
+9. ★R3 ~~Should the same person existing as both a Contact and a Lead be prevented from being invited twice to one event?~~ **Settled by R5, structurally.** There is one kind of invitee, so there is one `Unique_Key__c` per person per event and the second row cannot be created. Note *how* it was settled: not by a rule catching the duplicate, but by removing the fork that produced two identities. R5 introduces its own version of the problem one level down — see Open Question 16.
 10. ★R4 ~~Should a narrowing step that empties the candidate set be skipped, or end the match?~~ **Settled: skipped.** A stale or differently-spelled company does not erase a person found by name. Strict AND was the alternative and would have dropped exactly the people who changed jobs.
-11. ★R4 ~~Should Leads carry event history too?~~ **Settled: yes.** This is what forced `Event_History__c` off Master-Detail and onto two lookups, with the costs tabled under *Data model* — no cascade delete, its own OWD, and no roll-up count on Contact. Worth re-reading that table: the answer bought symmetry and paid for it in three places.
-12. ★R4 ~~Is a name-first match acceptable given it can tag the wrong person?~~ **Settled: accepted.** A single Contact matching a name that belongs to somebody else is tagged wrongly with no signal, and that is understood. What makes it survivable is that a tag is append-only history: it destroys nothing, changes no Contact field, and has no effect on invitation or approval. `Match_Basis__c` records how each tag was reached so a wrong one can at least be explained afterwards. **If a name-only match is ever used for something that acts on people — a mailing, an invitation, a report someone bills from — this decision needs revisiting first.**
-13. ★R4 Should the event history be visible on the Contact at all in this PoC? The related list requires a Contact page-layout change, which this project deliberately does not ship (see *Deliverables*). Until an admin adds it by hand, the data exists and is reportable but is invisible on the record. The same now applies to the Lead layout.
-14. ★R4 Does a `SetNull` delete constraint re-fire the `Event_History_Is_Contact_Xor_Lead` validation rule when a Contact or Lead is deleted? If it does, deleting a tagged person fails and the constraint must change — and every alternative is worse (`Restrict` blocks deleting standard records; `Cascade` may not be permitted to a standard object at all). **Must be tested in the org before this is called done.**
+11. ★R4 ~~Should Leads carry event history too?~~ **Settled: yes — and then made moot by R5.** The answer forced `Event_History__c` onto two lookups and cost a cascade delete, its own OWD and the roll-up on Contact. R5 deletes the object outright, so the whole question was one revision of scaffolding. Kept in the record because the *reason* it was asked — guests without a customer relationship are first-class — is exactly what R5 built the attendee object for.
+12. ★R4 ~~Is a name-first match acceptable given it can tag the wrong person?~~ **Moot as of R5 — nothing is matched.** Left below as written, because the condition it names ("if a name-only match is ever used for something that acts on people") is the reason R5 could delete the cascade without regret: it never got there. The successor risk is Open Question 16. Original text: **Settled: accepted.** A single Contact matching a name that belongs to somebody else is tagged wrongly with no signal, and that is understood. What makes it survivable is that a tag is append-only history: it destroys nothing, changes no Contact field, and has no effect on invitation or approval. `Match_Basis__c` records how each tag was reached so a wrong one can at least be explained afterwards. **If a name-only match is ever used for something that acts on people — a mailing, an invitation, a report someone bills from — this decision needs revisiting first.**
+13. ★R4 ~~Should the event history be visible on the Contact at all in this PoC?~~ **Resolved by R5 removing the problem.** The blocker was that showing it meant editing the org's own Contact and Lead layouts — damage outside this project. Attendees are on an object this project owns, so its layout ships with the Event Invitees related list and nothing outside the project has to change. This is the clearest single sign the R4 shape was fighting the platform.
+14. ★R4 ~~Does a `SetNull` delete constraint re-fire the XOR validation rule when a Contact or Lead is deleted?~~ **No longer reachable.** The dilemma was that every delete constraint pointing at a *standard* object was bad in a different way. `Event_Invitee__c.Event_Attendee__c` uses `Restrict`, which was the unacceptable option in R4 precisely because it would have blocked deleting a Contact — and is the right option now because the only thing it blocks is deleting an attendee this project created. `EventWorkflowTest.anInvitedAttendeeCannotBeDeleted` asserts it.
+15. ★R5 **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
+16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
+17. ★R5 **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 
 ## Success Criteria
 
 Demo script runs end-to-end in the Sandbox without manual data fixes:
-1. ★R4 Upload a 48-row .csv carrying an Event column (seed file includes at least one row with no email, one same-name pair, one row whose company has changed, and one non-ASCII name) → preview shows correct **Matched / Ambiguous / New-Lead / Already-a-Lead / Skipped** classification → apply records event history against the matched Contacts and creates Leads for the rest, with the non-ASCII name stored intact.
-   The assertions that matter are the negative ones: **no Contact is created, updated or deleted**, and **no Account is created** — both verified by comparing row counts and `LastModifiedDate` before and after.
-   1a. ★R4 Re-running the identical file changes nothing: the same tags upsert onto the same rows, and no duplicate Leads appear.
-   1b. ★R4 A row whose name matches two Contacts, with no email to separate them, lands in **Ambiguous**, writes nothing, and appears in the manual-review download naming both candidates.
-   1c. ★R4 A row whose name matches one Contact but whose company matches none of the candidates is still **Matched** with `Match_Basis__c = Name` — the empty narrowing step was skipped, not fatal (Open Question 10).
-2. AM creates an event; two different AM users each add their own contacts and submit; both Account Owners get notified.
-3. One Owner opens the **Approvals list** on desktop, the other in the Salesforce Mobile App; both select all pending items and Approve. ★R3 The Approval History related list on a decided invitee shows the approver, timestamp and comments.
-4. Both AMs receive completion emails; the event shows correct roll-up counts; the **Approved Invitees report** lists exactly the approved invitees and exports without mojibake.
-5. Duplicate adds are prevented; a rejected contact does not appear in the report.
-6. ★R3 **The Lead path, end to end:** an AM adds two professors from the *Add Leads* tab and submits. Because the AM owns those Leads, ladder rule 2's exclusion applies and both route to the **AM's manager**, not to the AM — asserted explicitly, since silently self-approving would look identical to success on screen. The manager approves; the professors appear in the report with `Invitee_Type__c = Lead` and their university in the Organisation column.
-7. ★R3 **The un-routable case is refused, not swallowed:** a submitter whose user record has no Manager and who is adding a self-owned Lead gets a named error and the rows stay in Draft — the `Approver_Required_When_Pending` validation rule proves the orphan-row defect described under *Approval routing* cannot recur.
-8. ★R3 Narrowing the report's `Decided_At__c` filter to the day the approvals happened returns the same rows; shifting it by one day returns none.
-9. ★R3 A user with only `Event_Approver` can open an approval request for a Lead invitee and see the name and organisation populated — the Lead-read permission and Lead OWD assumption hold.
+
+1. ★R5 Upload the 49-row demo .csv → preview shows the correct **New / Already known /
+   Skipped** split → apply creates the attendees.
+   The assertions that matter are the negative ones: **no Contact, Lead or Account is
+   created, updated or deleted** — verified by comparing row counts and `LastModifiedDate`
+   before and after. In R4 this list was two objects long; it is three now, and the import
+   touches no standard object at all.
+   1a. ★R5 Re-running the identical file creates nobody new: every row comes back **Already
+   known** and the attendee count is unchanged.
+   1b. ★R5 The two Sophie Laurents with no email **collapse into one attendee**, and the two
+   Marie Duponts with different emails stay **two**. Both are in the demo file deliberately:
+   the first is the cost of R5's identity key, not a defect.
+   1c. ★R5 `Ben Nomail`, whose Email column says `n/a`, is **imported with no email**, and the
+   preview row says the address was not stored. One bad cell must not fail the other 48 rows.
+   1d. ★R5 The two rows with no last name are **Skipped**, write nothing, and appear in the
+   manual-review download.
+2. AM creates an event; two different AMs each add their own attendees and submit; both
+   submitters' managers are notified.
+3. One manager opens the **Approvals list** on desktop, the other in the Salesforce Mobile
+   App; both select all pending items and Approve. ★R3 The Approval History related list on a
+   decided invitee shows the approver, timestamp and comments.
+4. Both AMs receive completion emails; the event shows correct roll-up counts; the **Approved
+   Invitees report** lists exactly the approved invitees and exports without mojibake.
+   ★R5 Specifically: the Name and Organisation columns are **populated**, which is what proves
+   the repointed formulas and the approver's read access to `Event_Attendee__c` both work.
+5. Duplicate adds are prevented; a rejected invitee does not appear in the report, reappears
+   in the selector, and re-adding resets the existing row rather than creating a second.
+6. ★R5 **Nothing invents a customer record anywhere in the flow.** After the full demo,
+   `SELECT COUNT() FROM Account`, `FROM Contact` and `FROM Lead` are exactly what they were
+   before it started. Asserted in `EventWorkflowTest.inviteeReadsThroughToTheAttendee`, and
+   worth re-checking by hand in the org, because it is the entire point of the revision.
+7. ★R5 **The un-routable case is refused, not swallowed:** a submitter whose user record has
+   no Manager gets a named error and the rows stay in Draft. With one rung on the ladder this
+   is the only way routing can fail, so it carries more weight than it did in R3.
+8. ★R5 **An invited attendee cannot be deleted.** The `Restrict` constraint is what stops an
+   invitee pointing at nothing mid-approval.
+9. ★R3 Narrowing the report's `Decided_At__c` filter to the day the approvals happened returns
+   the same rows; shifting it by one day returns none.
 
 ## Dependencies
 

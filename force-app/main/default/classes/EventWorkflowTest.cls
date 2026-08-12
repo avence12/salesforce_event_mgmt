@@ -1,11 +1,13 @@
 /**
- * End-to-end workflow tests: add → submit (approver ladder + notifications) →
+ * End-to-end workflow tests: add → submit (approver resolution + notifications) →
  * approve/reject through the standard approval process → completion notification →
  * rejected re-add.
  *
- * Two AMs and two Account Owners exercise the multi-AM, multi-owner grouping. The
- * export tests that used to live here went with EventExportController — that path is
- * two saved reports now, and a report is not something Apex can meaningfully assert on.
+ * Two AMs share one manager, which is the whole of the R5 routing rule. The
+ * Account Owner and Lead Owner rungs the earlier revisions tested went with the
+ * Account and Lead lookups; what replaces those tests is an assertion that a
+ * submitter with no manager is refused, because that is now the only way routing
+ * can fail.
  */
 @IsTest
 private class EventWorkflowTest {
@@ -23,11 +25,23 @@ private class EventWorkflowTest {
         Approval.process(req);
     }
 
+    private static Event_Attendee__c attendee(String first, String last, String company) {
+        return new Event_Attendee__c(
+            Name = first + ' ' + last,
+            First_Name__c = first,
+            Last_Name__c = last,
+            Email__c = first.toLowerCase() + '@' + 'evt.example',
+            Title__c = 'Attendee',
+            Company__c = company,
+            Unique_Key__c = (last + '|' + first + '|' + company).toLowerCase()
+        );
+    }
+
     @TestSetup
     static void setup() {
         Profile std = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
         List<User> users = new List<User>();
-        for (String alias : new List<String>{ 'amalex', 'ammaria', 'ownsarah', 'ownmarc', 'mgrdana' }) {
+        for (String alias : new List<String>{ 'amalex', 'ammaria', 'mgrdana' }) {
             users.add(
                 new User(
                     Alias = alias,
@@ -44,42 +58,18 @@ private class EventWorkflowTest {
         }
         System.runAs(new User(Id = UserInfo.getUserId())) {
             insert users; // runAs guards against mixed-DML with the setup below
-            // Dana manages both AMs — ladder rule 3, and the only approver a
-            // self-owned lead can reach.
+            // Dana manages both AMs — the only rung the R5 ladder has.
             update new List<User>{
-                new User(Id = users[0].Id, ManagerId = users[4].Id),
-                new User(Id = users[1].Id, ManagerId = users[4].Id)
+                new User(Id = users[0].Id, ManagerId = users[2].Id),
+                new User(Id = users[1].Id, ManagerId = users[2].Id)
             };
         }
 
-        User sarah = users[2];
-        User marcus = users[3];
-        Account acme = new Account(Name = 'Acme Corp', OwnerId = sarah.Id);
-        Account nordbank = new Account(Name = 'Nordbank AG', OwnerId = marcus.Id);
-        insert new List<Account>{ acme, nordbank };
-
-        insert new List<Contact>{
-            new Contact(
-                FirstName = 'Emily',
-                LastName = 'Carter',
-                Email = 'emily@acme.test',
-                Title = 'Senior Manager',
-                AccountId = acme.Id
-            ),
-            new Contact(
-                FirstName = 'Robert',
-                LastName = 'Kim',
-                Email = 'robert@acme.test',
-                Title = 'SVP',
-                AccountId = acme.Id
-            ),
-            new Contact(
-                FirstName = 'James',
-                LastName = 'Mueller',
-                Email = 'james@nordbank.test',
-                Title = 'Director',
-                AccountId = nordbank.Id
-            )
+        insert new List<Event_Attendee__c>{
+            attendee('Emily', 'Carter', 'Acme Corp'),
+            attendee('Robert', 'Kim', 'Acme Corp'),
+            attendee('James', 'Mueller', 'Nordbank AG'),
+            attendee('Hélène', 'Dubois', 'Université de Genève')
         };
 
         insert new Marketing_Event__c(
@@ -90,62 +80,60 @@ private class EventWorkflowTest {
         );
     }
 
+    private static Id attendeeId(String last) {
+        return [SELECT Id FROM Event_Attendee__c WHERE Last_Name__c = :last LIMIT 1].Id;
+    }
+
     @IsTest
     static void fullWorkflow_submitApproveReject() {
         User alex = findUser('amalex');
         User maria = findUser('ammaria');
-        User sarah = findUser('ownsarah');
+        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
-        Contact robert = [SELECT Id FROM Contact WHERE Email = 'robert@acme.test'];
-        Contact james = [SELECT Id FROM Contact WHERE Email = 'james@nordbank.test'];
+        Id emily = attendeeId('Carter');
+        Id robert = attendeeId('Kim');
+        Id james = attendeeId('Mueller');
 
         System.runAs(alex) {
-            Integer added = InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id, robert.Id });
-            System.assertEquals(2, added);
+            System.assertEquals(2, InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily, robert }));
             // Duplicate add is a no-op, not an error
-            System.assertEquals(0, InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id }));
+            System.assertEquals(0, InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily }));
             InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
             System.assertEquals(2, sub.submitted);
-            System.assertEquals(1, sub.approversNotified, 'Both Acme contacts → one distinct approver (Sarah)');
+            System.assertEquals(1, sub.approversNotified, 'One submitter has one manager');
         }
         System.runAs(maria) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ james.Id });
-            InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
-            System.assertEquals(1, sub.approversNotified, 'Nordbank → Marcus');
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ james });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
         }
 
         // The approval process, not our Apex, owns the status from submission onwards.
-        for (Event_Invitee__c inv : [
-            SELECT Account_Owner__c, Approver__c, Account__r.OwnerId, Status__c, Submitted_At__c
-            FROM Event_Invitee__c
-        ]) {
+        for (Event_Invitee__c inv : [SELECT Approver__c, Status__c, Submitted_At__c FROM Event_Invitee__c]) {
             System.assertEquals('Pending Approval', inv.Status__c, 'Initial submission action must set the status');
-            System.assertEquals(inv.Account__r.OwnerId, inv.Approver__c, 'Ladder rule 1: the Account Owner approves');
-            System.assertEquals(inv.Account__r.OwnerId, inv.Account_Owner__c, 'Audit snapshot still taken');
+            System.assertEquals(dana.Id, inv.Approver__c, 'Every invitee routes to the submitter’s manager');
             System.assertNotEquals(null, inv.Submitted_At__c);
         }
         System.assertEquals(3, [SELECT COUNT() FROM ProcessInstance], 'One approval instance per invitee');
 
-        List<Event_Invitee__c> acmeRows = [
+        List<Event_Invitee__c> alexRows = [
             SELECT Id
             FROM Event_Invitee__c
-            WHERE Contact__c IN (:emily.Id, :robert.Id)
+            WHERE Event_Attendee__c IN (:emily, :robert)
             ORDER BY Id
         ];
 
         Test.startTest();
-        System.runAs(sarah) {
-            decide(acmeRows[0].Id, true);
-            decide(acmeRows[1].Id, false);
+        System.runAs(dana) {
+            decide(alexRows[0].Id, true);
+            decide(alexRows[1].Id, false);
         }
         Test.stopTest();
 
         Map<Id, Event_Invitee__c> after = new Map<Id, Event_Invitee__c>(
-            [SELECT Id, Status__c, Decided_At__c FROM Event_Invitee__c WHERE Id IN :acmeRows]
+            [SELECT Id, Status__c, Decided_At__c FROM Event_Invitee__c WHERE Id IN :alexRows]
         );
-        System.assertEquals('Approved', after.get(acmeRows[0].Id).Status__c);
-        System.assertEquals('Rejected', after.get(acmeRows[1].Id).Status__c);
+        System.assertEquals('Approved', after.get(alexRows[0].Id).Status__c);
+        System.assertEquals('Rejected', after.get(alexRows[1].Id).Status__c);
         for (Event_Invitee__c inv : after.values()) {
             System.assertNotEquals(null, inv.Decided_At__c, 'Stamp_Decided_At runs on both outcomes');
         }
@@ -157,122 +145,45 @@ private class EventWorkflowTest {
         ];
         System.assertEquals(1, counts.Approved_Count__c);
         System.assertEquals(1, counts.Rejected_Count__c);
-        System.assertEquals(1, counts.Pending_Count__c, 'Maria\'s Nordbank row is untouched');
+        System.assertEquals(1, counts.Pending_Count__c, 'Maria’s row is untouched');
     }
 
     /**
-     * The case the whole Lead model exists for, and the one that would look identical
-     * to success if it were wrong: an AM adds a professor they own as a Lead. Rule 2's
-     * exclusion must send it to their *manager*, because routing it to the Lead Owner
-     * would mean the submitter approving their own guest.
+     * The formula fields are what let the reports and the approval page read an
+     * invitee without knowing there is an attendee behind it. Nothing about an
+     * attendee's own record should have to be re-taught to those consumers.
      */
     @IsTest
-    static void leadInviteeRoutesToManagerNotToItsOwner() {
+    static void inviteeReadsThroughToTheAttendee() {
         User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id helene = attendeeId('Dubois');
 
-        Lead prof;
         System.runAs(alex) {
-            prof = new Lead(
-                FirstName = 'Hélène',
-                LastName = 'Dubois',
-                Company = 'Université de Genève',
-                Title = 'Professor of Cryptography',
-                Email = 'h.dubois@unige.test',
-                OwnerId = alex.Id
-            );
-            insert prof;
-
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableLeads(evt.Id);
-            System.assertEquals(1, sel.contacts.size(), 'Alex owns exactly one unconverted lead');
-            System.assertEquals(prof.Id, sel.contacts[0].leadId);
-            System.assertEquals(
-                'Université de Genève',
-                sel.contacts[0].accountName,
-                'Company text stands in for Account'
-            );
-
-            System.assertEquals(1, InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ prof.Id }));
-            InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
-            System.assertEquals(1, sub.submitted);
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ helene });
         }
 
         Event_Invitee__c inv = [
-            SELECT
-                Status__c,
-                Approver__c,
-                Account__c,
-                Account_Owner__c,
-                Invitee_Name__c,
-                Invitee_Org__c,
-                Invitee_Type__c
+            SELECT Invitee_Name__c, Invitee_Org__c, Invitee_Title__c, Invitee_Email__c
             FROM Event_Invitee__c
-            WHERE Lead__c = :prof.Id
+            WHERE Event_Attendee__c = :helene
         ];
-        System.assertEquals(dana.Id, inv.Approver__c, 'A self-owned lead must never route back to its submitter');
-        System.assertNotEquals(alex.Id, inv.Approver__c);
-        System.assertEquals(null, inv.Account__c, 'A lead invitee has no customer Account — that is the point');
-        System.assertEquals(null, inv.Account_Owner__c);
-        System.assertEquals('Pending Approval', inv.Status__c);
+        System.assertEquals('Hélène Dubois', inv.Invitee_Name__c, 'Non-ASCII names survive the formula');
+        System.assertEquals('Université de Genève', inv.Invitee_Org__c, 'Company text stands in for an Account');
+        System.assertEquals('Attendee', inv.Invitee_Title__c);
+        System.assertNotEquals(null, inv.Invitee_Email__c);
 
-        // The formula fields are what let one report cover both kinds of invitee.
-        System.assertEquals('Hélène Dubois', inv.Invitee_Name__c);
-        System.assertEquals('Université de Genève', inv.Invitee_Org__c);
-        System.assertEquals('Lead', inv.Invitee_Type__c);
-
-        Test.startTest();
-        System.runAs(dana) {
-            decide([SELECT Id FROM Event_Invitee__c WHERE Lead__c = :prof.Id].Id, true);
-        }
-        Test.stopTest();
-
-        System.assertEquals(
-            'Approved',
-            [SELECT Status__c FROM Event_Invitee__c WHERE Lead__c = :prof.Id].Status__c,
-            'The manager can decide it — it is a real work item, not an orphan'
-        );
-
-        // No Account was invented anywhere along the way.
-        System.assertEquals(
-            0,
-            [SELECT COUNT() FROM Account WHERE Name = 'Université de Genève'],
-            'Account means transacting customer — a university must never become one'
-        );
-    }
-
-    /** A lead owned by someone else routes to that owner: rule 2 without the exclusion. */
-    @IsTest
-    static void leadOwnedByAnotherUserRoutesToThatOwner() {
-        User alex = findUser('amalex');
-        User marcus = findUser('ownmarc');
-        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-
-        Lead speaker = new Lead(
-            FirstName = 'Tomas',
-            LastName = 'Lindqvist',
-            Company = 'KTH Royal Institute',
-            Email = 't.lindqvist@kth.test',
-            OwnerId = marcus.Id
-        );
-        insert speaker;
-
-        System.runAs(alex) {
-            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ speaker.Id });
-            InviteeSelectorController.submitMyInvitees(evt.Id);
-        }
-        System.assertEquals(
-            marcus.Id,
-            [SELECT Approver__c FROM Event_Invitee__c WHERE Lead__c = :speaker.Id].Approver__c,
-            'Rule 2: the lead owner holds the relationship, so they sign it off'
-        );
+        // The point of the whole revision: inviting somebody invents no customer record.
+        System.assertEquals(0, [SELECT COUNT() FROM Account], 'No Account may be created anywhere in this flow');
+        System.assertEquals(0, [SELECT COUNT() FROM Contact]);
+        System.assertEquals(0, [SELECT COUNT() FROM Lead]);
     }
 
     /**
-     * The orphan-row defect, made unreachable. A submitter with no manager adding a
-     * lead they own has nobody left on the ladder; the submit must fail with a named
-     * error and leave everything in Draft, rather than creating a pending row that no
-     * approver can ever see.
+     * The orphan-row defect, made unreachable. With one rung on the ladder, a
+     * submitter with no manager has nowhere to route at all; the submit must fail
+     * with a named error and leave everything in Draft, rather than creating a
+     * pending row no approver can ever see.
      */
     @IsTest
     static void unroutableSubmitIsRefusedAndNothingMoves() {
@@ -281,17 +192,10 @@ private class EventWorkflowTest {
             update new User(Id = maria.Id, ManagerId = null);
         }
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
 
         System.runAs(maria) {
-            Lead l = new Lead(
-                FirstName = 'Ana',
-                LastName = 'Ferreira',
-                Company = 'Instituto Superior Técnico',
-                Email = 'a.ferreira@ist.test',
-                OwnerId = maria.Id
-            );
-            insert l;
-            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ l.Id });
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
 
             Boolean threw = false;
             try {
@@ -299,7 +203,7 @@ private class EventWorkflowTest {
             } catch (AuraHandledException e) {
                 threw = true;
             }
-            System.assert(threw, 'No approver on the ladder → the submit must fail loudly');
+            System.assert(threw, 'No manager → the submit must fail loudly');
         }
 
         System.assertEquals(
@@ -311,47 +215,46 @@ private class EventWorkflowTest {
         System.assertEquals(0, [SELECT COUNT() FROM ProcessInstance], 'Nothing entered the approval process');
     }
 
-    /** An invitee must point at exactly one of Contact / Lead — the XOR validation rule. */
+    /** An invitee pointing at nobody has a blank name everywhere it is read. */
     @IsTest
-    static void inviteeCannotBeBothOrNeither() {
+    static void inviteeWithoutAnAttendeeIsRefused() {
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
-        Lead l = new Lead(LastName = 'Nobody', Company = 'Nowhere University', Email = 'n@nowhere.test');
-        insert l;
-
-        Boolean neitherThrew = false;
+        Boolean threw = false;
         try {
-            insert new Event_Invitee__c(Marketing_Event__c = evt.Id, Status__c = 'Draft', Unique_Key__c = 'k-neither');
+            insert new Event_Invitee__c(Marketing_Event__c = evt.Id, Status__c = 'Draft', Unique_Key__c = 'k-none');
         } catch (DmlException e) {
-            neitherThrew = true;
+            threw = true;
         }
-        System.assert(neitherThrew, 'An invitee pointing at nobody must be refused');
+        System.assert(threw, 'Invitee_Requires_Attendee must refuse it');
+    }
 
-        Boolean bothThrew = false;
-        try {
-            insert new Event_Invitee__c(
-                Marketing_Event__c = evt.Id,
-                Contact__c = emily.Id,
-                Lead__c = l.Id,
-                Status__c = 'Draft',
-                Unique_Key__c = 'k-both'
-            );
-        } catch (DmlException e) {
-            bothThrew = true;
+    /** An attendee somebody has been invited on cannot be deleted out from under the approval. */
+    @IsTest
+    static void anInvitedAttendeeCannotBeDeleted() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
         }
-        System.assert(bothThrew, 'Two identities on one row would silently prefer the Contact');
+
+        Boolean threw = false;
+        try {
+            delete [SELECT Id FROM Event_Attendee__c WHERE Id = :emily];
+        } catch (DmlException e) {
+            threw = true;
+        }
+        System.assert(threw, 'Restrict on the lookup is what keeps an invitee from pointing at nothing');
     }
 
     @IsTest
     static void completionNotificationFiresOnlyWhenTheBatchIsDone() {
         User alex = findUser('amalex');
-        User sarah = findUser('ownsarah');
+        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
-        Contact robert = [SELECT Id FROM Contact WHERE Email = 'robert@acme.test'];
 
         System.runAs(alex) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id, robert.Id });
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter'), attendeeId('Kim') });
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
         List<Event_Invitee__c> rows = [SELECT Id FROM Event_Invitee__c ORDER BY Id];
@@ -359,13 +262,13 @@ private class EventWorkflowTest {
         Test.startTest();
         EventNotificationService.emailsSent = 0;
         // One of two decided: the AM still has something pending, so stay quiet.
-        System.runAs(sarah) {
+        System.runAs(dana) {
             decide(rows[0].Id, true);
         }
         EventNotificationService.notifyCompletions(new List<Id>{ rows[0].Id });
         System.assertEquals(0, EventNotificationService.emailsSent, 'One row left pending — no completion email yet');
 
-        System.runAs(sarah) {
+        System.runAs(dana) {
             decide(rows[1].Id, true);
         }
         EventNotificationService.notifyCompletions(new List<Id>{ rows[1].Id });
@@ -378,10 +281,9 @@ private class EventWorkflowTest {
     static void completionNotificationAggregatesABulkDecision() {
         User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        List<Contact> cs = [SELECT Id FROM Contact WHERE Email LIKE '%acme.test'];
 
         System.runAs(alex) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>(new Map<Id, Contact>(cs).keySet()));
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter'), attendeeId('Kim') });
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
         Test.startTest();
@@ -402,96 +304,131 @@ private class EventWorkflowTest {
     }
 
     @IsTest
-    static void rejectedContactCanBeReAdded() {
+    static void rejectedAttendeeCanBeReAdded() {
         User alex = findUser('amalex');
-        User sarah = findUser('ownsarah');
+        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Contact emily = [SELECT Id FROM Contact WHERE Email = 'emily@acme.test'];
+        Id emily = attendeeId('Carter');
 
         System.runAs(alex) {
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
-        Event_Invitee__c inv = [SELECT Id FROM Event_Invitee__c WHERE Contact__c = :emily.Id];
+        Event_Invitee__c inv = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily];
 
         Test.startTest();
-        System.runAs(sarah) {
+        System.runAs(dana) {
             decide(inv.Id, false);
         }
         Test.stopTest();
 
         System.runAs(alex) {
-            Integer added = InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ emily.Id });
-            System.assertEquals(1, added, 'Rejected row should reset, not error');
+            System.assertEquals(
+                1,
+                InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily }),
+                'Rejected row should reset, not error'
+            );
         }
         inv = [
-            SELECT Status__c, Submitted_At__c, Decided_At__c, Account_Owner__c, Approver__c
+            SELECT Status__c, Submitted_At__c, Decided_At__c, Approver__c
             FROM Event_Invitee__c
             WHERE Id = :inv.Id
         ];
         System.assertEquals('Draft', inv.Status__c);
         System.assertEquals(null, inv.Submitted_At__c);
         System.assertEquals(null, inv.Decided_At__c);
-        System.assertEquals(null, inv.Account_Owner__c);
         System.assertEquals(
             null,
             inv.Approver__c,
-            'A stale approver would let the next submit skip the ladder and reuse whoever decided last time'
+            'A stale approver would let the next submit skip resolution and reuse whoever decided last time'
         );
         System.assertEquals(
             1,
-            [SELECT COUNT() FROM Event_Invitee__c WHERE Contact__c = :emily.Id],
-            'Never a second row per event+contact'
+            [SELECT COUNT() FROM Event_Invitee__c WHERE Event_Attendee__c = :emily],
+            'Never a second row per event+attendee'
         );
     }
 
+    /**
+     * The selector is no longer scoped per AM — there is no Account left to scope
+     * by. What it still does is hide people already on this event.
+     */
     @IsTest
-    static void selectorScopesToMyAccountsAndHidesInvited() {
+    static void selectorShowsEveryAttendeeAndHidesInvited() {
         User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-
-        // Give Alex an account of his own for the owner-path scope test.
-        Account mine = new Account(Name = 'Alex Own Account', OwnerId = alex.Id);
-        insert mine;
-        Contact c1 = new Contact(FirstName = 'Own', LastName = 'Contact1', Email = 'own1@x.test', AccountId = mine.Id);
-        Contact c2 = new Contact(FirstName = 'Own', LastName = 'Contact2', Email = 'own2@x.test', AccountId = mine.Id);
-        insert new List<Contact>{ c1, c2 };
+        Id emily = attendeeId('Carter');
 
         System.runAs(alex) {
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableContacts(evt.Id);
-            System.assertEquals(2, sel.contacts.size(), 'Only contacts under accounts Alex owns');
-            System.assertEquals(false, sel.truncated, 'Two contacts is nowhere near the cap');
-            System.assertEquals(InviteeSelectorController.CONTACT_CAP, sel.cap);
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            System.assertEquals(4, sel.attendees.size(), 'Every imported attendee is invitable by any AM');
+            System.assertEquals(false, sel.truncated, 'Four attendees is nowhere near the cap');
+            System.assertEquals(InviteeSelectorController.ATTENDEE_CAP, sel.cap);
 
-            InviteeSelectorController.addInvitees(evt.Id, new List<Id>{ c1.Id });
-            sel = InviteeSelectorController.getSelectableContacts(evt.Id);
-            System.assertEquals(1, sel.contacts.size(), 'Invited (Draft) contact must be hidden');
-            System.assertEquals(c2.Id, sel.contacts[0].contactId);
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            System.assertEquals(3, sel.attendees.size(), 'Invited (Draft) attendee must be hidden');
+            for (InviteeSelectorController.SelectableAttendee sa : sel.attendees) {
+                System.assertNotEquals(emily, sa.attendeeId);
+            }
 
             List<InviteeSelectorController.InviteeRow> all = InviteeSelectorController.getAllInvitees(evt.Id);
             System.assertEquals(1, all.size());
             System.assertEquals(true, all[0].mine);
             System.assertEquals('Draft', all[0].status);
-            System.assertEquals('Contact', all[0].inviteeType);
-            System.assertEquals('Alex Own Account', all[0].accountName, 'Read through Invitee_Org__c, not Account__r');
+            System.assertEquals('Emily Carter', all[0].attendeeName);
+            System.assertEquals('Acme Corp', all[0].company, 'Read through Invitee_Org__c, not the lookup');
         }
     }
 
-    /** A converted lead is not selectable — its Contact is the thing to invite. */
+    /** A rejected invitee reappears in the picker; that is what makes re-adding possible at all. */
     @IsTest
-    static void convertedAndInvitedLeadsAreHidden() {
+    static void aRejectedAttendeeReappearsInTheSelector() {
         User alex = findUser('amalex');
+        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-
-        Lead keep = new Lead(LastName = 'Keeper', Company = 'ETH Zürich', Email = 'k@eth.test', OwnerId = alex.Id);
-        Lead invite = new Lead(LastName = 'Invited', Company = 'ETH Zürich', Email = 'i@eth.test', OwnerId = alex.Id);
-        insert new List<Lead>{ keep, invite };
+        Id emily = attendeeId('Carter');
 
         System.runAs(alex) {
-            InviteeSelectorController.addLeadInvitees(evt.Id, new List<Id>{ invite.Id });
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableLeads(evt.Id);
-            System.assertEquals(1, sel.contacts.size(), 'The invited lead must drop out of the list');
-            System.assertEquals(keep.Id, sel.contacts[0].leadId);
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
         }
+        Test.startTest();
+        System.runAs(dana) {
+            decide([SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily].Id, false);
+        }
+        Test.stopTest();
+
+        System.runAs(alex) {
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            System.assertEquals(4, sel.attendees.size(), 'A rejected invitee is selectable again');
+        }
+    }
+
+    @IsTest
+    static void addingNothingOrNobodyRealIsRefusedOrIgnored() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        Boolean threw = false;
+        try {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>());
+        } catch (AuraHandledException e) {
+            threw = true;
+        }
+        System.assert(threw, 'An empty selection is a client bug, not a silent no-op');
+
+        // A stale id from a client whose list is out of date must not create a row
+        // pointing at nothing.
+        Event_Attendee__c ghost = new Event_Attendee__c(
+            Name = 'Ghost',
+            Last_Name__c = 'Ghost',
+            Unique_Key__c = 'ghost|||'
+        );
+        insert ghost;
+        Id ghostId = ghost.Id;
+        delete ghost;
+
+        System.assertEquals(0, InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ ghostId }));
+        System.assertEquals(0, [SELECT COUNT() FROM Event_Invitee__c]);
     }
 }
