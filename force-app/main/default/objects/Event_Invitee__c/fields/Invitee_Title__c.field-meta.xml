@@ -2,9 +2,9 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Invitee_Title__c</fullName>
     <label>Invitee Title</label>
-    <description>Reads correctly whether the invitee is a Contact or a Lead, so no consumer has to branch. The Screen 5 reports depend on these: a report cannot pick between two lookup paths by itself.</description>
+    <description>Reads through the attendee. Live rather than snapshotted: correcting a misspelt title on the attendee fixes it on every invitee at once, which is what you want for a field nobody makes decisions on.</description>
     <type>Text</type>
-    <formula>BLANKVALUE(Contact__r.Title, Lead__r.Title)</formula>
+    <formula>Event_Attendee__r.Title__c</formula>
     <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
     <required>false</required>
     <unique>false</unique>

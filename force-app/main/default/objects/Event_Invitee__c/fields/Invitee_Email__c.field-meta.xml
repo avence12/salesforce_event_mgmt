@@ -2,9 +2,9 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Invitee_Email__c</fullName>
     <label>Invitee Email</label>
-    <description>Reads correctly whether the invitee is a Contact or a Lead, so no consumer has to branch. The Screen 5 reports depend on these: a report cannot pick between two lookup paths by itself.</description>
+    <description>Reads through the attendee. Blank where the uploaded row carried no address, which is a real and common state on a conference list — the export shows an empty cell rather than inventing one.</description>
     <type>Text</type>
-    <formula>BLANKVALUE(Contact__r.Email, Lead__r.Email)</formula>
+    <formula>Event_Attendee__r.Email__c</formula>
     <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
     <required>false</required>
     <unique>false</unique>

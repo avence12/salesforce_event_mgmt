@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Unique_Key__c</fullName>
+    <label>Unique Key</label>
+    <description>Normalised last name + first name + company + email. This is what makes a re-upload safe: the apply step upserts on it, so the same person in the same file twice, or in two files, is one attendee rather than two. It is also the whole of the de-duplication in R5 — the import no longer looks at Contact or Lead, so this key is the only thing standing between one person and several rows. Known limit: the four parts are truncated to fit 255 characters, and someone whose email changed between two files is two attendees, because the email is part of their identity here.</description>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <unique>true</unique>
+    <caseSensitive>false</caseSensitive>
+    <externalId>true</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Event AM</label>
-    <description>Account Managers: create events, import contact lists to record event attendance, add and submit invitees, run the approved-invitee reports. Note what is absent: the import records attendance and creates leads, so this set grants no write access to Contact at all.</description>
+    <description>Account Managers: create events, import attendee lists, add and submit invitees, run the approved-invitee reports. Note what is absent as of R5 — no Contact, Lead or Account permission of any kind. The import reads and writes exactly one object, Event_Attendee__c, so this set no longer needs to reach a single standard object, and the Lead grant that R4 required has been removed rather than left lying around.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <objectPermissions>
         <object>Marketing_Event__c</object>
@@ -22,16 +22,7 @@
         <modifyAllRecords>false</modifyAllRecords>
     </objectPermissions>
     <objectPermissions>
-        <object>Lead</object>
-        <allowCreate>true</allowCreate>
-        <allowRead>true</allowRead>
-        <allowEdit>true</allowEdit>
-        <allowDelete>false</allowDelete>
-        <viewAllRecords>false</viewAllRecords>
-        <modifyAllRecords>false</modifyAllRecords>
-    </objectPermissions>
-    <objectPermissions>
-        <object>Event_History__c</object>
+        <object>Event_Attendee__c</object>
         <allowCreate>true</allowCreate>
         <allowRead>true</allowRead>
         <allowEdit>true</allowEdit>
@@ -85,16 +76,6 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Account__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_Invitee__c.Account_Owner__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
         <field>Event_Invitee__c.Submitted_At__c</field>
         <readable>true</readable>
         <editable>false</editable>
@@ -135,82 +116,68 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Invitee_Type__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
         <field>Event_Invitee__c.Added_By_Me__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Lead__c</field>
+        <field>Event_Invitee__c.Event_Attendee__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Contact__c</field>
+        <field>Event_Attendee__c.First_Name__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Last_Name__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Email__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Title__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Company__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Mobile__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <!--
+      Read-only for a user even though the import writes them: these three are the
+      record's provenance, and a hand-edit would make Source_File__c a lie. The
+      import runs in the user's context and can still set them, because Apex
+      respects FLS only where the code asks it to — the point here is the UI.
+    -->
+    <fieldPermissions>
+        <field>Event_Attendee__c.Source_File__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_History__c.Contact__c</field>
+        <field>Event_Attendee__c.Imported_On__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_History__c.Lead__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Event_Name__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Imported_On__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Source_File__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Match_Basis__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Unique_Key__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Attendee_Name__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Attendee_Email__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Attendee_Org__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_History__c.Attendee_Type__c</field>
+        <field>Event_Attendee__c.Unique_Key__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <classAccesses>
-        <apexClass>ContactImportController</apexClass>
+        <apexClass>AttendeeImportController</apexClass>
         <enabled>true</enabled>
     </classAccesses>
     <classAccesses>
@@ -219,6 +186,10 @@
     </classAccesses>
     <tabSettings>
         <tab>Marketing_Event__c</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+    <tabSettings>
+        <tab>Event_Attendee__c</tab>
         <visibility>Visible</visibility>
     </tabSettings>
     <tabSettings>

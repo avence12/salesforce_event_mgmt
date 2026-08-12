@@ -11,7 +11,7 @@
         <name>main</name>
         <type>Region</type>
     </flexiPageRegions>
-    <masterLabel>Import Contacts</masterLabel>
+    <masterLabel>Import Attendees</masterLabel>
     <parentFlexiPage xsi:nil="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"/>
     <template>
         <name>flexipage__AppDefault</name>

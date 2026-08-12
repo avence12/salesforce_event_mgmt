@@ -1,0 +1,152 @@
+<template>
+    <lightning-card title="Event Invitees" icon-name="standard:people">
+        <div class="slds-p-around_medium">
+            <template lwc:if={loading}>
+                <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
+            </template>
+
+            <lightning-tabset>
+                <!-- ============ ADD ATTENDEES ============ -->
+                <lightning-tab label="Add Attendees">
+                    <p class="slds-text-color_weak slds-text-body_small slds-m-bottom_small">
+                        Everyone here came from an imported attendee list. They are not contacts or leads and belong to
+                        no account — the organisation below is the text their file carried.
+                    </p>
+
+                    <div class="slds-grid slds-gutters slds-m-bottom_small slds-wrap">
+                        <div class="slds-col slds-size_1-of-3">
+                            <lightning-combobox
+                                label="Organisation"
+                                value={companyFilter}
+                                options={companyOptions}
+                                onchange={handleCompanyFilter}
+                            ></lightning-combobox>
+                        </div>
+                        <div class="slds-col slds-size_2-of-3">
+                            <lightning-input
+                                type="search"
+                                label="Search name / email / title"
+                                value={searchTerm}
+                                onchange={handleSearch}
+                            ></lightning-input>
+                        </div>
+                    </div>
+
+                    <template lwc:if={truncated}>
+                        <div
+                            class="slds-box slds-box_x-small slds-theme_warning slds-m-bottom_small slds-text-body_small"
+                            role="status"
+                        >
+                            {truncationNote}
+                        </div>
+                    </template>
+
+                    <template lwc:if={hasSelectable}>
+                        <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col" style="width: 2rem"></th>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Title</th>
+                                    <th scope="col">Email</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={filteredGroups} for:item="g">
+                                    <tr key={g.groupKey} class="group-header">
+                                        <td colspan="4"><b>{g.header}</b></td>
+                                    </tr>
+                                    <template for:each={g.attendees} for:item="a">
+                                        <tr key={a.rowId}>
+                                            <td>
+                                                <input
+                                                    type="checkbox"
+                                                    data-id={a.rowId}
+                                                    checked={a.selected}
+                                                    onchange={handleToggle}
+                                                />
+                                            </td>
+                                            <td>{a.name}</td>
+                                            <td>{a.title}</td>
+                                            <td>{a.email}</td>
+                                        </tr>
+                                    </template>
+                                </template>
+                            </tbody>
+                        </table>
+                    </template>
+                    <template lwc:else>
+                        <p class="slds-text-color_weak slds-p-vertical_medium">
+                            No selectable attendees — everyone imported has already been added to this event, or no list
+                            has been imported yet. Use the <b>Import Attendees</b> tab to upload one.
+                        </p>
+                    </template>
+
+                    <div
+                        class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-top_medium slds-wrap"
+                    >
+                        <template lwc:if={hasHiddenSelected}>
+                            <p class="slds-text-body_small slds-text-color_weak">⚠ {hiddenSelectedNote}</p>
+                        </template>
+                        <template lwc:else>
+                            <span></span>
+                        </template>
+                        <div>
+                            <lightning-button
+                                label={addLabel}
+                                disabled={addDisabled}
+                                onclick={handleAdd}
+                                class="slds-m-right_x-small"
+                            ></lightning-button>
+                            <lightning-button
+                                variant="brand"
+                                label={submitLabel}
+                                disabled={submitDisabled}
+                                onclick={handleSubmit}
+                            ></lightning-button>
+                        </div>
+                    </div>
+                    <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                        Each invitee records who added it. You submit only your own batch — other AMs' selections are
+                        unaffected. Submitting sends each invitee to your manager through the standard approval process.
+                    </p>
+                </lightning-tab>
+
+                <!-- ============ ALL INVITEES ============ -->
+                <lightning-tab label="All Invitees">
+                    <template lwc:if={hasInvitees}>
+                        <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Title</th>
+                                    <th scope="col">Organisation</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Added By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={inviteeRows} for:item="i">
+                                    <tr key={i.key}>
+                                        <td>{i.attendeeName}</td>
+                                        <td>{i.attendeeTitle}</td>
+                                        <td>{i.company}</td>
+                                        <td><span class="slds-badge">{i.status}</span></td>
+                                        <td>{i.addedByLabel}</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                        <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                            Approved invitees are exported from the <b>Approved Invitees</b> reports, in the Event
+                            Management report folder.
+                        </p>
+                    </template>
+                    <template lwc:else>
+                        <p class="slds-text-color_weak slds-p-vertical_medium">No invitees yet.</p>
+                    </template>
+                </lightning-tab>
+            </lightning-tabset>
+        </div>
+    </lightning-card>
+</template>

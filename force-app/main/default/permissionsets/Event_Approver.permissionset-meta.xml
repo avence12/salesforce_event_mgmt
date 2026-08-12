@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Event Approver</label>
-    <description>Account Owners: review and decide (approve/reject) event invitees under their accounts.</description>
+    <description>Managers: review and decide (approve/reject) the event invitees their reports submit. R5 read access to Event_Attendee__c is not optional decoration — it is the object the Invitee_* formulas read through, and without it the name and organisation columns render blank on the very screen the approval is made from.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <objectPermissions>
         <object>Marketing_Event__c</object>
@@ -22,7 +22,7 @@
         <modifyAllRecords>false</modifyAllRecords>
     </objectPermissions>
     <objectPermissions>
-        <object>Lead</object>
+        <object>Event_Attendee__c</object>
         <allowCreate>false</allowCreate>
         <allowRead>true</allowRead>
         <allowEdit>false</allowEdit>
@@ -76,16 +76,6 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Account__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Event_Invitee__c.Account_Owner__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
         <field>Event_Invitee__c.Submitted_At__c</field>
         <readable>true</readable>
         <editable>false</editable>
@@ -126,22 +116,52 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Invitee_Type__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
         <field>Event_Invitee__c.Added_By_Me__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Lead__c</field>
+        <field>Event_Invitee__c.Event_Attendee__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
-        <field>Event_Invitee__c.Contact__c</field>
+        <field>Event_Attendee__c.First_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Last_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Email__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Title__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Company__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Mobile__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Source_File__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Imported_On__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

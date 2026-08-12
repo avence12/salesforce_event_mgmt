@@ -32,8 +32,9 @@ MUTANTS=(
   "$LWC/csvDownload/csvDownload.js|UTF8_BOM + csv|csv|UTF-8 BOM dropped|kill"
   "$LWC/importWizard/importWizard.js|if (src[i + 1] === '\"') {|if (false) {|escaped quote handling removed|kill"
   "$LWC/importWizard/importWizard.js|rows.length > MAX_ROWS|false|row cap never enforced|kill"
-  "$LWC/importWizard/importWizard.js|const key = [row.firstName, row.lastName, row.company, row.email, row.event]|const key = [row.firstName, row.lastName, row.company, row.email]|event drops out of the de-dup key, collapsing one person's two events into one|kill"
-  "$LWC/contactSelector/contactSelector.js|if (event.target.checked) next.add(event.target.dataset.id);|if (false) next.add(event.target.dataset.id);|selection never records a tick|kill"
+  "$LWC/importWizard/importWizard.js|const key = [row.lastName, row.firstName, row.company, row.email]|const key = [row.lastName, row.firstName, row.email]|company drops out of the de-dup key, collapsing one person at two companies into one|kill"
+  "$LWC/importWizard/importWizard.js|.map((v) => v.toLowerCase().trim().replace(/\\s+/g, ' '))|.map((v) => v)|de-dup key stops normalising, so casing and padding make one person two|kill"
+  "$LWC/attendeeSelector/attendeeSelector.js|if (event.target.checked) next.add(event.target.dataset.id);|if (false) next.add(event.target.dataset.id);|selection never records a tick|kill"
 
   # Equivalent: dropping the CRLF skip makes '\r' and '\n' two separate
   # terminators, but the empty row that produces is ['']  — which

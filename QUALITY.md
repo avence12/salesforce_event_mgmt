@@ -138,22 +138,53 @@ itself rather than a detail of it, so they assert on `LastModifiedDate` and row 
 than on the controller's own return values: a controller that lies about what it did cannot
 make them pass.
 
+Re-run after the R5 revision (`Event_Attendee__c`; the import touches no standard object):
+
+```
+LWC tests      167 passing   (7 fewer — contactSelector's two-tab suite became
+                              attendeeSelector's one-tab suite, and the importWizard
+                              specs lost the Event-column and ambiguity cases)
+ESLint         clean
+Prettier       clean
+PMD            not run — PMD is not installed in this environment
+Mutation       not run — needs a local run; two mutants were repointed, see below
+Apex tests     not run — needs an org
+```
+
+**R5 update — the negative assertions got wider, not weaker.**
+`AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` now covers three
+standard objects rather than two, and it seeds a Contact and a Lead that the uploaded file
+deliberately names with contradictory data, so "we walked past them" is asserted rather than
+assumed. A second test, `anExistingContactIsImportedAsAnAttendeeAnyway`, pins the behaviour
+that looks like a bug and is the design: it exists so that reintroducing Contact matching
+breaks a test instead of passing quietly.
+
+Two mutants in `scripts/quality/mutate.sh` were repointed rather than deleted. The Event
+component of the de-dup key no longer exists, so the mutant that removed it was replaced by
+one that removes **company** — the same class of defect against the key R5 actually relies
+on — plus a new one that strips the key's normalisation, because case and whitespace folding
+is now the difference between one attendee and two. The selector mutant moved with the
+renamed component.
+
 **The PMD baseline is stale and must be re-recorded on the first machine that has PMD.**
-It was pruned of the 11 findings belonging to the two deleted classes (84 → 73), but the
-Lead DML added to `ContactImportController` and `InviteeSelectorController` will almost
-certainly raise new `ApexCRUDViolation` findings that nobody has seen yet. Run
-`scripts/quality/run-pmd.sh` and expect it to fail before it passes; if the new findings are
-the same CRUD/FLS class as the existing ones, `--update` is the right response, and if they
-are not, they are real.
+It has been pruned of the 18 findings belonging to `ContactImportController` and its test
+(73 → 55), but `AttendeeImportController` and the reworked `InviteeSelectorController` have
+never been scanned. Run `scripts/quality/run-pmd.sh` and expect it to fail before it passes;
+if the new findings are the same CRUD/FLS class as the existing ones, `--update` is the right
+response, and if they are not, they are real. Note that the CRUD/FLS surface *shrank* in R5 —
+the Apex now touches one custom object instead of Contact, Lead and two custom objects — so a
+large new crop of CRUD findings would itself be worth reading twice.
 
 ### Known gaps, stated plainly
 
 - **Apex has no local test layer.** Apex tests only run inside an org. Everything the gauntlet
   checks locally for Apex is static analysis. Run with `--org` before believing a change is safe.
-- **84 baselined PMD violations.** PMD was adopted against an existing codebase, so the gate is
-  "no new violations" rather than zero. The baseline is `scripts/quality/pmd-baseline.txt`;
-  the bulk is 50 × `ApexAssertionsShouldIncludeMessage` (test assertions without messages) and
-  26 × `ApexCRUDViolation`. The CRUD findings overlap the FLS gap already noted in
+- **55 baselined PMD violations, and the count is not trustworthy right now.** PMD was adopted
+  against an existing codebase, so the gate is "no new violations" rather than zero. The baseline
+  is `scripts/quality/pmd-baseline.txt`. R5 pruned the 18 entries belonging to the deleted
+  `ContactImportController` and its test, but nothing has scanned the classes that replaced them
+  — so 55 is "what survived a deletion", not "what the code currently produces". Re-record it on
+  the first machine with PMD installed. The CRUD findings overlap the FLS gap already noted in
   [README.md](README.md) — they are real, not noise, and worth burning down.
 - **No mutation testing for Apex.** No tool exists. Apex correctness rests on the two test classes
   and the org-side coverage bar.

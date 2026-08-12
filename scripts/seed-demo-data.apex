@@ -2,84 +2,54 @@
  * Demo seed data for the Event Management PoC.
  * Run with:  sf apex run --file scripts/seed-demo-data.apex -o <sandbox-alias>
  *
- * Owners: set the two usernames below to real sandbox users to demo the
- * multi-owner approval split. Left blank, everything is owned by you
- * (the flow still works — you'll approve your own submissions).
+ * ★R5 this script no longer creates a single Account, Contact or Lead. There is
+ * nothing left in the workflow that reads one: attendees are their own object and
+ * approval routes to the submitter's manager. Anything the demo needs from the
+ * standard objects, it does not need.
+ *
+ * The handful of attendees below exist so the demo has something to invite before
+ * anyone has uploaded a file, and so that re-running the demo CSV shows a mix of
+ * "New" and "Already known" rather than 49 identical New rows. They are keyed the
+ * same way AttendeeImportController keys them — last|first|company|email, lower
+ * case, whitespace collapsed — so the import recognises them as the same people.
  */
-String OWNER_A_USERNAME = ''; // e.g. 'sarah.whitman@yourco.com.sandbox'  (Account Owner / approver)
-String OWNER_B_USERNAME = ''; // e.g. 'marcus.weber@yourco.com.sandbox'   (second approver)
 
-Id ownerA = UserInfo.getUserId();
-Id ownerB = UserInfo.getUserId();
-if (String.isNotBlank(OWNER_A_USERNAME)) {
-    ownerA = [SELECT Id FROM User WHERE Username = :OWNER_A_USERNAME LIMIT 1].Id;
-}
-if (String.isNotBlank(OWNER_B_USERNAME)) {
-    ownerB = [SELECT Id FROM User WHERE Username = :OWNER_B_USERNAME LIMIT 1].Id;
-}
-
-// ---- Accounts (idempotent by name) ----
-Map<String, Account> wanted = new Map<String, Account>{
-    'Acme Corp'      => new Account(Name = 'Acme Corp', OwnerId = ownerA),
-    'Acme Insurance' => new Account(Name = 'Acme Insurance', OwnerId = ownerA),
-    'Nordbank AG'    => new Account(Name = 'Nordbank AG', OwnerId = ownerB),
-    'Globex'         => new Account(Name = 'Globex', OwnerId = ownerB)
+// ---- Attendees (idempotent by Unique_Key__c) ----
+// Deliberately a subset of demo-data/FinTech_Summit_2026_Attendees.csv: those rows
+// come back as EXISTING_ATTENDEE, the rest as NEW_ATTENDEE.
+List<List<String>> seed = new List<List<String>>{
+    new List<String>{ 'Emily',  'Carter',   'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp' },
+    new List<String>{ 'James',  'Mueller',  'j.mueller@nordbank.example',    'Director',       'Nordbank AG' },
+    new List<String>{ 'Robert', 'Kim',      'robert.kim@acmecorp.example',   'SVP, Operations','Acme Corp' },
+    new List<String>{ 'Hélène', 'Dubois',   'h.dubois@unige.example',        'Professor of Cryptography', 'Université de Genève' },
+    new List<String>{ 'Anke',   'Weber',    'a.weber@tuberlin.example',      'Professor, Distributed Systems', 'TU Berlin' },
+    new List<String>{ 'Tomas',  'Lindqvist','t.lindqvist@kth.example',       'Senior Researcher', 'KTH Royal Institute' },
+    new List<String>{ 'Priya',  'Raman',    'p.raman@techpress.example',     'Editor',         'TechPress Media' }
 };
-// No bucket Account: an Account is a transacting customer, so guests without one
-// are seeded as Leads below.
-for (Account existing : [SELECT Id, Name FROM Account WHERE Name IN :wanted.keySet()]) {
-    wanted.remove(existing.Name);
-}
-if (!wanted.isEmpty()) { insert wanted.values(); }
 
-Map<String, Id> accId = new Map<String, Id>();
-for (Account a : [SELECT Id, Name FROM Account WHERE Name IN ('Acme Corp','Acme Insurance','Nordbank AG','Globex')]) {
-    accId.put(a.Name, a.Id);
+List<Event_Attendee__c> attendees = new List<Event_Attendee__c>();
+for (List<String> s : seed) {
+    String first = s[0], last = s[1], email = s[2], title = s[3], company = s[4];
+    // Must match AttendeeImportController.attendeeKey exactly, or the import will
+    // create second copies of these people instead of recognising them.
+    String key =
+        last.trim().toLowerCase().replaceAll('\\s+', ' ').left(80) + '|' +
+        first.trim().toLowerCase().replaceAll('\\s+', ' ').left(40) + '|' +
+        company.trim().toLowerCase().replaceAll('\\s+', ' ').left(60) + '|' +
+        email.trim().toLowerCase().replaceAll('\\s+', ' ').left(70);
+    attendees.add(new Event_Attendee__c(
+        Name = first + ' ' + last,
+        First_Name__c = first,
+        Last_Name__c = last,
+        Email__c = email,
+        Title__c = title,
+        Company__c = company,
+        Source_File__c = 'seed-demo-data.apex',
+        Imported_On__c = Datetime.now(),
+        Unique_Key__c = key
+    ));
 }
-
-// ---- Contacts (idempotent by email) ----
-List<Contact> contacts = new List<Contact>{
-    new Contact(FirstName='Emily',  LastName='Carter',   Email='emily.carter@acmecorp.example',  Title='Manager',          AccountId=accId.get('Acme Corp')),
-    new Contact(FirstName='Robert', LastName='Kim',      Email='robert.kim@acmecorp.example',    Title='SVP, Operations',  AccountId=accId.get('Acme Corp')),
-    new Contact(FirstName='Laura',  LastName='Chen',     Email='laura.chen@acmeins.example',     Title='VP, Finance',      AccountId=accId.get('Acme Insurance')),
-    new Contact(FirstName='James',  LastName='Mueller',  Email='j.mueller@nordbank.example',     Title='Director',         AccountId=accId.get('Nordbank AG')),
-    new Contact(FirstName='Anna',   LastName='Kowalski', Email='a.kowalski@nordbank.example',    Title='Associate',        AccountId=accId.get('Nordbank AG')),
-    new Contact(FirstName='Sophie', LastName='Laurent',  Email='sophie.laurent@globex.example',  Title='CMO',              AccountId=accId.get('Globex')),
-    // Two Marie Duponts at one Account, deliberately. A CSV row naming her with no
-    // email cannot be resolved to either, so the import writes nothing and lists both
-    // for manual review — the demo's proof that "could not tell" is a real outcome
-    // rather than a silent guess.
-    new Contact(FirstName='Marie',  LastName='Dupont',   Email='m.dupont@acmecorp.example',      Title='Analyst',          AccountId=accId.get('Acme Corp')),
-    new Contact(FirstName='Marie',  LastName='Dupont',   Email='marie.dupont@acmecorp.example',  Title='Senior Analyst',   AccountId=accId.get('Acme Corp'))
-};
-Set<String> emails = new Set<String>();
-for (Contact c : contacts) { emails.add(c.Email); }
-Set<String> existingEmails = new Set<String>();
-for (Contact c : [SELECT Email FROM Contact WHERE Email IN :emails]) { existingEmails.add(c.Email); }
-List<Contact> newContacts = new List<Contact>();
-for (Contact c : contacts) {
-    if (!existingEmails.contains(c.Email)) { newContacts.add(c); }
-}
-if (!newContacts.isEmpty()) { insert newContacts; }
-
-// ---- Leads: conference guests with no customer relationship ----
-// These are the people the Add Leads tab is for. They belong to institutions, not
-// to Accounts, and the ladder routes their approval to the submitter's manager.
-List<Lead> leads = new List<Lead>{
-    new Lead(FirstName='Hélène', LastName='Dubois',    Email='h.dubois@unige.example',    Title='Professor of Cryptography', Company='Université de Genève',      LeadSource='Event Import', OwnerId=ownerA),
-    new Lead(FirstName='Anke',   LastName='Weber',     Email='a.weber@tuberlin.example',  Title='Professor, Distributed Systems', Company='TU Berlin',            LeadSource='Event Import', OwnerId=ownerA),
-    new Lead(FirstName='Tomas',  LastName='Lindqvist', Email='t.lindqvist@kth.example',   Title='Senior Researcher',         Company='KTH Royal Institute',       LeadSource='Event Import', OwnerId=ownerB),
-    new Lead(FirstName='Priya',  LastName='Raman',     Email='p.raman@techpress.example', Title='Editor',                    Company='TechPress Media',           LeadSource='Event Import', OwnerId=ownerB)
-};
-Set<String> leadEmails = new Set<String>();
-for (Lead l : leads) { leadEmails.add(l.Email); }
-Set<String> existingLeadEmails = new Set<String>();
-for (Lead l : [SELECT Email FROM Lead WHERE Email IN :leadEmails]) { existingLeadEmails.add(l.Email); }
-List<Lead> newLeads = new List<Lead>();
-for (Lead l : leads) {
-    if (!existingLeadEmails.contains(l.Email)) { newLeads.add(l); }
-}
-if (!newLeads.isEmpty()) { insert newLeads; }
+upsert attendees Unique_Key__c;
 
 // ---- A sample event ----
 if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Q3 2026 Customer Appreciation Gala'] == 0) {
@@ -93,5 +63,5 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Q3 2026 Customer Appre
     );
 }
 
-System.debug('Seed complete. Accounts: ' + accId.size() + ', new contacts: ' + newContacts.size() + ', new leads: ' + newLeads.size());
-System.debug('Reminder: the approver ladder needs a Manager on each AM user, or a lead they do not own.');
+System.debug('Seed complete. Attendees now in the org: ' + [SELECT COUNT() FROM Event_Attendee__c]);
+System.debug('Reminder: every AM user needs a Manager set — it is the only approver the R5 ladder has.');

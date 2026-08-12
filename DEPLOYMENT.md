@@ -174,7 +174,7 @@ Authenticate the runner with the **JWT Bearer Flow** (connected app + certificat
 ### Pre-production checklist (whichever path you choose)
 
 - **75% Apex test coverage** is a hard Salesforce requirement for production deploys — the two test classes in this repo exist for that; confirm the `--code-coverage` numbers in sandbox first.
-- Close the known PoC hardening gaps (see "Known PoC limits" in [README.md](README.md)): server-side account-scope verification in `addInvitees`, bulk-volume testing, a full FLS review.
+- Close the known PoC hardening gaps (see "Known PoC limits" in [README.md](README.md)): a sharing model for `Event_Attendee__c` tighter than Public Read/Write, bulk-volume testing, and a full FLS review.
 - Use **Validate + Quick Deploy**: validate against Production ahead of time (runs tests, changes nothing), then one-click quick-deploy inside the release window — cuts deployment risk to minutes. See [Part 3](#validate-deploy-quick-deploy) for the mechanics.
 
 **Recommendation**: Change Sets for the demo/short term → DevOps Center if the PoC is productized → in-network CI/CD at scale.
@@ -309,7 +309,7 @@ sf apex run test -o poc-sandbox --wait 10 --code-coverage
 sf project deploy start -o prod --test-level RunLocalTests
 
 sf project deploy start -o prod --test-level RunSpecifiedTests \
-  --tests ContactImportControllerTest --tests EventWorkflowTest
+  --tests AttendeeImportControllerTest --tests EventWorkflowTest
 ```
 
 ---
@@ -512,3 +512,108 @@ Do these before demoing anything. A bad answer to the first changes the Screen 4
 - [ ] A failed deploy rolls back in full — the org is untouched, so fix and re-run ([Part 3](#part-3--how-a-deploy-actually-works))
 - [ ] **A successful deploy does not roll back**, and the destructive half is irreversible. Recovering the deleted components means redeploying them from the pre-R3 commit (`git show 032fce9`), and `Exported_Count__c` would come back empty — a roll-up recalculates from current data, and section B has already moved every Exported row to Approved
 - [ ] So: dry-run in a scratch or throwaway sandbox before running section C anywhere that matters
+
+## Part 7 — R5 upgrade checklist
+
+R5 moves imported people onto their own object, `Event_Attendee__c`, and repoints
+`Event_Invitee__c` at it. `Contact__c`, `Lead__c`, `Account__c`, `Account_Owner__c`,
+`Invitee_Type__c` and the whole of `Event_History__c` are deleted.
+
+**Read this before anything else.** The migration in section B is the only thing that
+carries "who was this invitee?" across the revision. Once `destructiveChangesPre.xml` has
+dropped `Contact__c` and `Lead__c`, an un-migrated invitee points at nobody, permanently.
+There is no recovery short of restoring the org from a backup.
+
+**Two paths.** On a **fresh org**, skip section B and run only the additive deploy in
+section C — naming components that do not exist in the org can fail the whole destructive
+deploy. On an org that already has **R3 or R4**, every section applies in order.
+
+### A. Before touching an org
+
+- [ ] `git pull` and confirm you are on the R5 commit (`git log --oneline -1`)
+- [ ] `npm install && npm test` — 167 LWC tests pass
+- [ ] `npm run lint` and `npx prettier --check "force-app/**/*.{js,cls}"` — clean
+- [ ] `scripts/quality/run-pmd.sh` — **expect this to fail the first time.** The baseline still names `ContactImportController`, which no longer exists, and the new Apex has not been recorded against it. Read the new findings: same CRUD/FLS class as the existing ones → `--update`; anything else is real. See [QUALITY.md](QUALITY.md)
+- [ ] Read *Known PoC limits* in [README.md](README.md). Two of them are decisions somebody outside the build has to agree with: the **manager is now the only approver** (design.md Open Question 15) and **there is no link between an attendee and an existing customer** (Open Question 17)
+- [ ] **Export what is about to be deleted**, whether or not you think you need it:
+  ```bash
+  sf data query -o poc-sandbox -r csv \
+    -q "SELECT Id, Marketing_Event__c, Contact__c, Lead__c, Status__c FROM Event_Invitee__c" \
+    > backup-invitees-preR5.csv
+  sf data query -o poc-sandbox -r csv \
+    -q "SELECT Contact__c, Lead__c, Event_Name__c, Imported_On__c, Match_Basis__c FROM Event_History__c" \
+    > backup-event-history-preR5.csv
+  ```
+  The second file is the R4 attendance log. R5 has no equivalent by design — attendance is the invitee row now — so if anyone has come to rely on it, this CSV is all that will be left.
+
+### B. Deploy the source, then migrate — existing orgs only
+
+The order is deploy → migrate → delete, and the middle step is not optional.
+
+- [ ] Note the starting counts, so the migration can be proved rather than assumed:
+  ```bash
+  sf data query -o poc-sandbox -q "SELECT COUNT() FROM Event_Invitee__c"
+  sf data query -o poc-sandbox -q "SELECT COUNT() FROM Account"
+  sf data query -o poc-sandbox -q "SELECT COUNT() FROM Contact"
+  sf data query -o poc-sandbox -q "SELECT COUNT() FROM Lead"
+  ```
+- [ ] Deploy the source **without** the destructive manifests. This adds `Event_Attendee__c` and the new lookup while `Contact__c` / `Lead__c` are still present, which is what makes the next step possible:
+  ```bash
+  sf project deploy start -o poc-sandbox --dry-run
+  sf project deploy start -o poc-sandbox
+  ```
+- [ ] **Migrate immediately.** Between this deploy and the migration, the
+      `Invitee_Requires_Attendee` validation rule is live while every existing invitee still
+      has a blank attendee — so approvals and any other update to those rows will fail with a
+      validation error until the back-fill has run. Keep the window short; do both in one
+      maintenance slot.
+  ```bash
+  sf apex run --file scripts/r5-pre-deploy.apex -o poc-sandbox
+  ```
+- [ ] Read the debug output. The last line must say **zero** invitees without an attendee. If it does not, stop — do **not** run section C. The usual causes are an invitee whose Contact or Lead had no last name, or an orphan row with neither head set; both are logged by id and have to be fixed or deleted by hand first.
+- [ ] Sanity-check a migrated row in the UI: open an invitee and confirm the Name and Organisation fields are populated through the new attendee.
+
+### C. Delete what R5 removes
+
+Only after section B reports zero un-migrated invitees.
+
+- [ ] Pre-manifest — drops the invitee's Contact/Lead/Account fields and the XOR rule:
+  ```bash
+  sf project deploy start -o poc-sandbox \
+    --manifest manifest/package.xml \
+    --pre-destructive-changes manifest/destructiveChangesPre.xml
+  ```
+- [ ] Post-manifest — drops `Invitee_Type__c`, `Event_History__c`, `ContactImportController` and `contactSelector`:
+  ```bash
+  sf project deploy start -o poc-sandbox \
+    --manifest manifest/package.xml \
+    --post-destructive-changes manifest/destructiveChangesPost.xml
+  ```
+- [ ] `sf apex run test -o poc-sandbox --wait 10 --code-coverage`
+
+### D. Post-deploy configuration
+
+- [ ] Re-activate the *Marketing Event Record Page* if the component swap detached it (Setup → Object Manager → Marketing Event → Lightning Record Pages)
+- [ ] Re-assign `Event AM` / `Event Approver` — the permission sets changed shape, and an org that granted Lead access through them no longer does
+- [ ] **Set a Manager on every AM user.** This is now the only approver the routing has; an AM without one cannot submit at all
+- [ ] Confirm the *Event Attendees* tab appears in the Event Management app, and that Account / Contact / Lead have gone from it
+- [ ] Check `Event_Attendee__c` OWD is **Public Read/Write** (Setup → Sharing Settings). Every AM needs to read every attendee, because the per-AM scoping that Account ownership provided no longer exists
+
+### E. Verify — the workflow end to end
+
+- [ ] Upload `demo-data/FinTech_Summit_2026_Attendees.csv`. Preview shows New / Already known / Skipped; apply, then re-upload the identical file and confirm the attendee count does **not** change
+- [ ] Confirm the two Sophie Laurents (no email) collapsed to one attendee and the two Marie Duponts (different emails) did not. Both are in the file on purpose
+- [ ] Confirm `Ben Nomail` imported with an empty Email and the preview said the address was not stored
+- [ ] **Re-run the Account / Contact / Lead counts from section B. They must be identical.** This is the entire claim of the revision, and it is one query
+- [ ] Add attendees to an event as two different AMs, submit both batches, confirm each routes to that AM's manager
+- [ ] Approve from the Salesforce Mobile App; confirm the approval screen shows a **name and organisation**, not blanks — that is the repointed formulas plus the approver's read access to `Event_Attendee__c`
+- [ ] Reports → *Event Management* → *Approved Invitees — by Event*: Name and Organisation populated, export to CSV, open in desktop Excel with no mojibake
+- [ ] Open an Event Attendee record and confirm the Event Invitees related list shows every event that person has been put forward for
+- [ ] Try to delete an attendee who has been invited — it must be refused
+
+### F. If it goes wrong
+
+- [ ] A failed deploy rolls back in full — the org is untouched, so fix and re-run ([Part 3](#part-3--how-a-deploy-actually-works))
+- [ ] **A successful destructive deploy does not roll back.** Recovering the deleted components means redeploying them from the pre-R5 commit, and the *data* in `Event_History__c` and in the invitees' `Contact__c` / `Lead__c` does not come back with them — only the CSVs from section A have it
+- [ ] The one genuinely recoverable mistake is running section C before section B. If you catch it before the pre-manifest, just run the migration. If the pre-manifest has already run, the invitee → person link is gone and `backup-invitees-preR5.csv` is the only way back
+- [ ] So: dry-run the whole of Part 7 in a scratch or throwaway sandbox before running it anywhere that matters
