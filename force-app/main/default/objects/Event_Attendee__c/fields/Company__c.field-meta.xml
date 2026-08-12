@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Company__c</fullName>
+    <label>Company</label>
+    <description>Free text, and no lookup to Account by design — that is the whole point of R5. A bank, a university and a newspaper all land here on equal terms, and none of them becomes a customer record. Grouping in the selector is by this text, so two spellings of one organisation group separately.</description>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

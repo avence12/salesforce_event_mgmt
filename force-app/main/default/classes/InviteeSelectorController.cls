@@ -1,23 +1,30 @@
 /**
  * Screen 3 — Invitee Selector on the Event record page (AM side).
  *
- * Two sources, because an Account is a transacting customer by definition and a
- * technical conference invites people who are not at one:
- *   - Contacts under "my accounts" = accounts the AM owns OR is on the Account Team of.
- *   - Leads the AM owns — professors, researchers, speakers, press. A Contact with no
- *     Account would be a *private contact*, visible to nobody but its owner, which the
- *     shared-event model cannot use.
+ * One source as of R5: Event_Attendee__c, the people Screen 1 imported. The
+ * Contacts-under-my-accounts tab and the Leads-I-own tab are both gone, and with
+ * them the two-headed junction they fed.
  *
- * Already-invited people are hidden; Rejected ones reappear and re-adding resets the
- * existing row to Draft. Submission hands off to the standard Approval Process — this
- * class resolves who approves, the process owns the status from there.
+ * Two consequences of that are worth stating rather than discovering:
+ *
+ *   - **The list is no longer scoped per AM.** Account ownership and Account Team
+ *     membership were what "my contacts" meant, and there is no Account here to
+ *     ask. Every AM sees every attendee, bounded by the object's sharing model.
+ *     That is a widening, and it is deliberate: a shared event whose attendee pool
+ *     each AM could only half see would be worse than one everybody can search.
+ *   - **Approval routing has one rung left.** Account Owner needed an Account and
+ *     Lead Owner needed a Lead; neither exists. What remains is the submitter's
+ *     manager, which is what requirement.md asked for before Account Owner was
+ *     ever used as a stand-in for it.
+ *
+ * Already-invited people are hidden; Rejected ones reappear and re-adding resets
+ * the existing row to Draft. Submission hands off to the standard Approval Process
+ * — this class resolves who approves, the process owns the status from there.
  */
 public with sharing class InviteeSelectorController {
-    public class SelectableContact {
+    public class SelectableAttendee {
         @AuraEnabled
-        public Id contactId { get; set; }
-        @AuraEnabled
-        public Id leadId { get; set; }
+        public Id attendeeId { get; set; }
         @AuraEnabled
         public String name { get; set; }
         @AuraEnabled
@@ -25,17 +32,13 @@ public with sharing class InviteeSelectorController {
         @AuraEnabled
         public String email { get; set; }
         @AuraEnabled
-        public Id accountId { get; set; }
-        @AuraEnabled
-        public String accountName { get; set; }
-        @AuraEnabled
-        public String accountOwnerName { get; set; }
+        public String company { get; set; }
     }
 
     /** Wrapper so a truncated list can say so — a silently short list reads as "that's everyone". */
     public class SelectableResult {
         @AuraEnabled
-        public List<SelectableContact> contacts { get; set; }
+        public List<SelectableAttendee> attendees { get; set; }
         @AuraEnabled
         public Boolean truncated { get; set; }
         @AuraEnabled
@@ -46,13 +49,11 @@ public with sharing class InviteeSelectorController {
         @AuraEnabled
         public Id inviteeId { get; set; }
         @AuraEnabled
-        public String contactName { get; set; }
+        public String attendeeName { get; set; }
         @AuraEnabled
-        public String contactTitle { get; set; }
+        public String attendeeTitle { get; set; }
         @AuraEnabled
-        public String accountName { get; set; }
-        @AuraEnabled
-        public String inviteeType { get; set; }
+        public String company { get; set; }
         @AuraEnabled
         public String status { get; set; }
         @AuraEnabled
@@ -68,185 +69,92 @@ public with sharing class InviteeSelectorController {
         public Integer approversNotified { get; set; }
     }
 
-    /** Most contacts the selector will hand back in one call. */
-    public static final Integer CONTACT_CAP = 2000;
+    /** Most attendees the selector will hand back in one call. */
+    public static final Integer ATTENDEE_CAP = 2000;
 
     @AuraEnabled(cacheable=true)
-    public static SelectableResult getSelectableContacts(Id eventId) {
+    public static SelectableResult getSelectableAttendees(Id eventId) {
         SelectableResult res = new SelectableResult();
-        res.contacts = new List<SelectableContact>();
+        res.attendees = new List<SelectableAttendee>();
         res.truncated = false;
-        res.cap = CONTACT_CAP;
+        res.cap = ATTENDEE_CAP;
 
-        Set<Id> myAccountIds = getMyAccountIds();
-        if (myAccountIds.isEmpty()) {
-            return res;
-        }
-
-        Set<Id> blockedContactIds = blockedIds(eventId, false);
+        Set<Id> blocked = blockedAttendeeIds(eventId);
 
         // One row past the cap: if it comes back, there are more than we are showing.
-        Integer probe = CONTACT_CAP + 1;
-        List<Contact> found = [
-            SELECT Id, Name, Title, Email, AccountId, Account.Name, Account.Owner.Name
-            FROM Contact
-            WHERE AccountId IN :myAccountIds AND Id NOT IN :blockedContactIds
-            ORDER BY Account.Name, Name
+        Integer probe = ATTENDEE_CAP + 1;
+        List<Event_Attendee__c> found = [
+            SELECT Id, Name, Title__c, Email__c, Company__c
+            FROM Event_Attendee__c
+            WHERE Id NOT IN :blocked
+            ORDER BY Company__c, Name
             LIMIT :probe
         ];
-        if (found.size() > CONTACT_CAP) {
+        if (found.size() > ATTENDEE_CAP) {
             res.truncated = true;
-            found.remove(CONTACT_CAP); // drop the probe row
+            found.remove(ATTENDEE_CAP); // drop the probe row
         }
 
-        for (Contact c : found) {
-            SelectableContact sc = new SelectableContact();
-            sc.contactId = c.Id;
-            sc.name = c.Name;
-            sc.title = c.Title;
-            sc.email = c.Email;
-            sc.accountId = c.AccountId;
-            sc.accountName = c.Account.Name;
-            sc.accountOwnerName = c.Account.Owner.Name;
-            res.contacts.add(sc);
-        }
-        return res;
-    }
-
-    /**
-     * Leads the AM owns and has not already invited. Ownership is the only scope
-     * available: Lead has no team object, so the Account Team half of the Contacts
-     * rule has no counterpart here. Converted Leads are excluded — their Contact is
-     * the thing to invite, and it will already be on the Contacts tab.
-     */
-    @AuraEnabled(cacheable=true)
-    public static SelectableResult getSelectableLeads(Id eventId) {
-        SelectableResult res = new SelectableResult();
-        res.contacts = new List<SelectableContact>();
-        res.truncated = false;
-        res.cap = CONTACT_CAP;
-
-        Set<Id> blockedLeadIds = blockedIds(eventId, true);
-
-        Integer probe = CONTACT_CAP + 1;
-        List<Lead> found = [
-            SELECT Id, Name, Title, Email, Company, Owner.Name
-            FROM Lead
-            WHERE OwnerId = :UserInfo.getUserId() AND IsConverted = FALSE AND Id NOT IN :blockedLeadIds
-            ORDER BY Company, Name
-            LIMIT :probe
-        ];
-        if (found.size() > CONTACT_CAP) {
-            res.truncated = true;
-            found.remove(CONTACT_CAP);
-        }
-
-        for (Lead l : found) {
-            SelectableContact sc = new SelectableContact();
-            sc.leadId = l.Id;
-            sc.name = l.Name;
-            sc.title = l.Title;
-            sc.email = l.Email;
-            // Grouping key is the Company *text*: two spellings of one university group
-            // separately, which is accepted for the PoC — there is no record to key on.
-            sc.accountName = l.Company;
-            sc.accountOwnerName = l.Owner.Name;
-            res.contacts.add(sc);
+        for (Event_Attendee__c a : found) {
+            SelectableAttendee sa = new SelectableAttendee();
+            sa.attendeeId = a.Id;
+            sa.name = a.Name;
+            sa.title = a.Title__c;
+            sa.email = a.Email__c;
+            // Grouping key is the Company *text*: two spellings of one organisation
+            // group separately, which is accepted for the PoC — there is no record
+            // to key on, by design.
+            sa.company = a.Company__c;
+            res.attendees.add(sa);
         }
         return res;
     }
 
     @AuraEnabled
-    public static Integer addInvitees(Id eventId, List<Id> contactIds) {
-        if (contactIds == null || contactIds.isEmpty()) {
-            throw new AuraHandledException('No contacts selected.');
+    public static Integer addAttendees(Id eventId, List<Id> attendeeIds) {
+        if (attendeeIds == null || attendeeIds.isEmpty()) {
+            throw new AuraHandledException('No attendees selected.');
         }
 
-        Map<Id, Contact> contacts = new Map<Id, Contact>([SELECT Id, AccountId FROM Contact WHERE Id IN :contactIds]);
-
-        // Existing rows for these contacts on this event (any status).
-        Map<Id, Event_Invitee__c> existingByContact = new Map<Id, Event_Invitee__c>();
+        // Existing rows for these attendees on this event (any status).
+        Map<Id, Event_Invitee__c> existingByAttendee = new Map<Id, Event_Invitee__c>();
         for (Event_Invitee__c inv : [
-            SELECT Id, Contact__c, Status__c
+            SELECT Id, Event_Attendee__c, Status__c
             FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId AND Contact__c IN :contactIds
+            WHERE Marketing_Event__c = :eventId AND Event_Attendee__c IN :attendeeIds
         ]) {
-            existingByContact.put(inv.Contact__c, inv);
+            existingByAttendee.put(inv.Event_Attendee__c, inv);
         }
+
+        // Ids the client sent that do not resolve are dropped rather than trusted —
+        // the same reason the import re-classifies server-side.
+        Set<Id> real = new Map<Id, Event_Attendee__c>([SELECT Id FROM Event_Attendee__c WHERE Id IN :attendeeIds])
+            .keySet();
 
         List<Event_Invitee__c> toInsert = new List<Event_Invitee__c>();
         List<Event_Invitee__c> toReset = new List<Event_Invitee__c>();
 
-        for (Id contactId : contactIds) {
-            Contact c = contacts.get(contactId);
-            if (c == null) {
+        for (Id attendeeId : attendeeIds) {
+            if (!real.contains(attendeeId)) {
                 continue;
             }
-            Event_Invitee__c existing = existingByContact.get(contactId);
+            Event_Invitee__c existing = existingByAttendee.get(attendeeId);
             if (existing == null) {
                 toInsert.add(
                     new Event_Invitee__c(
                         Marketing_Event__c = eventId,
-                        Contact__c = contactId,
+                        Event_Attendee__c = attendeeId,
                         Status__c = 'Draft',
                         Added_By__c = UserInfo.getUserId(),
-                        Account__c = c.AccountId, // snapshot at add time
-                        Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(contactId)
+                        Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(attendeeId)
                     )
                 );
             } else if (existing.Status__c == 'Rejected') {
                 // Re-add resets the existing row — Unique_Key__c forbids a second row.
-                resetToDraft(existing, c.AccountId);
+                resetToDraft(existing);
                 toReset.add(existing);
             }
             // Any other status: already invited — silently skipped (UI hides these anyway).
-        }
-
-        if (!toInsert.isEmpty()) {
-            insert toInsert;
-        }
-        if (!toReset.isEmpty()) {
-            update toReset;
-        }
-        return toInsert.size() + toReset.size();
-    }
-
-    @AuraEnabled
-    public static Integer addLeadInvitees(Id eventId, List<Id> leadIds) {
-        if (leadIds == null || leadIds.isEmpty()) {
-            throw new AuraHandledException('No leads selected.');
-        }
-
-        Map<Id, Event_Invitee__c> existingByLead = new Map<Id, Event_Invitee__c>();
-        for (Event_Invitee__c inv : [
-            SELECT Id, Lead__c, Status__c
-            FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId AND Lead__c IN :leadIds
-        ]) {
-            existingByLead.put(inv.Lead__c, inv);
-        }
-
-        List<Event_Invitee__c> toInsert = new List<Event_Invitee__c>();
-        List<Event_Invitee__c> toReset = new List<Event_Invitee__c>();
-
-        for (Id leadId : leadIds) {
-            Event_Invitee__c existing = existingByLead.get(leadId);
-            if (existing == null) {
-                toInsert.add(
-                    new Event_Invitee__c(
-                        Marketing_Event__c = eventId,
-                        Lead__c = leadId,
-                        Status__c = 'Draft',
-                        Added_By__c = UserInfo.getUserId(),
-                        // Account__c stays null by design — a Lead has no customer Account,
-                        // and Invitee_Org__c falls through to the Lead's Company text.
-                        Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(leadId)
-                    )
-                );
-            } else if (existing.Status__c == 'Rejected') {
-                resetToDraft(existing, null);
-                toReset.add(existing);
-            }
         }
 
         if (!toInsert.isEmpty()) {
@@ -263,14 +171,14 @@ public with sharing class InviteeSelectorController {
      *
      * The status is deliberately NOT written here — the approval process's initial
      * submission action owns it. What this method owns is the one thing an approval
-     * process cannot work out for itself: who approves. That is resolved once, frozen
-     * into Approver__c, and never recomputed, so a later ownership change cannot
-     * reroute an item somebody is already looking at.
+     * process cannot work out for itself: who approves. That is resolved once,
+     * frozen into Approver__c, and never recomputed, so a later org-chart change
+     * cannot reroute an item somebody is already looking at.
      */
     @AuraEnabled
     public static SubmitResult submitMyInvitees(Id eventId) {
         List<Event_Invitee__c> mine = [
-            SELECT Id, Account__c, Contact__c, Lead__c
+            SELECT Id, Event_Attendee__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId AND Added_By__c = :UserInfo.getUserId() AND Status__c = 'Draft'
         ];
@@ -279,56 +187,25 @@ public with sharing class InviteeSelectorController {
         }
 
         Id submitterId = UserInfo.getUserId();
-        Map<Id, Id> ownerByAccount = new Map<Id, Id>();
-        Map<Id, Id> ownerByLead = new Map<Id, Id>();
-        Set<Id> accountIds = new Set<Id>();
-        Set<Id> leadIds = new Set<Id>();
-        for (Event_Invitee__c inv : mine) {
-            if (inv.Account__c != null) {
-                accountIds.add(inv.Account__c);
-            }
-            if (inv.Lead__c != null) {
-                leadIds.add(inv.Lead__c);
-            }
-        }
-        for (Account a : [SELECT Id, OwnerId FROM Account WHERE Id IN :accountIds]) {
-            ownerByAccount.put(a.Id, a.OwnerId);
-        }
-        for (Lead l : [SELECT Id, OwnerId FROM Lead WHERE Id IN :leadIds]) {
-            ownerByLead.put(l.Id, l.OwnerId);
-        }
         Id managerId = [SELECT ManagerId FROM User WHERE Id = :submitterId].ManagerId;
 
-        Map<Id, Integer> countByApprover = new Map<Id, Integer>();
-        List<String> unroutable = new List<String>();
-        Datetime now = Datetime.now();
-
-        for (Event_Invitee__c inv : mine) {
-            Id accountOwnerId = inv.Account__c == null ? null : ownerByAccount.get(inv.Account__c);
-            Id approverId = resolveApprover(inv, accountOwnerId, ownerByLead, managerId, submitterId);
-            if (approverId == null) {
-                unroutable.add(inv.Id);
-                continue;
-            }
-            inv.Submitted_At__c = now;
-            inv.Account_Owner__c = accountOwnerId; // audit snapshot; null for Lead invitees
-            inv.Approver__c = approverId;
-            Integer n = countByApprover.containsKey(approverId) ? countByApprover.get(approverId) : 0;
-            countByApprover.put(approverId, n + 1);
-        }
-
-        // All-or-nothing: a partial submit would leave the AM staring at a Draft count
-        // that no longer matches what they just sent, with no clue which rows moved.
-        if (!unroutable.isEmpty()) {
+        // The whole ladder, now that neither an Account Owner nor a Lead Owner
+        // exists to climb past. A submitter with no manager resolves to nobody, and
+        // that is refused below rather than written as a row no approver can see.
+        if (managerId == null) {
             throw new AuraHandledException(
-                'No approver could be determined for ' +
-                    unroutable.size() +
-                    ' of ' +
+                'No approver could be determined for your ' +
                     mine.size() +
-                    ' invitee(s). Set a Manager on your user record, or have someone else own the lead. Nothing was submitted.'
+                    ' invitee(s): your user record has no Manager, and an attendee has no account owner to fall back on. ' +
+                    'Ask an administrator to set a Manager on your user. Nothing was submitted.'
             );
         }
 
+        Datetime now = Datetime.now();
+        for (Event_Invitee__c inv : mine) {
+            inv.Submitted_At__c = now;
+            inv.Approver__c = managerId;
+        }
         update mine;
 
         List<Approval.ProcessSubmitRequest> requests = new List<Approval.ProcessSubmitRequest>();
@@ -344,59 +221,30 @@ public with sharing class InviteeSelectorController {
         Approval.process(requests, true);
 
         Marketing_Event__c evt = [SELECT Id, Name FROM Marketing_Event__c WHERE Id = :eventId];
-        EventNotificationService.notifyApproversOfSubmission(evt, countByApprover, submitterId);
+        EventNotificationService.notifyApproversOfSubmission(
+            evt,
+            new Map<Id, Integer>{ managerId => mine.size() },
+            submitterId
+        );
 
         SubmitResult res = new SubmitResult();
         res.submitted = mine.size();
-        res.approversNotified = countByApprover.size();
+        // One manager per submitter, so this is always 1. Kept as a count rather than
+        // hard-coded because it is what the toast says, and a future routing rule that
+        // fans out again should not have to re-thread the return type.
+        res.approversNotified = 1;
         return res;
     }
 
     /**
-     * The approver ladder. Order matters and rule 2's exclusion is the subtle one:
-     * an AM usually owns the leads they added, so "the Lead Owner approves" would
-     * quietly mean "the submitter approves their own submission" — the control this
-     * whole workflow exists to provide, removed for exactly the invitees nobody has
-     * vetted yet. Falling through to the manager is also what the original requirement
-     * asked for; Account Owner was always a stand-in for "the AM's manager".
-     */
-    private static Id resolveApprover(
-        Event_Invitee__c inv,
-        Id accountOwnerId,
-        Map<Id, Id> ownerByLead,
-        Id managerId,
-        Id submitterId
-    ) {
-        if (inv.Contact__c != null && accountOwnerId != null) {
-            return accountOwnerId;
-        }
-        if (inv.Lead__c != null) {
-            Id leadOwnerId = ownerByLead.get(inv.Lead__c);
-            if (leadOwnerId != null && leadOwnerId != submitterId) {
-                return leadOwnerId;
-            }
-        }
-        return managerId; // may be null — caller refuses the submit rather than orphaning the row
-    }
-
-    /**
-     * Reads the Invitee_* formula fields rather than either lookup, so one flat query
-     * renders Contact and Lead rows with no branching — the same reason the Screen 5
-     * reports can cover both in one report.
+     * Reads the Invitee_* formula fields rather than the lookup, so the table, the
+     * approval page and the Screen 5 reports all read the attendee the same way.
      */
     @AuraEnabled(cacheable=true)
     public static List<InviteeRow> getAllInvitees(Id eventId) {
         List<InviteeRow> out = new List<InviteeRow>();
         for (Event_Invitee__c inv : [
-            SELECT
-                Id,
-                Invitee_Name__c,
-                Invitee_Title__c,
-                Invitee_Org__c,
-                Invitee_Type__c,
-                Status__c,
-                Added_By__r.Name,
-                Added_By__c
+            SELECT Id, Invitee_Name__c, Invitee_Title__c, Invitee_Org__c, Status__c, Added_By__r.Name, Added_By__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId
             ORDER BY Invitee_Org__c, Invitee_Name__c
@@ -404,10 +252,9 @@ public with sharing class InviteeSelectorController {
         ]) {
             InviteeRow r = new InviteeRow();
             r.inviteeId = inv.Id;
-            r.contactName = inv.Invitee_Name__c;
-            r.contactTitle = inv.Invitee_Title__c;
-            r.accountName = inv.Invitee_Org__c;
-            r.inviteeType = inv.Invitee_Type__c;
+            r.attendeeName = inv.Invitee_Name__c;
+            r.attendeeTitle = inv.Invitee_Title__c;
+            r.company = inv.Invitee_Org__c;
             r.status = inv.Status__c;
             r.addedByName = inv.Added_By__r != null ? inv.Added_By__r.Name : null;
             r.mine = inv.Added_By__c == UserInfo.getUserId();
@@ -418,17 +265,16 @@ public with sharing class InviteeSelectorController {
 
     // ---------- internals ----------
 
-    /** Contacts (or leads) already on the event, unless their row is Rejected — those reappear. */
-    private static Set<Id> blockedIds(Id eventId, Boolean forLeads) {
+    /** Attendees already on the event, unless their row is Rejected — those reappear. */
+    private static Set<Id> blockedAttendeeIds(Id eventId) {
         Set<Id> ids = new Set<Id>();
         for (Event_Invitee__c inv : [
-            SELECT Contact__c, Lead__c
+            SELECT Event_Attendee__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId AND Status__c != 'Rejected'
         ]) {
-            Id id = forLeads ? inv.Lead__c : inv.Contact__c;
-            if (id != null) {
-                ids.add(id);
+            if (inv.Event_Attendee__c != null) {
+                ids.add(inv.Event_Attendee__c);
             }
         }
         return ids;
@@ -437,26 +283,13 @@ public with sharing class InviteeSelectorController {
     /**
      * Clears every trace of the previous approval round. Approver__c must go with the
      * rest: leaving a stale approver on a Draft row would let the next submit silently
-     * skip the ladder and reuse whoever decided last time.
+     * skip resolution and reuse whoever decided last time.
      */
-    private static void resetToDraft(Event_Invitee__c inv, Id accountId) {
+    private static void resetToDraft(Event_Invitee__c inv) {
         inv.Status__c = 'Draft';
         inv.Added_By__c = UserInfo.getUserId();
-        inv.Account__c = accountId;
-        inv.Account_Owner__c = null;
         inv.Approver__c = null;
         inv.Submitted_At__c = null;
         inv.Decided_At__c = null;
-    }
-
-    private static Set<Id> getMyAccountIds() {
-        Set<Id> ids = new Set<Id>();
-        for (Account a : [SELECT Id FROM Account WHERE OwnerId = :UserInfo.getUserId()]) {
-            ids.add(a.Id);
-        }
-        for (AccountTeamMember m : [SELECT AccountId FROM AccountTeamMember WHERE UserId = :UserInfo.getUserId()]) {
-            ids.add(m.AccountId);
-        }
-        return ids;
     }
 }

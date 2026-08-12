@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomApplication xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Event Management</label>
-    <description>PoC: create marketing events, import external contact lists, collect approvals through the standard approval process, and report on approved invitees. Guests with no customer relationship are Leads, so the Leads tab is part of the workflow, and Reports is where the approved list is exported from.</description>
+    <description>PoC: create marketing events, import external attendee lists, collect approvals through the standard approval process, and report on approved invitees. R5 removed the Account, Contact and Lead tabs from this app because the workflow no longer reads or writes any of them — Event Attendees is where invited people live, and Reports is where the approved list is exported from.</description>
     <formFactors>Large</formFactors>
     <formFactors>Small</formFactors>
     <isNavAutoTempTabsDisabled>false</isNavAutoTempTabsDisabled>
@@ -9,10 +9,8 @@
     <isNavTabPersistenceDisabled>false</isNavTabPersistenceDisabled>
     <navType>Standard</navType>
     <tabs>Marketing_Event__c</tabs>
+    <tabs>Event_Attendee__c</tabs>
     <tabs>Import_Contacts</tabs>
-    <tabs>standard-Account</tabs>
-    <tabs>standard-Contact</tabs>
-    <tabs>standard-Lead</tabs>
     <tabs>standard-report</tabs>
     <uiType>Lightning</uiType>
 </CustomApplication>

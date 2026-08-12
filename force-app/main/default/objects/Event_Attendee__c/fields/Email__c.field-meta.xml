@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Email__c</fullName>
+    <label>Email</label>
+    <description>Optional, and deliberately not unique. Conference lists carry shared inboxes and rows with no address at all; making this the identity is what R4 moved away from. It is one of the four parts of Unique_Key__c instead.</description>
+    <type>Email</type>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

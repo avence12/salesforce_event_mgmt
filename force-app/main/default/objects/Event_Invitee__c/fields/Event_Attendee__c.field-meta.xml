@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Event_Attendee__c</fullName>
+    <label>Event Attendee</label>
+    <description>Who is invited. R5 replaced the Contact__c / Lead__c pair with this single lookup: every invitee is an Event_Attendee__c, so the junction has one head instead of two and no consumer has to ask which one is populated. Restrict, not SetNull — an attendee who has been invited to something cannot be deleted out from under an approval, and unlike the old Contact and Lead lookups this constraint only ever blocks deletion of a record this project owns.</description>
+    <type>Lookup</type>
+    <referenceTo>Event_Attendee__c</referenceTo>
+    <relationshipLabel>Event Invitees</relationshipLabel>
+    <relationshipName>Event_Invitees</relationshipName>
+    <required>false</required>
+    <deleteConstraint>Restrict</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

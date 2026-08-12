@@ -2,8 +2,8 @@
 <LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>61.0</apiVersion>
     <isExposed>true</isExposed>
-    <masterLabel>Event Contact Selector</masterLabel>
-    <description>AM view on the Marketing Event page: add contacts from your accounts, submit your batch for approval, export the approved list.</description>
+    <masterLabel>Event Attendee Selector</masterLabel>
+    <description>AM view on the Marketing Event page: add people from the imported attendee list, submit your batch for approval, and see every invitee on the event.</description>
     <targets>
         <target>lightning__RecordPage</target>
     </targets>
