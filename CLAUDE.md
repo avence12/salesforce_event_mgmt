@@ -39,6 +39,14 @@ run against a populated org, and it is asserted in
 `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` rather than merely
 intended. Treat it as an invariant, not a preference.
 
+**User is a narrower case of the same rule, not an exception to it.** Every record's `OwnerId`
+and `CreatedById`, the manager-routed approval and the approval chain design's
+`Approval_Route__c.Approver__c` all point at a User — that reference is unavoidable and is
+exactly what makes routing work. What must never happen is a User record being created,
+updated or deleted. `EventWorkflowTest.submitAndApproveNeverModifyUsers` asserts it across
+submit and decide; the only place a User is ever written is test setup building a manager
+hierarchy fixture, never a code path that runs against the real org.
+
 Being a good neighbour in a populated org also means: never ship a layout, record type,
 picklist change or sharing setting for a standard object, and never assume a Setup-level
 toggle can be flipped org-wide. Anything the feature needs from outside its own objects
