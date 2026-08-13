@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Attended__c</fullName>
+    <label>Attended</label>
+    <description>★R6 This person actually turned up. Deliberately a separate fact from Status__c = Approved: approval is permission to come, attendance is having come, and an approved no-show is exactly the row that would poison a recommendation built on &quot;events attended&quot;. Nothing sets this automatically — an AM records it after the event from the All Invitees tab, so an event nobody marks up simply has no attendance data rather than false attendance data.</description>
+    <type>Checkbox</type>
+    <defaultValue>false</defaultValue>
+    <trackHistory>false</trackHistory>
+</CustomField>

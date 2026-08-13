@@ -114,6 +114,40 @@ through and kept rather than deleted — the reasoning was sound for the shape i
 against, and a reader deciding whether to revisit this design needs to see why the shape
 changed, not just that it did.
 
+**Revised 2026-08-12 (R6) — attendance becomes a fact, and events gain a subject.** A
+follow-on to R5, driven by a marketing requirement:
+
+> `Event_Attendee__c` has to record which events the person went to, as the basis for
+> recommending similar events later.
+
+**Half of this was already true and worth saying so before adding anything.** R5 made
+`Event_Invitee__c` the link between a person and an event, and the Event Attendee page
+already carries that related list. What was missing was not a place to record history — it
+was two things the history needed in order to be worth recommending from:
+
+1. **A distinction between *approved* and *attended*.** `Status__c` runs Draft → Pending →
+   Approved / Rejected and stops there. Approval is permission to come; it is not evidence
+   anybody came. Recommending from approvals means recommending from a list padded with
+   no-shows, which is worse than recommending from nothing because it looks like data.
+   `Event_Invitee__c.Attended__c` is the new fact, and nothing sets it automatically — an AM
+   marks it up after the event, so an unmarked event has *no* attendance data rather than
+   *false* attendance data.
+2. **Something to compute similarity from.** `Event_Type__c` had four values describing the
+   *shape* of an event. Similarity computed from it degenerates into "recommend another
+   webinar to people who came to a webinar", which is not a recommendation. `Topic__c` is
+   what an event is *about*, and it is the field similarity should read.
+
+R6 also **replaces the `Event_Type__c` values** with **Symposium / OIP / Conference** at the
+business's direction. Because that picklist is restricted, this is a migration and not an
+edit — see the note under *Data model*.
+
+**What R6 does not build:** any recommendation logic. Attendance is recorded, events are
+tagged, and the *Attendee Event History* report answers "what has this person shown up for".
+A human reads it and decides. That is deliberate — a scoring function built before anyone has
+tagged a real event would be fitting itself to placeholder data.
+
+R6 items are marked ★R6.
+
 ## Problem Statement
 
 Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV) from conferences and other systems. Today there is no structured way to: (1) get those people into Salesforce at all, (2) assemble an event invitee list that several AMs contribute to, (3) get per-person sign-off from a manager, and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox.
@@ -186,45 +220,193 @@ Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tm
 
 ### Data model
 
-```
-Marketing_Event__c
-  Name                    (Text, e.g. "Q3 2026 Customer Appreciation Gala")
-  Event_Date__c           (Date, required)
-  Location__c             (Text)
-  Event_Type__c           (Picklist: Conference, Webinar, Roadshow, Dinner / Gala)
-  Expected_Attendees__c   (Number)
-  Description__c          (Long Text)
-  OwnerId                 (standard — creating AM)
-  Approved_Count__c / Pending_Count__c / Rejected_Count__c / Exported_Count__c  (Roll-up summaries)
+★R5 The shape first — three custom objects, and `Event_Invitee__c` is the junction that makes
+event-to-attendee many-to-many. Only the relationship-carrying and key fields are on the
+diagram; the full field lists are in the blocks below it.
 
-Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
-  Event_Attendee__c    ★R5 (Lookup → Event_Attendee__c, deleteConstraint Restrict — replaces Contact__c + Lead__c)
-  Status__c               (Picklist: Draft, Pending Approval, Approved, Rejected)   ← "Exported" retired in R3, see Screen 5
-  Added_By__c             (Lookup → User; defaulted to creator)
-  Approver__c          ★R3 (Lookup → User; resolved at submit time; the Approval Process's Related User Field)
-  Submitted_At__c / Decided_At__c (DateTime)
-  Unique_Key__c           (Text, unique external ID = Event Id + Attendee Id — prevents duplicate invitees)
-  Invitee_Name__c      ★R5 (Formula, Text — Event_Attendee__r.Name)
-  Invitee_Email__c     ★R5 (Formula, Text — Event_Attendee__r.Email__c)
-  Invitee_Title__c     ★R5 (Formula, Text — Event_Attendee__r.Title__c)
-  Invitee_Org__c       ★R5 (Formula, Text — Event_Attendee__r.Company__c)
-  ~~Contact__c / Lead__c / Account__c / Account_Owner__c / Invitee_Type__c~~  ★R5 dropped
+```mermaid
+erDiagram
+    Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
+    Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
+    User               ||--o{ Event_Invitee__c : "Added_By__c and Approver__c"
+
+    Marketing_Event__c {
+        Text        Name
+        Date        Event_Date__c "required"
+        Picklist    Event_Type__c "R6, Symposium OIP Conference"
+        MultiSelect Topic__c "R6, what similarity is computed from"
+        RollUp      Approved_Count__c "counts Status = Approved"
+        RollUp      Pending_Count__c "counts Status = Pending Approval"
+        RollUp      Rejected_Count__c "counts Status = Rejected"
+    }
+
+    Event_Attendee__c {
+        Text  Name "First Last, assembled by the import"
+        Text  Last_Name__c "required, no surname means no identity"
+        Email Email__c "optional and NOT unique"
+        Text  Company__c "free text, no Account lookup"
+        Text  Unique_Key__c UK "normalised last, first, company, email"
+    }
+
+    Event_Invitee__c {
+        AutoNumber   Name
+        MasterDetail Marketing_Event__c FK "reparenting disabled"
+        Lookup       Event_Attendee__c FK "Restrict, cannot vanish mid-approval"
+        Picklist     Status__c "Draft, Pending Approval, Approved, Rejected"
+        Lookup       Approver__c FK "the submitter's manager, frozen at submit"
+        Lookup       Added_By__c FK "which AM added this row"
+        Checkbox     Attended__c "R6, actually turned up, only if Approved"
+        Text         Unique_Key__c UK "EventId plus AttendeeId"
+        Formula      Invitee_Name__c "reads through to the attendee"
+        Formula      Event_Name__c "R6, reads up to the event"
+        Formula      Event_Date__c "R6, reads up to the event"
+        Formula      Event_Type__c "R6, reads up to the event"
+    }
+```
+
+★R5 **The two delete constraints differ on purpose.** Deleting an event takes its invitees with
+it, because they are Master-Detail children and mean nothing without it. Deleting an attendee
+somebody has been invited on is *refused* — `Restrict` was the unacceptable option in R4, when
+the lookup pointed at a standard Contact and blocking its deletion would have been bad-neighbour
+behaviour on an object another team owns. It is the right option now, because the only thing it
+blocks is deleting a record this project created.
+
+★R5 **`User` is the only standard object anywhere in the model**, and only as a lookup target.
+`Account`, `Contact` and `Lead` do not appear at all.
+
+★R6 **Attendance history needed no new object.** The requirement asked for `Event_Attendee__c`
+to record which events the person went to; `Event_Invitee__c` already *is* that link, so R6
+adds a checkbox to it rather than a fourth object. It is worth noticing that R4 answered a
+near-identical requirement by building `Event_History__c`, which R5 then deleted. The
+difference is that R4 had no attendee object, so it had nowhere to hang history except a new
+object; once the junction points at a person, the junction is the history.
+
+★R6 **`Attended__c` is not a fifth `Status__c` value, and that is deliberate.** Status is the
+approval state machine and the Approval Process owns it; attendance is an observation a human
+makes afterwards. Folding them into one picklist would mean either the approval process
+writing "Attended", which it has no way to know, or an AM writing a status the process owns.
+`Attended_Requires_Approved` keeps the two in the right order — you cannot have attended
+something you were never approved for.
+
+★R6 **`Topic__c` is a multi-select, with everything that costs.** One event genuinely covers
+several subjects, so a single-select would force a false choice. The price is real and shows
+up immediately: a multi-select cannot be rolled up, cannot be referenced by a plain formula
+(only tested with `INCLUDES()`), and filters as "includes" rather than equality. That is why
+`Event_Invitee__c` has formula fields for the event's name, date and type but **not** its
+topic — and therefore why the attendee-side report shows what shape an event was but not what
+it was about. Filtering by subject has to go through the Marketing Events report type, whose
+base object is the event itself. The asymmetry is a consequence of the multi-select, recorded
+rather than papered over.
+
+★R6 **The `Event_Type__c` values are simply Symposium / OIP / Conference.** An earlier draft
+of this section treated replacing them as a migration, on the grounds that a restricted
+picklist cannot lose a value that records still hold. That reasoning does not apply here.
+**`Marketing_Event__c` is one of this project's own objects and holds no records** — the
+target org has plenty of Account and Contact data, but none of it is ours (see `CLAUDE.md`).
+The values are set, not migrated to. What does still need an answer is what "OIP" expands to
+and what it means, because this design cannot describe a taxonomy it does not understand —
+**Open Question 20.**
+
+★R6 **No aggregate fields on the attendee, by decision.** "How many events has this person
+been to" is not a field — `Event_Invitee__c` is a Lookup child of the attendee, and a roll-up
+summary needs a Master-Detail, so the count would have to be maintained by a trigger or Flow.
+That machinery was declined in favour of the related list and the *Attendee Event History*
+report, which groups by person and whose per-group record count **is** that number. What this
+gives up is the ability to filter or sort *people* by it — "everyone who has attended three or
+more events" is a report a human reads, not a query. **Open Question 18** if that turns out to
+be needed.
+
+**The current specification, in full.** The field lists below are the state of
+`force-app/main/default/objects`, not an accumulation of revision deltas — the revision
+markers elsewhere in this document explain *why* the shape is what it is, but none of these
+three objects has ever been deployed, so there is no earlier state of theirs to reconcile
+against. What is listed is what exists.
+
+Note what is *not* here, and that its absence is the point: no `Account`, no `Contact`, no
+`Lead`. The target org holds real data on all three; this project adds three custom objects
+beside them and touches none of it. A deploy is purely additive to that org.
+
+```
+Marketing_Event__c                                    OWD: Public Read/Write
+  Name                       Text                     "Event Name"
+  Event_Date__c              Date, required
+  Location__c                Text(255)
+  Event_Type__c              Picklist, restricted     Symposium | OIP | Conference
+  Topic__c                ★R6 Multi-select, restricted Digital Banking | Payments |
+                                                      Capital Markets | Insurance |
+                                                      Risk & Compliance | Cybersecurity |
+                                                      AI & Data | Sustainable Finance
+                                                      <- PLACEHOLDER VALUES, see OQ 19
+  Expected_Attendees__c      Number
+  Description__c             Long Text(32768)
+  OwnerId                    standard - creating AM
+  Approved_Count__c          Roll-Up  count of invitees where Status = Approved
+  Pending_Count__c           Roll-Up  count where Status = Pending Approval
+  Rejected_Count__c          Roll-Up  count where Status = Rejected
 ```
 
 ```
-★R5  Event_Attendee__c            (standalone object; one row per person, reused across events)
-  Name                    (Text 80 — "First Last", assembled by the import; what a human reads)
-  First_Name__c           (Text 40)
-  Last_Name__c            (Text 80, required)
-  Email__c                (Email, optional, NOT unique)
-  Title__c                (Text 128)
-  Company__c              (Text 255 — free text; no lookup to Account, by design)
-  Mobile__c               (Phone)
-  Source_File__c          (Text 255 — the upload this record last came in on)
-  Imported_On__c          (DateTime — when it was last seen in a file)
-  Unique_Key__c           (Text 255, unique external ID = normalised last|first|company|email)
-  OWD: Public Read/Write
+Event_Attendee__c                                     OWD: Public Read/Write
+  (one row per person, reused across every event)
+  Name                       Text(80)                 "First Last", assembled by the import
+  First_Name__c              Text(40)
+  Last_Name__c               Text(80), required       no surname = no identity; import skips
+  Email__c                   Email                    optional, and deliberately NOT unique
+  Title__c                   Text(128)
+  Company__c                 Text(255)                free text; no lookup to Account, by design
+  Mobile__c                  Phone                    as given, never normalised
+  Source_File__c             Text(255)                which upload it last came in on
+  Imported_On__c             DateTime                 refreshed on re-import
+  Unique_Key__c              Text(255), unique, ExtId normalised last|first|company|email
+                                                      <- the whole of de-duplication
 ```
+
+```
+Event_Invitee__c           (junction: one row per event x attendee)  OWD: ControlledByParent
+  Name                       AutoNumber INV-{00000}
+  Marketing_Event__c         Master-Detail -> Marketing_Event__c, reparenting disabled
+  Event_Attendee__c          Lookup -> Event_Attendee__c, deleteConstraint Restrict
+  Status__c                  Picklist, restricted     Draft | Pending Approval |
+                                                      Approved | Rejected
+                                                      system-managed; FLS read-only
+  Attended__c             ★R6 Checkbox                 actually turned up. NOT a Status value
+  Added_By__c                Lookup -> User, SetNull  which AM added the row
+  Approver__c                Lookup -> User, SetNull  submitter's manager, frozen at submit
+  Submitted_At__c            DateTime
+  Decided_At__c              DateTime                 stamped on approve and reject alike
+  Unique_Key__c              Text(40), unique, ExtId  EventId + AttendeeId
+
+  -- reads DOWN to the attendee --
+  Invitee_Name__c            Formula, Text            Event_Attendee__r.Name
+  Invitee_Email__c           Formula, Text            Event_Attendee__r.Email__c
+  Invitee_Title__c           Formula, Text            Event_Attendee__r.Title__c
+  Invitee_Org__c             Formula, Text            Event_Attendee__r.Company__c
+
+  -- reads UP to the event --  ★R6
+  Event_Name__c              Formula, Text            Marketing_Event__r.Name
+  Event_Date__c              Formula, Date            Marketing_Event__r.Event_Date__c
+  Event_Type__c              Formula, Text            TEXT(Marketing_Event__r.Event_Type__c)
+                                                      (no Topic__c counterpart - a multi-select
+                                                       cannot be read by a formula)
+
+  -- reads the running user --
+  Added_By_Me__c             Formula, Checkbox        Added_By__c = $User.Id
+                                                      (a report filter cannot compare a lookup
+                                                       to the running user; a formula can)
+
+  Validation rules
+    Approver_Required_When_Pending  Status = Pending Approval AND ISBLANK(Approver__c)
+    Attended_Requires_Approved      Attended__c AND Status <> Approved
+    (Event_Attendee__c is required at the field level, so no rule is needed for it)
+```
+
+**The three objects as one sentence:** a *Marketing Event* is a thing with a date and a
+subject; an *Event Attendee* is a person on an imported list; an *Event Invitee* is the fact
+that this person was put forward for that event, carrying the approval state and, afterwards,
+whether they came. Every question the system answers is one of those three read in some
+direction — and because `Event_Invitee__c` is the only join, both directions of the
+recommendation question ("what has this person attended?" and "who attended things like
+this?") are the same rows read from opposite ends.
 
 ★R5 **The object above replaces `Event_History__c`, which is deleted.** R4 had just
 built it — a two-headed attendance log hanging off Contact and Lead — and R5 removes it
@@ -270,10 +452,9 @@ enforced exactly one:
 ISBLANK(Contact__c) = ISBLANK(Lead__c)     ← deleted in R5
 ```
 
-With one head there is no XOR left to state, only that the head is populated —
-`Invitee_Requires_Attendee`, `ISBLANK(Event_Attendee__c)`. The R3 reasoning was correct for a
-junction that had to point at two objects; R5 removed the second object rather than finding a
-better rule for it.
+With one head there is no XOR left to state, only that the head is populated — and that is
+simply `required` on the lookup. The R3 reasoning was correct for a junction that had to point
+at two objects; R5 removed the second object rather than finding a better rule for it.
 
 ~~★R3 **The five formula fields are the load-bearing piece of this revision.**~~ ★R5 **Now
 four, and no longer load-bearing.** Their whole job was letting one report column read
@@ -683,7 +864,7 @@ Sequenced so the negative assertions exist before the code that could violate th
 | Object `Event_Attendee__c` + 9 fields | Person-level; OWD Public Read/Write; `Unique_Key__c` is the only de-duplication |
 | Tab + layout for `Event_Attendee__c` | The layout's Event Invitees related list is what answers "which events has this person been put forward for" — the question `Event_History__c` used to hold |
 | `Event_Invitee__c.Event_Attendee__c` lookup | `Restrict` delete, so an invited attendee cannot vanish mid-approval. Unlike the old Contact/Lead constraints this only ever blocks deleting a record this project owns |
-| Validation rule `Invitee_Requires_Attendee` | Replaces the XOR rule. Enforced by rule rather than a required lookup so the field can land on an org whose invitees already have rows |
+| `Event_Attendee__c` required on the lookup | Replaces the XOR rule. With one head there is nothing to exclude, only presence to require |
 | `AttendeeImportController` / `AttendeeImportControllerTest` | Renamed from `ContactImportController`: a class called "contact import" that imports no contacts is a comment that lies |
 | `c/attendeeSelector` | Renamed from `c/contactSelector`, three tabs → two |
 
@@ -725,27 +906,66 @@ irreversible metadata deletions happen last.
 
 24. Create `Event_Attendee__c` + 9 fields + tab + layout → verify: deploys; a hand-inserted
     row upserts idempotently on `Unique_Key__c`; a second row with the same key is refused.
-25. Add `Event_Invitee__c.Event_Attendee__c` and `Invitee_Requires_Attendee` **alongside** the
-    existing Contact/Lead fields — the destructive manifests are a separate deploy, so both
-    shapes are present at once. This is what makes step 27 a migration rather than a leap.
-    Note the window it opens: the validation rule is live while existing invitees still have
-    a blank attendee, so any update to one fails until step 27 has run. Both go in one
-    maintenance slot.
+25. Point `Event_Invitee__c` at `Event_Attendee__c` with a required lookup, and drop
+    `Contact__c` / `Lead__c` / `Account__c` / `Account_Owner__c` / `Invitee_Type__c` outright.
+    No two-phase dance: none of these objects has ever held a record.
 26. Write the failing tests first — *no Contact, Lead or Account created, updated or deleted*
     — against the **current** controller, and watch them fail. That assertion is the
     requirement; everything else is detail.
-27. **Migrate existing invitees in the org** (DEPLOYMENT.md Part 7): one `Event_Attendee__c`
-    per invited Contact/Lead, then back-fill `Event_Attendee__c` on every invitee. Do this
-    before anything is deleted — after `destructiveChangesPre` runs there is no record of who
-    an invitee was.
-28. Replace `ContactImportController` with `AttendeeImportController` → verify: step 26's
+27. Replace `ContactImportController` with `AttendeeImportController` → verify: step 26's
     assertions pass; re-running a file creates nobody new; junk in the Email column costs the
     address and not the person.
-29. Repoint the four formulas, rework `InviteeSelectorController`, rebuild the two LWCs →
+28. Repoint the four formulas, rework `InviteeSelectorController`, rebuild the two LWCs →
     verify: jest green, `EventWorkflowTest` green, the approval page still shows a name.
-30. Report type, reports, permission sets, app, record page → verify: the Approved Invitees
-    report renders with no blank name or organisation column.
-31. Run both destructive manifests → verify: full gauntlet, then the demo script end to end.
+29. Report type, reports, permission sets, app, record page → verify: the Approved Invitees
+    report renders with no blank name or organisation column, then the full gauntlet.
+
+### ★R6 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| `Event_Invitee__c.Attended__c` | Checkbox. The fact a recommendation can honestly be built on, as distinct from Approved |
+| Validation rule `Attended_Requires_Approved` | You cannot have attended what you were never approved for. Holds at the database, not only in the Apex |
+| `Marketing_Event__c.Topic__c` | Multi-select. **Placeholder values** — the real taxonomy has to replace them and past events need back-filling, or every old event looks equally similar to every new one |
+| `Event_Invitee__c.Event_Name__c` / `Event_Date__c` / `Event_Type__c` | Formulas reading up to the parent event, so the attendee's related list and report are legible without a join |
+| Report type `Event_Attendees_with_History` + report *Attendee Event History* | Base object is the attendee, so history groups by person. Filtered to Attended = true |
+| `InviteeSelectorController.saveAttendance` | Both lists explicit; scoped to the event; refuses an empty save; reports rows it would not mark rather than failing the batch |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `Marketing_Event__c.Event_Type__c` | Values → Symposium / OIP / Conference. Restricted picklist, so it is a migration |
+| `attendeeSelector` | All Invitees tab gains an attendance column and a Save Attendance button, dirty-tracked so saving is only offered when something changed |
+| `getAllInvitees` | Returns `attended` and `canAttend`, so the UI knows which rows are tickable rather than guessing from the status string |
+| Both permission sets | `Attended__c` is the **only** invitee field an AM may write; everything else stays read-only |
+| Three layouts, `Marketing_Events_with_Invitees` report type | The new fields; the attendee related list now shows what the event was and whether they came |
+| `seed-demo-data.apex` | Adds a second, past event — a recommendation demo with one event in the org demonstrates nothing |
+
+**Not shipped, deliberately**
+
+- **No recommendation logic.** Attendance is recorded and events are tagged; a human reads the
+  report and decides. A scoring function written before anyone has tagged a real event would
+  be fitting itself to placeholder topics.
+- **No aggregate fields on the attendee.** See the note under *Data model*, and Open Question 18.
+- **No bulk "mark everyone attended" action.** One click that asserts forty people showed up is
+  exactly how attendance data stops being trustworthy.
+
+### ★R6 Build order
+
+24. `Attended__c` + `Attended_Requires_Approved` → verify: the database refuses attendance on
+    a Draft row, independently of any Apex.
+25. `saveAttendance` + the `getAllInvitees` additions → verify: both lists explicit, scoped to
+    the event, an unapproved row reported rather than failing the batch.
+26. The three event-reading formulas → verify: an attendee's history renders name, date and
+    type without a join.
+27. Report type + *Attendee Event History* → verify: grouped by person, Attended = true only.
+28. Set the `Event_Type__c` values to Symposium / OIP / Conference — a plain edit, since no
+    event record exists to hold a retired value.
+29. `Topic__c` with the **real** taxonomy, then tag the events → verify: the Approved
+    Invitees report can filter on a topic and return the events you expect.
 
 ### ★R3 What still needs an org
 
@@ -770,24 +990,17 @@ revisions, because more of the change is metadata:
    object, repoints four formula fields, and rewires a report type, two reports, an approval
    process, two permission sets, a layout, an app and a record page. First deploy should expect
    to fix metadata details, not logic.
-2. **The migration is the risky step, and it is untested.** `scripts/r5-pre-deploy.apex` is
-   anonymous Apex that cannot be unit-tested — it references `Contact__c` and `Lead__c`, which
-   the R5 source no longer contains. It must be dry-run against a throwaway sandbox holding
-   realistic invitee data before it goes anywhere that matters, because the failure mode is
-   silent and permanent: an invitee that misses the back-fill points at nobody once
-   `destructiveChangesPre` has run.
-3. **The window between the additive deploy and the migration.** `Invitee_Requires_Attendee`
-   is live while existing invitees still have a blank attendee, so any update to one — including
-   an approval decision — fails until the back-fill completes. This is reasoned about, not
-   observed. Confirm the window is as short as expected and that nothing else writes to
-   `Event_Invitee__c` during it.
-4. **Whether cross-object formulas resolve for an approver.** `Invitee_Name__c` and
+2. **That the deploy really is additive.** It is designed to be and the tests assert the Apex
+   side of it, but "no standard object is modified" is finally a claim about *metadata*, and
+   metadata is what has never been deployed. Validate with `--dry-run` against a sandbox that
+   mirrors production before trusting it against production.
+3. **Whether cross-object formulas resolve for an approver.** `Invitee_Name__c` and
    `Invitee_Org__c` traverse `Event_Attendee__r`. The design grants `Event_Approver` read on
    the object and sets the OWD to Public Read/Write on the assumption that this is sufficient;
    the failure mode if it is not is a blank name on the approval screen — the exact symptom R3
    hit with a Private Lead OWD, on a different object. **Check it on a real approver user, not
    as an admin**, because an admin will see the data either way.
-5. **PMD.** The baseline was pruned of the deleted classes but nothing has scanned the ones
+4. **PMD.** The baseline was pruned of the deleted classes but nothing has scanned the ones
    that replaced them. Re-record on the first machine with PMD installed; see QUALITY.md.
 
 Carried over from R3 and still unverified: mass approve/reject at ~40 rows in the Lightning
@@ -859,6 +1072,9 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 14. ★R4 ~~Does a `SetNull` delete constraint re-fire the XOR validation rule when a Contact or Lead is deleted?~~ **No longer reachable.** The dilemma was that every delete constraint pointing at a *standard* object was bad in a different way. `Event_Invitee__c.Event_Attendee__c` uses `Restrict`, which was the unacceptable option in R4 precisely because it would have blocked deleting a Contact — and is the right option now because the only thing it blocks is deleting an attendee this project created. `EventWorkflowTest.anInvitedAttendeeCannotBeDeleted` asserts it.
 15. ★R5 **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
+18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
+19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
+20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 
 ## Success Criteria

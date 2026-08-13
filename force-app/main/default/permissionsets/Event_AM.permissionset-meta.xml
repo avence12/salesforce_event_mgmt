@@ -41,6 +41,11 @@
         <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
+        <field>Marketing_Event__c.Topic__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
         <field>Marketing_Event__c.Expected_Attendees__c</field>
         <readable>true</readable>
         <editable>true</editable>
@@ -67,6 +72,31 @@
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Status__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <!--
+      ★R6 The only invitee field an AM may write. Status__c is the approval process's
+      to own, and everything else on the row is a snapshot or a formula; attendance is
+      the one fact a human observes and records.
+    -->
+    <fieldPermissions>
+        <field>Event_Invitee__c.Attended__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Event_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Event_Date__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Event_Type__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

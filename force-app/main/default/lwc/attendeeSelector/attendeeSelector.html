@@ -123,6 +123,7 @@
                                     <th scope="col">Organisation</th>
                                     <th scope="col">Status</th>
                                     <th scope="col">Added By</th>
+                                    <th scope="col">Attended</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -133,10 +134,35 @@
                                         <td>{i.company}</td>
                                         <td><span class="slds-badge">{i.status}</span></td>
                                         <td>{i.addedByLabel}</td>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                data-invitee={i.inviteeId}
+                                                checked={i.attendedChecked}
+                                                disabled={i.attendDisabled}
+                                                onchange={handleAttendanceToggle}
+                                            />
+                                        </td>
                                     </tr>
                                 </template>
                             </tbody>
                         </table>
+
+                        <div
+                            class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-top_medium slds-wrap"
+                        >
+                            <p class="slds-text-body_small slds-text-color_weak">{attendanceSummary}</p>
+                            <lightning-button
+                                label="Save Attendance"
+                                disabled={attendanceDisabled}
+                                onclick={handleSaveAttendance}
+                            ></lightning-button>
+                        </div>
+                        <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
+                            Mark who actually turned up after the event. Only approved invitees can be ticked, and
+                            attendance is what the <b>Attendee Event History</b> report reads — an event nobody marks up
+                            has no attendance history rather than a wrong one.
+                        </p>
                         <p class="slds-text-color_weak slds-text-body_small slds-m-top_x-small">
                             Approved invitees are exported from the <b>Approved Invitees</b> reports, in the Event
                             Management report folder.

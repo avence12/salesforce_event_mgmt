@@ -6,6 +6,7 @@ import getSelectableAttendees from '@salesforce/apex/InviteeSelectorController.g
 import getAllInvitees from '@salesforce/apex/InviteeSelectorController.getAllInvitees';
 import addAttendees from '@salesforce/apex/InviteeSelectorController.addAttendees';
 import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitMyInvitees';
+import saveAttendance from '@salesforce/apex/InviteeSelectorController.saveAttendance';
 
 jest.mock(
     '@salesforce/apex/InviteeSelectorController.addAttendees',
@@ -14,6 +15,11 @@ jest.mock(
 );
 jest.mock(
     '@salesforce/apex/InviteeSelectorController.submitMyInvitees',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+jest.mock(
+    '@salesforce/apex/InviteeSelectorController.saveAttendance',
     () => ({ default: jest.fn() }),
     { virtual: true }
 );
@@ -70,7 +76,9 @@ const INVITEES = [
         company: 'Acme Corp',
         status: 'Draft',
         mine: true,
-        addedByName: 'Alex AM'
+        addedByName: 'Alex AM',
+        attended: false,
+        canAttend: false
     },
     {
         inviteeId: 'a02000000000002',
@@ -78,7 +86,9 @@ const INVITEES = [
         company: 'Acme Corp',
         status: 'Approved',
         mine: true,
-        addedByName: 'Alex AM'
+        addedByName: 'Alex AM',
+        attended: true,
+        canAttend: true
     },
     {
         inviteeId: 'a02000000000003',
@@ -86,7 +96,9 @@ const INVITEES = [
         company: 'Université de Genève',
         status: 'Approved',
         mine: false,
-        addedByName: 'Sam AM'
+        addedByName: 'Sam AM',
+        attended: false,
+        canAttend: true
     },
     {
         inviteeId: 'a02000000000004',
@@ -94,7 +106,9 @@ const INVITEES = [
         company: 'Quantumsoft',
         status: 'Draft',
         mine: false,
-        addedByName: 'Sam AM'
+        addedByName: 'Sam AM',
+        attended: false,
+        canAttend: false
     }
 ];
 
@@ -139,6 +153,7 @@ describe('c-attendee-selector', () => {
     beforeEach(() => {
         addAttendees.mockResolvedValue(2);
         submitMyInvitees.mockResolvedValue({ submitted: 1, approversNotified: 1 });
+        saveAttendance.mockResolvedValue({ marked: 1, cleared: 0, skippedNotApproved: 0 });
         refreshApex.mockResolvedValue(undefined);
         element = mount();
         toasts = [];
@@ -474,6 +489,127 @@ describe('c-attendee-selector', () => {
             const text = element.shadowRoot.textContent;
             expect(text).toContain('Hélène Dubois');
             expect(text).toContain('Université de Genève');
+        });
+    });
+
+    /**
+     * ★R6 Attendance is a separate fact from approval: approval is permission to
+     * come, attendance is having come, and only the second is evidence of interest
+     * worth recommending from.
+     */
+    describe('recording attendance', () => {
+        const attendBoxes = () => [
+            ...element.shadowRoot.querySelectorAll('input[type="checkbox"][data-invitee]')
+        ];
+        const boxFor = (inviteeId) => attendBoxes().find((b) => b.dataset.invitee === inviteeId);
+        const saveButton = () => buttonStartingWith(element, 'Save Attendance');
+
+        const clickSave = async () => {
+            saveButton().dispatchEvent(new CustomEvent('click'));
+            await flush();
+        };
+
+        beforeEach(async () => {
+            inviteesAdapter.emit(INVITEES);
+            await flush(1);
+        });
+
+        it('offers a checkbox for every invitee', () => {
+            expect(attendBoxes()).toHaveLength(4);
+        });
+
+        it('only lets approved invitees be ticked', () => {
+            expect(boxFor('a02000000000002').disabled).toBe(false); // Approved
+            expect(boxFor('a02000000000003').disabled).toBe(false); // Approved
+            expect(boxFor('a02000000000001').disabled).toBe(true); // Draft
+            expect(boxFor('a02000000000004').disabled).toBe(true); // Draft
+        });
+
+        it('reflects the attendance already recorded', () => {
+            expect(boxFor('a02000000000002').checked).toBe(true);
+            expect(boxFor('a02000000000003').checked).toBe(false);
+        });
+
+        it('counts marked against approved, not against everybody', () => {
+            // Four invitees, two of them approved, one of those attended.
+            expect(element.shadowRoot.textContent).toContain(
+                '1 of 2 approved invitee(s) marked as attended.'
+            );
+        });
+
+        it('disables save until something actually changes', () => {
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('enables save once a box is ticked', async () => {
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            expect(saveButton().disabled).toBe(false);
+        });
+
+        it('disables save again when the change is undone', async () => {
+            const box = boxFor('a02000000000003');
+            await fire(Object.assign(box, { checked: true }), 'change');
+            await fire(Object.assign(box, { checked: false }), 'change');
+            expect(saveButton().disabled).toBe(true);
+        });
+
+        it('sends both lists explicitly, never inferring absence', async () => {
+            // Inferring "everyone not sent attended" would clear anybody past the
+            // 2,000-row cap the invitee list is capped at.
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            expect(saveAttendance).toHaveBeenCalledWith({
+                eventId: EVENT_ID,
+                attendedIds: ['a02000000000002', 'a02000000000003'],
+                notAttendedIds: []
+            });
+        });
+
+        it('sends an unticked approved row as not attended', async () => {
+            await fire(Object.assign(boxFor('a02000000000002'), { checked: false }), 'change');
+            await clickSave();
+            expect(saveAttendance.mock.calls[0][0]).toMatchObject({
+                attendedIds: [],
+                notAttendedIds: ['a02000000000002', 'a02000000000003']
+            });
+        });
+
+        it('never sends a draft row in either list', async () => {
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            const { attendedIds, notAttendedIds } = saveAttendance.mock.calls[0][0];
+            const sent = [...attendedIds, ...notAttendedIds];
+            expect(sent).not.toContain('a02000000000001');
+            expect(sent).not.toContain('a02000000000004');
+        });
+
+        it('reports what was saved', async () => {
+            saveAttendance.mockResolvedValue({ marked: 3, cleared: 1, skippedNotApproved: 0 });
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            expect(toasts.at(-1)).toMatchObject({ variant: 'success' });
+            expect(toasts.at(-1).message).toBe('3 marked as attended, 1 cleared.');
+        });
+
+        it('owns up to rows the server would not mark', async () => {
+            saveAttendance.mockResolvedValue({ marked: 1, cleared: 0, skippedNotApproved: 2 });
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            expect(toasts.at(-1).message).toContain('2 row(s) were not approved');
+        });
+
+        it('refreshes the invitee list after saving', async () => {
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            expect(refreshApex).toHaveBeenCalledTimes(1);
+        });
+
+        it('surfaces an Apex failure and keeps the unsaved ticks', async () => {
+            saveAttendance.mockRejectedValue({ body: { message: 'row locked' } });
+            await fire(Object.assign(boxFor('a02000000000003'), { checked: true }), 'change');
+            await clickSave();
+            expect(toasts.at(-1)).toMatchObject({ variant: 'error', message: 'row locked' });
+            expect(saveButton().disabled).toBe(false);
         });
     });
 });

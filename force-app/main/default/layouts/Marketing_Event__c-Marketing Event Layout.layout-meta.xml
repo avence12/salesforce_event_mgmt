@@ -10,6 +10,7 @@
             <layoutItems><behavior>Required</behavior><field>Event_Date__c</field></layoutItems>
             <layoutItems><behavior>Edit</behavior><field>Location__c</field></layoutItems>
             <layoutItems><behavior>Edit</behavior><field>Event_Type__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Topic__c</field></layoutItems>
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Edit</behavior><field>Expected_Attendees__c</field></layoutItems>
@@ -37,6 +38,7 @@
         <fields>Invitee_Name__c</fields>
         <fields>Invitee_Org__c</fields>
         <fields>Status__c</fields>
+        <fields>Attended__c</fields>
         <fields>Added_By__c</fields>
         <fields>Approver__c</fields>
         <relatedList>Event_Invitee__c.Marketing_Event__c</relatedList>

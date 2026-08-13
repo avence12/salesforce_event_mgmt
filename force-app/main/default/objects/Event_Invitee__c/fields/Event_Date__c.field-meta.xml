@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Event_Date__c</fullName>
+    <label>Event Date</label>
+    <description>★R6 Reads up to the parent event, so an attendee&apos;s history sorts chronologically without a report having to join back to Marketing_Event__c. Recency is half of what makes a recommendation sensible — somebody who came twice last quarter is a different prospect from somebody who came once in 2019.</description>
+    <type>Date</type>
+    <formula>Marketing_Event__r.Event_Date__c</formula>
+    <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+    <required>false</required>
+    <externalId>false</externalId>
+    <trackTrending>false</trackTrending>
+</CustomField>

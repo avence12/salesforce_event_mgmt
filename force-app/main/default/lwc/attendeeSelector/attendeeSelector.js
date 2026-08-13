@@ -5,6 +5,7 @@ import getSelectableAttendees from '@salesforce/apex/InviteeSelectorController.g
 import getAllInvitees from '@salesforce/apex/InviteeSelectorController.getAllInvitees';
 import addAttendees from '@salesforce/apex/InviteeSelectorController.addAttendees';
 import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitMyInvitees';
+import saveAttendance from '@salesforce/apex/InviteeSelectorController.saveAttendance';
 
 /**
  * Replaces c/contactSelector. R5 collapsed the Add Contacts and Add Leads tabs into
@@ -37,10 +38,19 @@ export default class AttendeeSelector extends LightningElement {
         }
     }
 
+    /** Attendance as the user has it on screen, and as it was loaded — the difference is what "unsaved" means. */
+    @track attendedIds = new Set();
+    baselineAttended = new Set();
+
     @wire(getAllInvitees, { eventId: '$recordId' })
     handleInvitees(result) {
         this.wiredInvitees = result;
-        if (result.data) this.invitees = result.data;
+        if (result.data) {
+            this.invitees = result.data;
+            const marked = result.data.filter((i) => i.attended).map((i) => i.inviteeId);
+            this.attendedIds = new Set(marked);
+            this.baselineAttended = new Set(marked);
+        }
     }
 
     // ---------- Add Attendees tab ----------
@@ -184,11 +194,71 @@ export default class AttendeeSelector extends LightningElement {
         return this.invitees.map((i, idx) => ({
             ...i,
             key: idx,
-            addedByLabel: i.mine ? `${i.addedByName} (me)` : i.addedByName
+            addedByLabel: i.mine ? `${i.addedByName} (me)` : i.addedByName,
+            attendedChecked: this.attendedIds.has(i.inviteeId),
+            attendDisabled: !i.canAttend
         }));
     }
     get hasInvitees() {
         return this.invitees.length > 0;
+    }
+
+    // ---------- attendance ----------
+
+    get approvedCount() {
+        return this.invitees.filter((i) => i.canAttend).length;
+    }
+    get attendanceSummary() {
+        return `${this.attendedIds.size} of ${this.approvedCount} approved invitee(s) marked as attended.`;
+    }
+    /** Unsaved changes: what is ticked now versus what was loaded. */
+    get attendanceDirty() {
+        if (this.attendedIds.size !== this.baselineAttended.size) return true;
+        for (const id of this.attendedIds) {
+            if (!this.baselineAttended.has(id)) return true;
+        }
+        return false;
+    }
+    get attendanceDisabled() {
+        return this.loading || !this.attendanceDirty;
+    }
+
+    handleAttendanceToggle(event) {
+        const next = new Set(this.attendedIds);
+        if (event.target.checked) next.add(event.target.dataset.invitee);
+        else next.delete(event.target.dataset.invitee);
+        this.attendedIds = next;
+    }
+
+    async handleSaveAttendance() {
+        this.loading = true;
+        try {
+            // Both lists go explicitly. Sending only the ticked ones and letting the
+            // server infer absence would clear anybody past the 2,000-row cap.
+            const attendedIds = [...this.attendedIds];
+            const notAttendedIds = this.invitees
+                .filter((i) => i.canAttend && !this.attendedIds.has(i.inviteeId))
+                .map((i) => i.inviteeId);
+
+            const res = await saveAttendance({
+                eventId: this.recordId,
+                attendedIds,
+                notAttendedIds
+            });
+            const skipped = res.skippedNotApproved
+                ? ` ${res.skippedNotApproved} row(s) were not approved and were left alone.`
+                : '';
+            this.toast(
+                'Attendance saved',
+                `${res.marked} marked as attended, ${res.cleared} cleared.${skipped}`,
+                'success'
+            );
+            await refreshApex(this.wiredInvitees);
+        } catch (e) {
+            this.toast('Error', this.messageOf(e), 'error');
+        } finally {
+            this.loading = false;
+        }
     }
 
     messageOf(e) {

@@ -35,6 +35,9 @@ MUTANTS=(
   "$LWC/importWizard/importWizard.js|const key = [row.lastName, row.firstName, row.company, row.email]|const key = [row.lastName, row.firstName, row.email]|company drops out of the de-dup key, collapsing one person at two companies into one|kill"
   "$LWC/importWizard/importWizard.js|.map((v) => v.toLowerCase().trim().replace(/\\s+/g, ' '))|.map((v) => v)|de-dup key stops normalising, so casing and padding make one person two|kill"
   "$LWC/attendeeSelector/attendeeSelector.js|if (event.target.checked) next.add(event.target.dataset.id);|if (false) next.add(event.target.dataset.id);|selection never records a tick|kill"
+  "$LWC/attendeeSelector/attendeeSelector.js|.filter((i) => i.canAttend && !this.attendedIds.has(i.inviteeId))|.filter((i) => !this.attendedIds.has(i.inviteeId))|unapproved rows are sent as not-attended, so the server decides what the UI should have|kill"
+  "$LWC/attendeeSelector/attendeeSelector.js|return this.invitees.filter((i) => i.canAttend).length;|return this.invitees.length;|attendance is counted against every invitee instead of the approved ones|kill"
+  "$LWC/attendeeSelector/attendeeSelector.js|const notAttendedIds = this.invitees|const notAttendedIds = [];  const _unused = this.invitees|absence is inferred server-side instead of sent, which would silently clear everyone past the row cap|kill"
 
   # Equivalent: dropping the CRLF skip makes '\r' and '\n' two separate
   # terminators, but the empty row that produces is ['']  — which
