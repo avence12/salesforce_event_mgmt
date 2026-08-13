@@ -298,13 +298,13 @@ it was about. Filtering by subject has to go through the Marketing Events report
 base object is the event itself. The asymmetry is a consequence of the multi-select, recorded
 rather than papered over.
 
-★R6 **The `Event_Type__c` value change is a migration, not an edit.** The picklist is
-restricted, so it cannot lose a value that records still hold — the deploy fails outright
-while any event is still a Webinar, a Roadshow or a Dinner / Gala. `scripts/r6-pre-deploy.apex`
-remaps them first and **refuses to run until an admin states what each old value becomes**:
-Symposium / OIP / Conference is a new taxonomy rather than a renaming of the old one, and a
-guessed mapping writes a wrong type onto historical records that the recommendation work then
-reads as truth. Same trap R3 hit with the `Exported` status, handled the same way.
+★R6 **The `Event_Type__c` values are simply Symposium / OIP / Conference.** An earlier draft
+of this section treated replacing them as a migration, on the grounds that a restricted
+picklist cannot lose a value that records still hold. That reasoning does not apply here:
+**this project is greenfield — nothing has been deployed and no record holds anything** (see
+`CLAUDE.md`). The values are set, not migrated to. What does still need an answer is what
+"OIP" expands to and what it means, because this design cannot describe a taxonomy it does not
+understand — **Open Question 20.**
 
 ★R6 **No aggregate fields on the attendee, by decision.** "How many events has this person
 been to" is not a field — `Event_Invitee__c` is a Lookup child of the attendee, and a roll-up
@@ -315,45 +315,93 @@ gives up is the ability to filter or sort *people* by it — "everyone who has a
 more events" is a report a human reads, not a query. **Open Question 18** if that turns out to
 be needed.
 
-```
-Marketing_Event__c
-  Name                    (Text, e.g. "Q3 2026 Customer Appreciation Gala")
-  Event_Date__c           (Date, required)
-  Location__c             (Text)
-  Event_Type__c           (Picklist: Conference, Webinar, Roadshow, Dinner / Gala)
-  Expected_Attendees__c   (Number)
-  Description__c          (Long Text)
-  OwnerId                 (standard — creating AM)
-  Approved_Count__c / Pending_Count__c / Rejected_Count__c  (Roll-up summaries)   ← ★R3 Exported_Count__c retired with the custom exporter
-
-Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
-  Event_Attendee__c    ★R5 (Lookup → Event_Attendee__c, deleteConstraint Restrict — replaces Contact__c + Lead__c)
-  Status__c               (Picklist: Draft, Pending Approval, Approved, Rejected)   ← "Exported" retired in R3, see Screen 5
-  Added_By__c             (Lookup → User; defaulted to creator)
-  Approver__c          ★R3 (Lookup → User; resolved at submit time; the Approval Process's Related User Field)
-  Submitted_At__c / Decided_At__c (DateTime)
-  Unique_Key__c           (Text, unique external ID = Event Id + Attendee Id — prevents duplicate invitees)
-  Invitee_Name__c      ★R5 (Formula, Text — Event_Attendee__r.Name)
-  Invitee_Email__c     ★R5 (Formula, Text — Event_Attendee__r.Email__c)
-  Invitee_Title__c     ★R5 (Formula, Text — Event_Attendee__r.Title__c)
-  Invitee_Org__c       ★R5 (Formula, Text — Event_Attendee__r.Company__c)
-  ~~Contact__c / Lead__c / Account__c / Account_Owner__c / Invitee_Type__c~~  ★R5 dropped
-```
+**The current specification, in full.** The field lists below are the state of
+`force-app/main/default/objects`, not an accumulation of revision deltas — the revision
+markers elsewhere in this document explain *why* the shape is what it is, but nothing here has
+ever been deployed, so there is no earlier state to reconcile against. What is listed is what
+exists.
 
 ```
-★R5  Event_Attendee__c            (standalone object; one row per person, reused across events)
-  Name                    (Text 80 — "First Last", assembled by the import; what a human reads)
-  First_Name__c           (Text 40)
-  Last_Name__c            (Text 80, required)
-  Email__c                (Email, optional, NOT unique)
-  Title__c                (Text 128)
-  Company__c              (Text 255 — free text; no lookup to Account, by design)
-  Mobile__c               (Phone)
-  Source_File__c          (Text 255 — the upload this record last came in on)
-  Imported_On__c          (DateTime — when it was last seen in a file)
-  Unique_Key__c           (Text 255, unique external ID = normalised last|first|company|email)
-  OWD: Public Read/Write
+Marketing_Event__c                                    OWD: Public Read/Write
+  Name                       Text                     "Event Name"
+  Event_Date__c              Date, required
+  Location__c                Text(255)
+  Event_Type__c              Picklist, restricted     Symposium | OIP | Conference
+  Topic__c                ★R6 Multi-select, restricted Digital Banking | Payments |
+                                                      Capital Markets | Insurance |
+                                                      Risk & Compliance | Cybersecurity |
+                                                      AI & Data | Sustainable Finance
+                                                      <- PLACEHOLDER VALUES, see OQ 19
+  Expected_Attendees__c      Number
+  Description__c             Long Text(32768)
+  OwnerId                    standard - creating AM
+  Approved_Count__c          Roll-Up  count of invitees where Status = Approved
+  Pending_Count__c           Roll-Up  count where Status = Pending Approval
+  Rejected_Count__c          Roll-Up  count where Status = Rejected
 ```
+
+```
+Event_Attendee__c                                     OWD: Public Read/Write
+  (one row per person, reused across every event)
+  Name                       Text(80)                 "First Last", assembled by the import
+  First_Name__c              Text(40)
+  Last_Name__c               Text(80), required       no surname = no identity; import skips
+  Email__c                   Email                    optional, and deliberately NOT unique
+  Title__c                   Text(128)
+  Company__c                 Text(255)                free text; no lookup to Account, by design
+  Mobile__c                  Phone                    as given, never normalised
+  Source_File__c             Text(255)                which upload it last came in on
+  Imported_On__c             DateTime                 refreshed on re-import
+  Unique_Key__c              Text(255), unique, ExtId normalised last|first|company|email
+                                                      <- the whole of de-duplication
+```
+
+```
+Event_Invitee__c           (junction: one row per event x attendee)  OWD: ControlledByParent
+  Name                       AutoNumber INV-{00000}
+  Marketing_Event__c         Master-Detail -> Marketing_Event__c, reparenting disabled
+  Event_Attendee__c          Lookup -> Event_Attendee__c, deleteConstraint Restrict
+  Status__c                  Picklist, restricted     Draft | Pending Approval |
+                                                      Approved | Rejected
+                                                      system-managed; FLS read-only
+  Attended__c             ★R6 Checkbox                 actually turned up. NOT a Status value
+  Added_By__c                Lookup -> User, SetNull  which AM added the row
+  Approver__c                Lookup -> User, SetNull  submitter's manager, frozen at submit
+  Submitted_At__c            DateTime
+  Decided_At__c              DateTime                 stamped on approve and reject alike
+  Unique_Key__c              Text(40), unique, ExtId  EventId + AttendeeId
+
+  -- reads DOWN to the attendee --
+  Invitee_Name__c            Formula, Text            Event_Attendee__r.Name
+  Invitee_Email__c           Formula, Text            Event_Attendee__r.Email__c
+  Invitee_Title__c           Formula, Text            Event_Attendee__r.Title__c
+  Invitee_Org__c             Formula, Text            Event_Attendee__r.Company__c
+
+  -- reads UP to the event --  ★R6
+  Event_Name__c              Formula, Text            Marketing_Event__r.Name
+  Event_Date__c              Formula, Date            Marketing_Event__r.Event_Date__c
+  Event_Type__c              Formula, Text            TEXT(Marketing_Event__r.Event_Type__c)
+                                                      (no Topic__c counterpart - a multi-select
+                                                       cannot be read by a formula)
+
+  -- reads the running user --
+  Added_By_Me__c             Formula, Checkbox        Added_By__c = $User.Id
+                                                      (a report filter cannot compare a lookup
+                                                       to the running user; a formula can)
+
+  Validation rules
+    Invitee_Requires_Attendee       ISBLANK(Event_Attendee__c)
+    Approver_Required_When_Pending  Status = Pending Approval AND ISBLANK(Approver__c)
+    Attended_Requires_Approved      Attended__c AND Status <> Approved
+```
+
+**The three objects as one sentence:** a *Marketing Event* is a thing with a date and a
+subject; an *Event Attendee* is a person on an imported list; an *Event Invitee* is the fact
+that this person was put forward for that event, carrying the approval state and, afterwards,
+whether they came. Every question the system answers is one of those three read in some
+direction — and because `Event_Invitee__c` is the only join, both directions of the
+recommendation question ("what has this person attended?" and "who attended things like
+this?") are the same rows read from opposite ends.
 
 ★R5 **The object above replaces `Event_History__c`, which is deleted.** R4 had just
 built it — a two-headed attendance log hanging off Contact and Lead — and R5 removes it
