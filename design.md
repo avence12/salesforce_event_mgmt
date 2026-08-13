@@ -186,6 +186,54 @@ Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tm
 
 ### Data model
 
+★R5 The shape first — three custom objects, and `Event_Invitee__c` is the junction that makes
+event-to-attendee many-to-many. Only the relationship-carrying and key fields are on the
+diagram; the full field lists are in the blocks below it.
+
+```mermaid
+erDiagram
+    Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
+    Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
+    User               ||--o{ Event_Invitee__c : "Added_By__c and Approver__c"
+
+    Marketing_Event__c {
+        Text     Name
+        Date     Event_Date__c "required"
+        RollUp   Approved_Count__c "counts Status = Approved"
+        RollUp   Pending_Count__c "counts Status = Pending Approval"
+        RollUp   Rejected_Count__c "counts Status = Rejected"
+    }
+
+    Event_Attendee__c {
+        Text  Name "First Last, assembled by the import"
+        Text  Last_Name__c "required, no surname means no identity"
+        Email Email__c "optional and NOT unique"
+        Text  Company__c "free text, no Account lookup"
+        Text  Unique_Key__c UK "normalised last, first, company, email"
+    }
+
+    Event_Invitee__c {
+        AutoNumber   Name
+        MasterDetail Marketing_Event__c FK "reparenting disabled"
+        Lookup       Event_Attendee__c FK "Restrict, cannot vanish mid-approval"
+        Picklist     Status__c "Draft, Pending Approval, Approved, Rejected"
+        Lookup       Approver__c FK "the submitter's manager, frozen at submit"
+        Lookup       Added_By__c FK "which AM added this row"
+        Text         Unique_Key__c UK "EventId plus AttendeeId"
+        Formula      Invitee_Name__c "reads through to the attendee"
+    }
+```
+
+★R5 **The two delete constraints differ on purpose.** Deleting an event takes its invitees with
+it, because they are Master-Detail children and mean nothing without it. Deleting an attendee
+somebody has been invited on is *refused* — `Restrict` was the unacceptable option in R4, when
+the lookup pointed at a standard Contact and blocking its deletion would have been bad-neighbour
+behaviour on an object another team owns. It is the right option now, because the only thing it
+blocks is deleting a record this project created.
+
+★R5 **`User` is the only standard object anywhere in the model**, and only as a lookup target.
+`Account`, `Contact` and `Lead` do not appear at all.
+
 ```
 Marketing_Event__c
   Name                    (Text, e.g. "Q3 2026 Customer Appreciation Gala")
@@ -195,7 +243,7 @@ Marketing_Event__c
   Expected_Attendees__c   (Number)
   Description__c          (Long Text)
   OwnerId                 (standard — creating AM)
-  Approved_Count__c / Pending_Count__c / Rejected_Count__c / Exported_Count__c  (Roll-up summaries)
+  Approved_Count__c / Pending_Count__c / Rejected_Count__c  (Roll-up summaries)   ← ★R3 Exported_Count__c retired with the custom exporter
 
 Event_Invitee__c  (junction; Master-Detail → Marketing_Event__c)
   Event_Attendee__c    ★R5 (Lookup → Event_Attendee__c, deleteConstraint Restrict — replaces Contact__c + Lead__c)
