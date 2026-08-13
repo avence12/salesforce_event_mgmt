@@ -43,13 +43,11 @@ sf project deploy start -o poc-sandbox
 sf apex run test -o poc-sandbox --wait 10 --code-coverage
 ```
 
-**Upgrading an existing org?** Use the checklists rather than a plain deploy:
-[R5](DEPLOYMENT.md#part-7--r5-upgrade-checklist) deletes `Event_History__c` and the invitee's
-`Contact__c` / `Lead__c` lookups, so it needs the destructive manifests in `manifest/` **and a
-data migration run before them** — after those fields are dropped there is no record of who an
-existing invitee was. [R6](DEPLOYMENT.md#part-8--r6-upgrade-checklist) replaces the
-`Event_Type__c` picklist values, and because that picklist is restricted the deploy **fails**
-while any event still holds a retired value.
+**The deploy is purely additive.** The target org holds real Account and Contact data; this
+project adds three custom objects beside it and modifies no standard object, no layout and no
+sharing setting. Nothing is deleted, so there are no destructive manifests and no data
+migration — see [Part 1](DEPLOYMENT.md#part-1--deploy-to-sandbox) for exactly what lands and
+what does not. A failed deploy rolls back whole.
 
 Can't complete a browser login? [DEPLOYMENT.md](DEPLOYMENT.md#step-2-authenticate-to-the-sandbox)
 covers device flow, auth URL, JWT and access-token logins.
@@ -72,13 +70,14 @@ See [QUALITY.md](QUALITY.md) for what each layer proves, the anti-gaming rules, 
    *To switch to Option 2 instead:* leave the setting on, add an approval assignment email template to the `Invitee_Approval` process, and enable Setup → Process Automation Settings → **Email Approval Response** so approvers can reply "approve" from a phone. The two halves must move together, or approvers hear nothing at all.
 5. **Share the report folder**: Reports → *Event Management* folder → Share with the AM and approver users (deployed as Public/ReadOnly).
 6. **Seed demo data**: `sf apex run --file scripts/seed-demo-data.apex -o poc-sandbox`
-   (No usernames to edit any more — R5's seed script creates no Accounts, so there are no owners to assign.)
+   It creates attendees and two events, and no Account, Contact or Lead — safe to run in an org that already has real ones.
 7. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv` (regenerate with `node scripts/generate-demo-csv.mjs`).
 8. **Replace the `Topic__c` placeholder values** (Setup → Object Manager → Marketing Event → Topic) with the real taxonomy, and tag past events. Until this is done every historical event looks equally similar to every new one, and the recommendation the attendance history is *for* cannot work.
 
-Steps that R4 needed and R5 does not: no Contact or Lead page-layout change (the attendee
-object ships its own layout, with the invitee related list on it), no Account Teams, and no
-Lead OWD check.
+Every step above is manual on purpose: each one either touches org-wide configuration or
+grants access to real users, and those are an admin's decisions rather than a deploy's. Note
+what is *not* on the list — no Contact or Lead page-layout change, no Account Teams, no Lead
+OWD check. The workflow reads none of those objects, so it asks nothing of them.
 
 ## Demo script (5 minutes)
 

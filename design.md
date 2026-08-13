@@ -395,9 +395,9 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
                                                        to the running user; a formula can)
 
   Validation rules
-    Invitee_Requires_Attendee       ISBLANK(Event_Attendee__c)
     Approver_Required_When_Pending  Status = Pending Approval AND ISBLANK(Approver__c)
     Attended_Requires_Approved      Attended__c AND Status <> Approved
+    (Event_Attendee__c is required at the field level, so no rule is needed for it)
 ```
 
 **The three objects as one sentence:** a *Marketing Event* is a thing with a date and a
@@ -452,10 +452,9 @@ enforced exactly one:
 ISBLANK(Contact__c) = ISBLANK(Lead__c)     ← deleted in R5
 ```
 
-With one head there is no XOR left to state, only that the head is populated —
-`Invitee_Requires_Attendee`, `ISBLANK(Event_Attendee__c)`. The R3 reasoning was correct for a
-junction that had to point at two objects; R5 removed the second object rather than finding a
-better rule for it.
+With one head there is no XOR left to state, only that the head is populated — and that is
+simply `required` on the lookup. The R3 reasoning was correct for a junction that had to point
+at two objects; R5 removed the second object rather than finding a better rule for it.
 
 ~~★R3 **The five formula fields are the load-bearing piece of this revision.**~~ ★R5 **Now
 four, and no longer load-bearing.** Their whole job was letting one report column read
@@ -865,7 +864,7 @@ Sequenced so the negative assertions exist before the code that could violate th
 | Object `Event_Attendee__c` + 9 fields | Person-level; OWD Public Read/Write; `Unique_Key__c` is the only de-duplication |
 | Tab + layout for `Event_Attendee__c` | The layout's Event Invitees related list is what answers "which events has this person been put forward for" — the question `Event_History__c` used to hold |
 | `Event_Invitee__c.Event_Attendee__c` lookup | `Restrict` delete, so an invited attendee cannot vanish mid-approval. Unlike the old Contact/Lead constraints this only ever blocks deleting a record this project owns |
-| Validation rule `Invitee_Requires_Attendee` | Replaces the XOR rule. Enforced by rule rather than a required lookup so the field can land on an org whose invitees already have rows |
+| `Event_Attendee__c` required on the lookup | Replaces the XOR rule. With one head there is nothing to exclude, only presence to require |
 | `AttendeeImportController` / `AttendeeImportControllerTest` | Renamed from `ContactImportController`: a class called "contact import" that imports no contacts is a comment that lies |
 | `c/attendeeSelector` | Renamed from `c/contactSelector`, three tabs → two |
 
@@ -907,27 +906,19 @@ irreversible metadata deletions happen last.
 
 24. Create `Event_Attendee__c` + 9 fields + tab + layout → verify: deploys; a hand-inserted
     row upserts idempotently on `Unique_Key__c`; a second row with the same key is refused.
-25. Add `Event_Invitee__c.Event_Attendee__c` and `Invitee_Requires_Attendee` **alongside** the
-    existing Contact/Lead fields — the destructive manifests are a separate deploy, so both
-    shapes are present at once. This is what makes step 27 a migration rather than a leap.
-    Note the window it opens: the validation rule is live while existing invitees still have
-    a blank attendee, so any update to one fails until step 27 has run. Both go in one
-    maintenance slot.
+25. Point `Event_Invitee__c` at `Event_Attendee__c` with a required lookup, and drop
+    `Contact__c` / `Lead__c` / `Account__c` / `Account_Owner__c` / `Invitee_Type__c` outright.
+    No two-phase dance: none of these objects has ever held a record.
 26. Write the failing tests first — *no Contact, Lead or Account created, updated or deleted*
     — against the **current** controller, and watch them fail. That assertion is the
     requirement; everything else is detail.
-27. **Migrate existing invitees in the org** (DEPLOYMENT.md Part 7): one `Event_Attendee__c`
-    per invited Contact/Lead, then back-fill `Event_Attendee__c` on every invitee. Do this
-    before anything is deleted — after `destructiveChangesPre` runs there is no record of who
-    an invitee was.
-28. Replace `ContactImportController` with `AttendeeImportController` → verify: step 26's
+27. Replace `ContactImportController` with `AttendeeImportController` → verify: step 26's
     assertions pass; re-running a file creates nobody new; junk in the Email column costs the
     address and not the person.
-29. Repoint the four formulas, rework `InviteeSelectorController`, rebuild the two LWCs →
+28. Repoint the four formulas, rework `InviteeSelectorController`, rebuild the two LWCs →
     verify: jest green, `EventWorkflowTest` green, the approval page still shows a name.
-30. Report type, reports, permission sets, app, record page → verify: the Approved Invitees
-    report renders with no blank name or organisation column.
-31. Run both destructive manifests → verify: full gauntlet, then the demo script end to end.
+29. Report type, reports, permission sets, app, record page → verify: the Approved Invitees
+    report renders with no blank name or organisation column, then the full gauntlet.
 
 ### ★R6 Deliverables delta
 
@@ -941,7 +932,6 @@ irreversible metadata deletions happen last.
 | `Event_Invitee__c.Event_Name__c` / `Event_Date__c` / `Event_Type__c` | Formulas reading up to the parent event, so the attendee's related list and report are legible without a join |
 | Report type `Event_Attendees_with_History` + report *Attendee Event History* | Base object is the attendee, so history groups by person. Filtered to Attended = true |
 | `InviteeSelectorController.saveAttendance` | Both lists explicit; scoped to the event; refuses an empty save; reports rows it would not mark rather than failing the batch |
-| `scripts/r6-pre-deploy.apex` | Remaps the retired `Event_Type__c` values. Refuses to run until the mapping is stated |
 
 **Modified**
 
@@ -972,10 +962,9 @@ irreversible metadata deletions happen last.
 26. The three event-reading formulas → verify: an attendee's history renders name, date and
     type without a join.
 27. Report type + *Attendee Event History* → verify: grouped by person, Attended = true only.
-28. **`Event_Type__c` value change comes last among the metadata**, because it is the only
-    irreversible step: run `scripts/r6-pre-deploy.apex` against the org first, confirm zero
-    events hold a retired value, then deploy.
-29. `Topic__c` with the **real** taxonomy, then back-fill past events → verify: the Approved
+28. Set the `Event_Type__c` values to Symposium / OIP / Conference — a plain edit, since no
+    event record exists to hold a retired value.
+29. `Topic__c` with the **real** taxonomy, then tag the events → verify: the Approved
     Invitees report can filter on a topic and return the events you expect.
 
 ### ★R3 What still needs an org
@@ -1001,24 +990,17 @@ revisions, because more of the change is metadata:
    object, repoints four formula fields, and rewires a report type, two reports, an approval
    process, two permission sets, a layout, an app and a record page. First deploy should expect
    to fix metadata details, not logic.
-2. **The migration is the risky step, and it is untested.** `scripts/r5-pre-deploy.apex` is
-   anonymous Apex that cannot be unit-tested — it references `Contact__c` and `Lead__c`, which
-   the R5 source no longer contains. It must be dry-run against a throwaway sandbox holding
-   realistic invitee data before it goes anywhere that matters, because the failure mode is
-   silent and permanent: an invitee that misses the back-fill points at nobody once
-   `destructiveChangesPre` has run.
-3. **The window between the additive deploy and the migration.** `Invitee_Requires_Attendee`
-   is live while existing invitees still have a blank attendee, so any update to one — including
-   an approval decision — fails until the back-fill completes. This is reasoned about, not
-   observed. Confirm the window is as short as expected and that nothing else writes to
-   `Event_Invitee__c` during it.
-4. **Whether cross-object formulas resolve for an approver.** `Invitee_Name__c` and
+2. **That the deploy really is additive.** It is designed to be and the tests assert the Apex
+   side of it, but "no standard object is modified" is finally a claim about *metadata*, and
+   metadata is what has never been deployed. Validate with `--dry-run` against a sandbox that
+   mirrors production before trusting it against production.
+3. **Whether cross-object formulas resolve for an approver.** `Invitee_Name__c` and
    `Invitee_Org__c` traverse `Event_Attendee__r`. The design grants `Event_Approver` read on
    the object and sets the OWD to Public Read/Write on the assumption that this is sufficient;
    the failure mode if it is not is a blank name on the approval screen — the exact symptom R3
    hit with a Private Lead OWD, on a different object. **Check it on a real approver user, not
    as an admin**, because an admin will see the data either way.
-5. **PMD.** The baseline was pruned of the deleted classes but nothing has scanned the ones
+4. **PMD.** The baseline was pruned of the deleted classes but nothing has scanned the ones
    that replaced them. Re-record on the first machine with PMD installed; see QUALITY.md.
 
 Carried over from R3 and still unverified: mass approve/reject at ~40 rows in the Lightning
@@ -1092,7 +1074,7 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
 19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
-20. ★R6 **What do the three new `Event_Type__c` values mean, and what do the old ones become?** "OIP" is the business's term and this design does not know what it expands to, which is why `scripts/r6-pre-deploy.apex` refuses to guess a mapping for existing Webinar / Roadshow / Dinner-Gala events. Somebody has to state it before the migration runs.
+20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 
 ## Success Criteria

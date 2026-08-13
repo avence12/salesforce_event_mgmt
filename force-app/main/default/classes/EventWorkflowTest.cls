@@ -215,7 +215,12 @@ private class EventWorkflowTest {
         System.assertEquals(0, [SELECT COUNT() FROM ProcessInstance], 'Nothing entered the approval process');
     }
 
-    /** An invitee pointing at nobody has a blank name everywhere it is read. */
+    /**
+     * An invitee pointing at nobody has a blank name everywhere it is read, so the
+     * lookup is required at the field level. R5 enforced this with a validation rule
+     * instead, purely so the field could be added to an object that already had rows;
+     * this object has no records anywhere, so the softer form bought nothing.
+     */
     @IsTest
     static void inviteeWithoutAnAttendeeIsRefused() {
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
@@ -225,7 +230,7 @@ private class EventWorkflowTest {
         } catch (DmlException e) {
             threw = true;
         }
-        System.assert(threw, 'Invitee_Requires_Attendee must refuse it');
+        System.assert(threw, 'A required Event_Attendee__c must refuse an invitee with no attendee');
     }
 
     /** An attendee somebody has been invited on cannot be deleted out from under the approval. */
