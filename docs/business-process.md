@@ -1,8 +1,14 @@
-# Business Process — as built (R5)
+# Business Process — as built (R5), with the R6 approval chain
 
-The end-to-end flow of the PoC as it stands after R3 (standard Approval Process + standard
-Reports), R4 (the import stopped writing to Contact) and **R5** (it stopped reading standard
-objects altogether — imported people live on `Event_Attendee__c`, an object this project owns).
+The end-to-end flow of the PoC after R3 (standard Approval Process + standard Reports), R4 (the
+import stopped writing to Contact) and **R5** (it stopped reading standard objects altogether —
+imported people live on `Event_Attendee__c`, an object this project owns).
+
+> **Steps 1–3, 6 and 7 are built and deployed. Steps 4 and 5 show the ★R6 approval chain, which
+> is designed but not yet built** — today's org still resolves a single approver, the submitter's
+> manager. The R6 design, its costs and its rejected alternatives are in
+> [design.md → ★R6 Approval routing](../design.md#r6-approval-routing--a-chain-not-a-rung).
+
 This is the *current* process, not the one in [requirement.md](../requirement.md) — where the two
 differ, the difference is called out under
 [Where this departs from the original ask](#where-this-departs-from-the-original-ask).
@@ -17,14 +23,16 @@ forward the attendee list — which leaves approving to somebody else.
 | Role | Owns |
 |---|---|
 | **BMD** | Steps 1–4 and 7 — import the list, create the event, propose the invitees, submit them, export the approved result |
-| **Approver** | Step 5. R5 resolves this to exactly one person: **the submitting BMD user's Manager** |
+| **AM** | Step 5, level 1 — the AM who owns the customer that invitee's `cust_cd` names |
+| **Regional head** | Step 5, the top level — signs off after the AM |
+| *further levels* | Step 5, in between — expected later, and the design makes them rows rather than a deploy |
 
-**The AM does not appear in the R5 flow, and that is the open question.** The intent is that the
-AM approves. R5 deleted `Account__c` and `Account_Owner__c` from the invitee and never reads an
-Account, so nothing in the system knows whose customer an attendee is — there is no longer a fact
-the routing could use to reach an AM. Setting an AM as the BMD user's Manager makes it work today;
-anything finer needs a basis R5 removed. See
-[What the BMD split still needs](#what-the-bmd-split-still-needs).
+**`cust_cd` is what makes the AM reachable again.** R5 deleted `Account__c` and
+`Account_Owner__c` and never reads an Account, so for one revision nothing knew whose customer an
+attendee was and the only approver the routing could produce was the submitter's manager. R6
+restores the link with a **customer company code carried on the attendee** and a table mapping it
+to the owning AM and onward up the chain — without reaching an Account, so the premise that an
+Account means a transacting customer is never put under pressure.
 
 ## The process in one paragraph
 
@@ -33,9 +41,12 @@ A BMD user uploads a CSV of attendees collected elsewhere. Every row with a last
 before anything is written, and upserted on a `last|first|company|email` key so re-uploading a
 file refreshes people instead of duplicating them. The same BMD user creates a Marketing Event
 and proposes its guests from that pool. Each BMD user submits **their own batch** into the
-standard Approval Process, which routes every row to **their manager**. The approver decides from
-the standard Approvals list on desktop or the mobile app. When a batch has no pending rows left,
-its submitter is notified, and the approved list is read and exported from standard reports.
+standard Approval Process, which reads each invitee's `cust_cd`, looks the chain up in
+`Approval_Route__c`, and stamps every level's approver onto the row at once. The chain then runs
+in order — the AM who owns that customer, then the regional head, then any level added later —
+and everyone must agree; any level's rejection ends it. Approvers decide from the standard
+Approvals list on desktop or the mobile app. When a batch has no pending rows left, its submitter
+is notified, and the approved list is read and exported from standard reports.
 
 ## Flow diagram
 
@@ -96,38 +107,46 @@ flowchart TD
     subgraph SUBMIT["4 · Submit — each BMD user submits only their own batch"]
         direction TB
         S1["Submit My Invitees for Approval<br/>acts on my Draft rows only"]:::bmd
-        S2{"Does the submitter<br/>have a Manager?"}:::system
-        S3["All-or-nothing refusal<br/>named error · rows stay Draft"]:::stop
-        S4["Approver__c = the submitter's Manager<br/>resolved once, frozen · the whole ladder,<br/>now that no Account Owner exists to climb past"]:::system
-        AMQ["⚠ Where the AM was meant to be.<br/>R5 deleted Account__c / Account_Owner__c,<br/>so nothing knows whose customer this is.<br/>Name an AM as the Manager, or give<br/>routing a new basis"]:::todo
-        S5["Approval.process — the process's initial<br/>submission action sets Pending Approval<br/>record locked while pending"]:::system
-        S6["notifyApproversOfSubmission<br/>ONE aggregated email + bell<br/>per distinct approver"]:::system
+        S2["Read each invitee's cust_cd<br/>and look up its chain"]:::system
+        ROUTE[("Approval_Route__c — the chain<br/>one row per cust_cd × level<br/>a new level is rows, not a deploy")]:::data
+        S3{"Every invitee has an<br/>active chain?"}:::system
+        S4["All-or-nothing refusal — named error<br/>rows stay Draft. No fallback to the<br/>submitter's manager: that would turn a<br/>data gap into a quieter approval"]:::stop
+        S5["Stamp Approver_1__c … Approver_N__c<br/>in level order · resolved once, frozen —<br/>a reorg mid-chain must not reroute<br/>what someone is already looking at"]:::system
+        S6["Approval.process — the process's initial<br/>submission action sets Pending Approval<br/>record locked for the whole chain"]:::system
 
-        S1 --> S2
-        S2 -- no --> S3
-        S2 -- yes --> S4 --> S5 --> S6
-        S4 -.-> AMQ
+        S1 --> S2 --> S3
+        S3 -- no --> S4
+        S3 -- yes --> S5 --> S6
     end
+
+    ROUTE -.-> S2
 
     B4 --> S1
     B5 --> S1
 
     %% ======== 5 · Approve ========
-    subgraph APPROVE["5 · Approve — standard Approval Process, no custom code"]
+    subgraph APPROVE["5 · Approve — a chain · standard Approval Process, no custom code"]
         direction TB
-        P1["Approver opens the bell or email link,<br/>then the standard Approvals list<br/>desktop or Salesforce Mobile App"]:::approver
+        P0{"Is Approver_N__c set<br/>for this step?"}:::system
+        PSKIP["Step skipped — ifCriteriaNotMet = ApproveRecord.<br/>This is what lets the process ship more steps<br/>than the business currently uses"]:::system
+        P1["Level N approver opens the bell or email link,<br/>then the standard Approvals list<br/>desktop or Salesforce Mobile App"]:::approver
         P2["Mass-select the pending items"]:::approver
         P3{"Approve or reject?"}:::approver
-        P4["Status → Approved<br/>Decided_At__c stamped"]:::system
-        P5["Status → Rejected<br/>Decided_At__c stamped · final, single step"]:::system
+        PN{"Any level left<br/>above this one?"}:::system
+        NOTIFY["⚠ Step-entry action must notify level N+1.<br/>The submit-time aggregate only reaches level 1,<br/>so without this the regional head is never told"]:::todo
+        P4["Status → Approved<br/>Decided_At__c stamped · everyone agreed"]:::system
+        P5["Status → Rejected<br/>Decided_At__c stamped<br/>any level can end it, and it is final"]:::system
         P6["Back into the pool: re-adding on Screen 3<br/>resets this same row to Draft<br/>a second row is impossible — Unique_Key__c"]:::stop
 
-        P1 --> P2 --> P3
-        P3 -- approve --> P4
+        P0 -- no --> PSKIP --> PN
+        P0 -- yes --> P1 --> P2 --> P3
+        P3 -- approve --> PN
         P3 -- reject --> P5 -.-> P6
+        PN -- "yes — level N+1" --> NOTIFY -.-> P0
+        PN -- no --> P4
     end
 
-    S6 --> P1
+    S6 --> P0
 
     %% ======== 6 · Completion ========
     subgraph DONE["6 · Completion notice"]
@@ -172,11 +191,19 @@ for?" is now the Event Invitees related list on the attendee record, which is wh
 history object used to answer — except it is live rather than a parallel annotation that could
 disagree.
 
-**The routing ladder is gone, not shortened.** R3's three rungs existed because an invitee could
-be a customer Contact (→ Account Owner) or a Lead (→ Lead Owner). R5 has neither, so `Approver__c`
-resolves to one thing: the submitter's Manager. That is why the diagram has a decision on
-*whether a Manager exists* rather than on *which rung applies* — and why a BMD user with no
-Manager cannot submit anything at all.
+**The chain is resolved once and stamped whole, not walked.** R6 does not re-derive the next
+approver after each decision; at submit time it writes `Approver_1__c … Approver_N__c` and hands
+the record to the approval process, which owns the sequencing from there. Two things follow. A
+reorganisation halfway up a four-level chain cannot reroute an item somebody is already looking
+at — the chain in force at submit is the chain that decides. And **the number of levels is data**:
+each step is gated on its own `ISBLANK(Approver_N__c)` check with *skip* behaviour, so a process
+shipped with five steps runs a two-level customer through it untouched, and adding a third level
+costs rows in `Approval_Route__c` rather than a deploy.
+
+**Refusal, not fallback.** A `cust_cd` that is blank, unmapped, or mapped to an inactive user
+fails the whole submit with a named error. Falling back to the submitter's manager was considered
+and rejected: it converts a data-quality problem into a silently weaker approval, which is the
+exact failure the workflow exists to prevent.
 
 **Nothing scopes the attendee pool.** `getSelectableAttendees` filters only on "not already
 invited to this event". Any user who can reach the selector can propose anybody in the org's pool.
@@ -191,32 +218,37 @@ block another's. The event carries roll-up counts instead.
 imported as an unrecognisable record; a submit by someone with no Manager fails whole rather than
 partially, so the submitter's Draft count still matches what they just sent.
 
-## What the BMD split still needs
+## What is built, and what R6 still needs
 
-R5 removed the blocker the previous revision of this document recorded. The contact selector used
-to narrow to accounts the running user owned — fatal for a BMD user, who owns none. R5 deleted
-that scoping along with the Account, so **BMD can now propose from the whole pool with no code
-change at all.** What is left is one open question and two pieces of configuration.
+R5 removed the blocker the first version of this document recorded — the selector used to narrow
+to accounts the running user owned, fatal for a BMD user who owns none — so **BMD can propose from
+the whole pool today with no code change at all.** R6 answers the open question that replaced it.
+What remains is a build and three decisions.
 
-**1 · The AM has nothing to be routed by — decide before the demo.** This is the open item, and it
-is [design.md](../design.md)'s Open Question 15 seen from the role side. The intent is that the AM
-signs off guests from their own accounts. R5 knows nothing about accounts, so:
+**1 · The R6 chain is designed, not built.** Steps 4 and 5 in the diagram are the target; the
+deployed org still stamps one approver. The build is: `Cust_Cd__c` on `Event_Attendee__c` and its
+`Invitee_Cust_Cd__c` formula on the junction, the `Approval_Route__c` object, `Approver__c` split
+into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of the
+resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
+[design.md → ★R6](../design.md#r6-approval-routing--a-chain-not-a-rung).
 
-- **Config, no code:** set the approving AM as the **Manager** of each BMD user. Works today,
-  needs nothing built, and is the honest demo path. It only expresses *one* approver per BMD user,
-  so it cannot mean "each attendee goes to whoever owns that customer".
-- **Code, and a new fact:** give `Event_Attendee__c` a field that names who approves for that
-  person — an owner, an account reference, a team — and resolve `Approver__c` through it at submit
-  time. This is re-introducing, on this project's own object, the thing R5 deliberately removed
-  from the standard ones, so it needs to be a decision rather than a patch. Open Question 17 in
-  design.md ("no link between an attendee and an existing customer") is the same gap from the data
-  side, and one field could close both.
+**2 · The notification design does not survive the chain — this is the sharp edge.** Approvers
+today set *Receive Approval Request Emails = Never* and hear once, from the aggregated email at
+submit time. That works only because there is one approver, involved immediately. In a chain,
+**levels 2 and above are not involved at submit time and would be told nothing at all**: the
+regional head's items would appear silently in their Approvals list and the batch would stall
+there with everyone believing they had done their part. The fix is a step-entry action calling the
+existing `notifyApproversOfSubmission` as each level opens — it already groups by distinct
+approver, so it needs a caller rather than a rewrite. The alternative is turning per-request emails
+back on and accepting one email per invitee per level.
 
-Note which way the trade runs: R5 bought an import with no blast radius by giving up all knowledge
-of who a person is to the business. The AM-approves model is the first requirement that wants that
-knowledge back.
+**3 · Guests with no `cust_cd` cannot be submitted at all.** Routing on the customer code means a
+professor, a journalist, or anyone else who belongs to no customer has no chain. The design refuses
+rather than falling back, because a fallback makes a data gap into a quieter approval — but that is
+only right if such guests are rare. If they are routine, the chain needs a default route, and that
+is a business decision. [Open Question 18](../design.md#open-questions).
 
-**2 · The permission sets are named for the old model, not split wrongly.** `Event_AM` grants
+**4 · The permission sets are named for the old model, not split wrongly.** `Event_AM` grants
 exactly BMD's job — the import tab, `AttendeeImportController`, `InviteeSelectorController`, event
 create, the reports — and `Event_Approver` grants the approver's. The fix is a rename to
 `Event_BMD`, not a new set. A rename is a delete plus a create in metadata terms, so it needs the
@@ -225,14 +257,11 @@ already establishes, and assignments have to be re-applied afterwards. Keeping t
 assigning it to BMD users also works and costs nothing — at the price of a permission set whose
 name says AM and whose contents say BMD.
 
-**3 · Every BMD user needs a Manager.** Already true before, but it was a fallback then and it is
-the entire routing now: a BMD user with no Manager cannot submit a single invitee. The validation
-rule refuses the batch, loudly and by design.
-
-**Not a problem, worth confirming anyway:** the completion notice and *My Approved Invitees* both
-key off `Added_By__c`, so they follow the submitter. BMD — not the approver — is told when a batch
-finishes and is the one who exports. If the approver is meant to receive the finished list too,
-that is a report subscription, not code.
+**Two things that need no change, worth knowing.** The completion notice fires on `Status__c`
+reaching Approved or Rejected, which only happens after the *final* level, so the one piece of
+custom notification code survives the chain untouched. And `Pending_Count__c` keeps working, but
+its meaning drifts: it becomes "somewhere in a chain" rather than "waiting on one person", which a
+`Current_Level__c` stamped on step entry would restore.
 
 ## Where this departs from the original ask
 
@@ -241,7 +270,7 @@ that is a report subscription, not code.
 | The **AM** imports the list, picks the guests and submits them | **BMD** does all of it | The proposing work is a marketing-department job |
 | Compare the upload against existing Contacts and **update** those whose title or company changed | Every row becomes an `Event_Attendee__c`. **No Contact, Lead or Account is created, read, changed or deleted.** | R4 stopped writing to Contact; R5 stopped reading it. The feature now has no blast radius outside the one object it owns — and no idea which guests are customers |
 | Attendees are Contacts | Attendees are `Event_Attendee__c` | An Account means a transacting customer, and R5 satisfies that premise by never reaching an Account rather than by working around it |
-| Send to the **Account Owner** for sign-off | The submitter's **Manager**, and only that | The Account Owner rung retired with the Account. requirement.md's own gloss on Account Owner — "一般是AM的manager/director" — is what survives; the customer-specific half does not. **Open Question 15** |
+| Send to the **Account Owner** for sign-off | ★R6 a **chain**: the AM who owns the customer `cust_cd` names, then the regional head, then any level added later — all must agree | R5 had retired the Account Owner rung along with the Account, leaving only the submitter's manager. R6 restores the customer-specific half through a code on the attendee rather than an Account, and goes past the original ask: requirement.md asked for one sign-off, the business needs several. **Answers Open Question 15** |
 | A "select all" button on a custom approval screen | Mass-select in the standard **Approvals** list view | R3 — the custom console was a hand-built reimplementation of a platform feature; the standard one also brings record locking and a full approval history |
 | The submitter exports the approved contacts from the event | Standard **reports**, filtered to one event or across all | R3 — a report is stateless and re-runnable; it also brings scheduled subscriptions for free |
 

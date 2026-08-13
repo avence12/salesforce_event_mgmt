@@ -13,12 +13,14 @@ End-to-end flow diagram: [docs/business-process.md](docs/business-process.md)
 3. **Approve** — Each BMD user submits their batch into the **standard Approval Process**, routed to their **manager**; each approver gets one aggregated email + bell notification and approves/rejects from the standard Approvals list (desktop or Salesforce Mobile App), with a full approval history on every invitee.
 4. **Report** — When a batch is fully reviewed its submitter is notified, and the approved list is read and exported from the **Approved Invitees** reports (one event or every event, any date range, CSV or XLSX).
 
-**Two roles, and one unresolved collision.** **BMD** proposes — steps 1–4 above — and the **AM**
-is meant to approve. R5 routes every invitee to *the submitter's manager* and deleted the
-`Account__c` / `Account_Owner__c` fields that carried "whose customer is this", so as built the
-approver is **BMD's manager** and the AM has no role in the workflow at all. Either an AM is set
-as the BMD user's Manager, or the routing needs a basis R5 removed. Detail in
-[docs/business-process.md](docs/business-process.md#what-the-bmd-split-still-needs).
+**Two roles.** **BMD** proposes — steps 1–4 above — and the **AM** approves. R5 had left the AM
+unreachable: it deleted the `Account__c` / `Account_Owner__c` fields that carried "whose customer
+is this", so the only approver the routing could produce was the submitter's manager. **★R6
+answers that** with a customer code (`cust_cd`) on the attendee and an `Approval_Route__c` table
+mapping it to the owning AM and onward to the regional head — a chain, where every level must
+agree and further levels cost rows rather than a deploy. **R6 is designed, not built**: see
+[design.md → ★R6 Approval routing](design.md#r6-approval-routing--a-chain-not-a-rung) and the
+[flow diagram](docs/business-process.md).
 
 ## Components
 
@@ -105,9 +107,9 @@ Lead OWD check.
 ## Known PoC limits
 
 - 500-row import cap.
-- **The BMD/AM split has nothing to route on.** BMD proposes and the AM is meant to approve, but R5's only approver is the submitter's manager — the Account Owner rung retired with the Account. Naming an AM as the BMD user's Manager works today and is the demo path; anything else needs a new basis for "who approves this attendee". Detail in [docs/business-process.md](docs/business-process.md#what-the-bmd-split-still-needs).
+- **Multi-level approval is designed but not built (★R6).** The deployed org stamps one approver, the submitter's manager. The AM → regional head chain, its `Approval_Route__c` table and its costs — chiefly that levels 2+ get no notification until a step-entry action is added — are in [design.md → ★R6](design.md#r6-approval-routing--a-chain-not-a-rung). Naming an AM as the BMD user's Manager is the interim demo path.
 - **No link between an attendee and an existing customer.** Someone who is both is two unrelated records, and "which of tonight's guests are customers?" — answerable in R4 — is not answerable now. Open Question 17 in design.md names the recovery.
-- **The manager is the only approver.** The Account Owner no longer sees invitees to their own customers, because nothing knows whose customer an attendee is. **Open Question 15 — confirm with the business before the demo, not after.**
+- **The manager is the only approver, until R6 is built.** Nothing deployed knows whose customer an attendee is. R6 answers this with `cust_cd`; until it ships, the Account Owner does not see invitees to their own customers. **Open Question 15.**
 - **Organisation is free text.** "Acme Corp" and "ACME Corp." group and report separately, and nothing reconciles them.
 - **Every proposer sees every attendee.** Per-user scoping went with the Account it was based on. Tightening `Event_Attendee__c`'s OWD is the production lever, but it needs another basis for scoping first.
 - **A junk Email cell costs the address, not the person.** `Email__c` is a typed field; a value that is not an address is dropped, and the preview says so on that row.

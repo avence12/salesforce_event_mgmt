@@ -338,6 +338,148 @@ this revision removed the only person who could answer, and the recovery is a se
 approval step keyed off something other than the attendee — because the attendee no longer
 knows whose customer they are. **Open Question 15.**
 
+### ★R6 Approval routing — a chain, not a rung
+
+**This answers Open Question 15, and it answers it with the key R5 said would be needed.**
+The paragraph above ends "the recovery is a second approval step keyed off something other
+than the attendee — because the attendee no longer knows whose customer they are." The
+business has that key: every imported row carries a **customer company code, `cust_cd`**, and
+a table maps it to the AM who owns that customer, and onward up to the regional head. So the
+attendee *can* know whose customer they are, via a code this project stores rather than an
+Account it must not touch — and premise 7 survives untouched.
+
+The requirement is now: **AM approves, then the regional head approves, and more levels are
+expected later.** Everyone in the chain must agree.
+
+#### The routing basis
+
+`cust_cd` arrives in the CSV and lands on `Event_Attendee__c.Cust_Cd__c`, surfaced on the
+junction as `Invitee_Cust_Cd__c` alongside the other `Invitee_*__c` formulas so the approval
+process, the reports and the approval page can all read one field. It is a **code, not a
+relationship** — nothing dereferences it to an Account, and R5's "reads and writes one object"
+property is unchanged.
+
+Consequence worth stating: a row whose `cust_cd` is blank or unmapped has no chain, and
+therefore cannot be submitted. Under R5 anyone could be invited and the submitter's manager
+approved them; under R6 an attendee with no customer code is a guest nobody is defined to
+approve. Whether such guests exist — professors, press, the people who were Leads two
+revisions ago — is **Open Question 18**, and the design refuses rather than guesses: see
+*Failure is refused, not routed around* below.
+
+#### The table: tall, not wide
+
+```
+★R6  Approval_Route__c            (custom object; the chain, maintained by the business)
+  Cust_Cd__c        (Text, required — the customer company code)
+  Level__c          (Number, required — 1, 2, 3 …; 1 is the AM, the highest is the regional head)
+  Approver__c       (Lookup → User, required)
+  Active__c         (Checkbox, default true)
+  Unique_Key__c     (Text, unique external ID = Cust_Cd__c + '|' + Level__c)
+```
+
+**One row per (customer code × level) is the whole point.** The obvious alternative — one row
+per `cust_cd` with an `AM__c` column and a `Regional_Head__c` column — reads better and fails
+the actual requirement: *"日後還可能有更多階層"*. A wide table buys a new level with a new
+field, a new approval step, a new deploy and a code change. A tall table buys it with **rows**,
+which is a thing the business can do to itself on a Tuesday. Given that "more levels later" is
+stated up front rather than speculated, that is the requirement talking.
+
+Custom object rather than Custom Metadata Type, chosen deliberately: this table names *people*,
+and people leave, move region and go on sabbatical. That is operational data with a maintenance
+cadence, not configuration — it wants an app screen, a report and a sharing model, not a deploy
+pipeline. The cost is one SOQL per submit and a permission set entry, both trivial.
+
+#### The approval process: pre-provisioned steps, each gated on its own field
+
+`Approver__c` becomes `Approver_1__c … Approver_N__c`, and `Invitee_Approval` gains one step
+per field:
+
+```
+Step N:  assignedApprover  = relatedUserField Approver_N__c
+         entryCriteria     = NOT(ISBLANK(Approver_N__c))
+         ifCriteriaNotMet  = ApproveRecord      ← skip this step, carry on
+         rejectBehavior    = RejectRequest      ← any level's rejection ends it
+```
+
+**`ifCriteriaNotMet = ApproveRecord` is the load-bearing line**, and the process already uses
+it (vacuously, having no criteria today). It means *skip*, not *approve the record* — a step
+whose approver field is blank is passed over and the next step runs. So the process can ship
+with more steps than the business currently uses: a three-level customer stamps
+`Approver_1..3__c` and sails through steps 4 and 5 untouched.
+
+That is what makes "more levels later" cheap. Adding a level costs **rows in
+`Approval_Route__c`** until the pre-provisioned steps run out; only then does it cost metadata.
+Pre-provisioning five when two are needed is the sensible starting point. *Verify in the org
+before choosing the number:* Salesforce caps steps per approval process, and the cap is worth
+reading rather than remembering.
+
+#### Resolution stays in Apex, at submit time, frozen
+
+`submitMyInvitees` already resolves an approver and freezes it. R6 changes what it resolves,
+not when or why:
+
+1. collect the distinct `cust_cd` values across the batch;
+2. one query against `Approval_Route__c` for those codes, `Active__c = true`, ordered by
+   `Level__c`;
+3. stamp `Approver_1__c …` per invitee in level order, compacting gaps so an inactive level 2
+   does not leave a hole the step gating would skip *and* renumber inconsistently;
+4. `Approval.process(..., true)` exactly as now.
+
+The freeze rationale is unchanged and matters more with a chain than it did with a rung: a
+reorganisation halfway up a four-level approval must not reroute an item somebody is already
+looking at. The chain that was in force when the batch was submitted is the chain that decides
+it.
+
+#### Failure is refused, not routed around
+
+The existing posture — *all-or-nothing, with a named error, nothing submitted* — extends
+straight to the chain. A batch is refused if any invitee has a blank `cust_cd`, a `cust_cd`
+with no active route, or a route naming an inactive user. The alternative, "fall back to the
+submitter's manager when there is no route", is explicitly rejected: it converts a data-quality
+problem into a silently weaker approval, which is the failure mode the whole workflow exists to
+prevent. `Approver_Required_When_Pending` widens to cover `Approver_1__c`, unchanged in intent.
+
+#### What this costs — read this part before building
+
+**1 · The notification design breaks, and it is not obvious.** Today approvers set *Receive
+Approval Request Emails = Never* and hear once, from
+`EventNotificationService.notifyApproversOfSubmission`, at submit time (design.md's Option 1).
+That works because there is exactly one approver and they are involved immediately. With a
+chain, **levels 2..N are not involved at submit time and would therefore never be told
+anything** — the regional head's items would appear in their Approvals list silently, and the
+batch would sit there. Two repairs:
+
+- **Fire the aggregate on step entry.** Each approval step carries Approval Actions; a step-entry
+  action invoking the existing service tells level *n* when level *n−1* finishes. Keeps today's
+  one-email-per-approver inbox behaviour, and `notifyApproversOfSubmission` already groups by
+  distinct approver, so it needs a caller rather than a rewrite. **Recommended.**
+- **Turn per-request emails back on** (Option 2), accepting one email per invitee per level —
+  the noise the original design was written to avoid, now multiplied by the chain length.
+
+**2 · `Pending_Count__c` stops meaning "waiting on one person".** It becomes "somewhere in a
+chain", which is a different question and a less useful roll-up. A `Current_Level__c` on the
+invitee, stamped by each step's entry action, restores the answer cheaply.
+
+**3 · Time in flight multiplies.** A four-level chain needs four people to act before a single
+guest is confirmed; the completion notice an AM waits on is now gated on the slowest chain in
+their batch. Nothing in the design fixes that — it is what "都要同意" costs, and it is worth
+saying out loud to whoever asked for four levels.
+
+**4 · The completion notification needs no change at all.** `Status__c` becomes Approved only
+on *final* approval, and `Invitee_Decision_Completion` fires on that change. The one piece of
+custom notification code survives the chain untouched, which is a reasonable sign the boundary
+it sits on was drawn in the right place.
+
+#### Rejected alternatives
+
+| Alternative | Why not |
+|---|---|
+| **Custom chain engine** — `Level__c` counter, Apex re-resolves and re-submits after each approval | Rebuilds what an approval process does, and R3 deleted a hand-built approval console for exactly this reason. Also fragments the audit trail into one ProcessInstance per level, and hands us record-locking to manage by hand |
+| **Wide `Approval_Route__c`** — `AM__c`, `Regional_Head__c` columns | Reads better, but every new level is a deploy. Loses on the one requirement stated in advance |
+| **Walk `User.ManagerId` upward from the AM** until a "regional head" marker | Elegant, zero maintenance, and wrong whenever the approval chain is not the HR reporting line — which is most orgs. Also needs a stop condition, which is another field on User, an object this project does not own |
+| **Flow Orchestration** | Purpose-built for multi-user sequential work, and genuinely the modern answer for complex chains. Rejected here on licensing and on proportion: this chain is linear and unanimous, which is the case standard approvals already handle |
+| **Fall back to the submitter's manager when `cust_cd` has no route** | Turns a data gap into a quieter approval. See *Failure is refused* above |
+
 ### Screen 1 — Import External Attendee List (LWC wizard, App page)
 
 1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT
@@ -857,9 +999,11 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 12. ★R4 ~~Is a name-first match acceptable given it can tag the wrong person?~~ **Moot as of R5 — nothing is matched.** Left below as written, because the condition it names ("if a name-only match is ever used for something that acts on people") is the reason R5 could delete the cascade without regret: it never got there. The successor risk is Open Question 16. Original text: **Settled: accepted.** A single Contact matching a name that belongs to somebody else is tagged wrongly with no signal, and that is understood. What makes it survivable is that a tag is append-only history: it destroys nothing, changes no Contact field, and has no effect on invitation or approval. `Match_Basis__c` records how each tag was reached so a wrong one can at least be explained afterwards. **If a name-only match is ever used for something that acts on people — a mailing, an invitation, a report someone bills from — this decision needs revisiting first.**
 13. ★R4 ~~Should the event history be visible on the Contact at all in this PoC?~~ **Resolved by R5 removing the problem.** The blocker was that showing it meant editing the org's own Contact and Lead layouts — damage outside this project. Attendees are on an object this project owns, so its layout ships with the Event Invitees related list and nothing outside the project has to change. This is the clearest single sign the R4 shape was fighting the platform.
 14. ★R4 ~~Does a `SetNull` delete constraint re-fire the XOR validation rule when a Contact or Lead is deleted?~~ **No longer reachable.** The dilemma was that every delete constraint pointing at a *standard* object was bad in a different way. `Event_Invitee__c.Event_Attendee__c` uses `Restrict`, which was the unacceptable option in R4 precisely because it would have blocked deleting a Contact — and is the right option now because the only thing it blocks is deleting an attendee this project created. `EventWorkflowTest.anInvitedAttendeeCannotBeDeleted` asserts it.
-15. ★R5 **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
+15. ★R5 ~~**Is a manager the right approver, now that the Account Owner cannot be one?**~~ **Answered by R6, with the key this entry said was missing.** The recovery it names — "a second approval step keyed off something the attendee does not currently carry" — is exactly what arrived: every row carries a customer code `cust_cd`, and a table maps it to the owning AM and onward to the regional head. The control R5 lost is restored without reaching an Account, so premise 7 never comes under pressure. Original text: **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
 17. ★R5 **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
+18. ★R6 **What approves a guest with no `cust_cd`?** R6 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
+19. ★R6 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. Five is the suggested starting point for a two-level chain. Worth checking the org's actual cap and the business's honest ceiling in the same conversation.
 
 ## Success Criteria
 
