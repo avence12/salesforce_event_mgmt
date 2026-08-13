@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Attended_Requires_Approved</fullName>
+    <active>true</active>
+    <description>★R6 Somebody who was never approved cannot be recorded as having attended. Without this the attendance history quietly becomes a second, unreviewed guest list — the exact control the approval workflow exists to provide, bypassed by a checkbox. The order it forces is also the real-world one: approve first, then mark up who came.</description>
+    <errorConditionFormula>AND(Attended__c, NOT(ISPICKVAL(Status__c, &quot;Approved&quot;)))</errorConditionFormula>
+    <errorMessage>Only an approved invitee can be marked as attended.</errorMessage>
+</ValidationRule>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ReportType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Event_Attendees_with_History</fullName>
+    <label>Event Attendees with Event History</label>
+    <description>★R6 The attendee side of the model. The existing Marketing Events report type answers "who is coming to this event"; this one answers "which events has this person been to", which is the question a recommendation starts from. Base object is Event_Attendee__c so the report groups by person rather than by event. The event's own columns come through the Event_Invitee__c formula fields (Event_Name__c, Event_Date__c, Event_Type__c) rather than a second join — Topic__c has no formula counterpart because it is a multi-select, so filtering by subject belongs on the Marketing Events report type instead.</description>
+    <baseObject>Event_Attendee__c</baseObject>
+    <category>other</category>
+    <deployed>true</deployed>
+    <join>
+        <outerJoin>false</outerJoin>
+        <relationship>Event_Invitees__r</relationship>
+    </join>
+    <sections>
+        <masterLabel>Event Attendee</masterLabel>
+        <columns><field>Name</field><table>Event_Attendee__c</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Company__c</field><table>Event_Attendee__c</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Title__c</field><table>Event_Attendee__c</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Email__c</field><table>Event_Attendee__c</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Source_File__c</field><table>Event_Attendee__c</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Imported_On__c</field><table>Event_Attendee__c</table><checkedByDefault>false</checkedByDefault></columns>
+    </sections>
+    <sections>
+        <masterLabel>Event History</masterLabel>
+        <columns><field>Event_Name__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Event_Date__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Event_Type__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Attended__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Status__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Decided_At__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Added_By__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Marketing_Event__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+    </sections>
+</ReportType>

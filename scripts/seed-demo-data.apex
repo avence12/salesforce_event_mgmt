@@ -57,11 +57,29 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Q3 2026 Customer Appre
         Name = 'Q3 2026 Customer Appreciation Gala',
         Event_Date__c = Date.newInstance(2026, 9, 18),
         Location__c = 'The Plaza, New York',
-        Event_Type__c = 'Dinner / Gala',
+        Event_Type__c = 'Conference',
+        Topic__c = 'Digital Banking;Payments',
         Expected_Attendees__c = 150,
         Description__c = 'Annual appreciation event for key financial-sector customers.'
     );
 }
 
+// ---- ★R6 A second, past event, so the demo has attendance history to recommend from ----
+// One event gives you a guest list; two give you "this person came to the Payments
+// symposium, so the Payments conference is a fair suggestion". A recommendation demo
+// with a single event in the org demonstrates nothing.
+if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Payments Innovation Symposium 2025'] == 0) {
+    insert new Marketing_Event__c(
+        Name = 'Payments Innovation Symposium 2025',
+        Event_Date__c = Date.newInstance(2025, 11, 6),
+        Location__c = 'Frankfurt',
+        Event_Type__c = 'Symposium',
+        Topic__c = 'Payments;AI & Data',
+        Expected_Attendees__c = 80,
+        Description__c = 'Past event. Its attendance is what the Attendee Event History report reads.'
+    );
+}
+
 System.debug('Seed complete. Attendees now in the org: ' + [SELECT COUNT() FROM Event_Attendee__c]);
 System.debug('Reminder: every AM user needs a Manager set — it is the only approver the R5 ladder has.');
+System.debug('★R6 Topic__c values are placeholders. Replace them with the real taxonomy before trusting a recommendation.');

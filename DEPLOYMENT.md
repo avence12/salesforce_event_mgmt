@@ -617,3 +617,103 @@ Only after section B reports zero un-migrated invitees.
 - [ ] **A successful destructive deploy does not roll back.** Recovering the deleted components means redeploying them from the pre-R5 commit, and the *data* in `Event_History__c` and in the invitees' `Contact__c` / `Lead__c` does not come back with them — only the CSVs from section A have it
 - [ ] The one genuinely recoverable mistake is running section C before section B. If you catch it before the pre-manifest, just run the migration. If the pre-manifest has already run, the invitee → person link is gone and `backup-invitees-preR5.csv` is the only way back
 - [ ] So: dry-run the whole of Part 7 in a scratch or throwaway sandbox before running it anywhere that matters
+
+## Part 8 — R6 upgrade checklist
+
+R6 adds attendance (`Event_Invitee__c.Attended__c`) and a subject for events
+(`Marketing_Event__c.Topic__c`), and **replaces the `Event_Type__c` picklist values** with
+Symposium / OIP / Conference.
+
+**The one thing that will bite you.** `Event_Type__c` is a *restricted* picklist. A restricted
+picklist cannot lose a value that records still hold, so the deploy **fails outright** while any
+event is still a Webinar, a Roadshow or a Dinner / Gala. That is a clean failure — nothing
+changes — but it is not obvious from the error, so do section B first. Same trap R3 hit with
+the `Exported` status.
+
+Everything else in R6 is additive and safe to deploy on top of R5.
+
+### A. Before touching an org
+
+- [ ] `git pull` and confirm you are on the R6 commit
+- [ ] `npm install && npm test` — 181 LWC tests pass
+- [ ] `npm run lint` and `npx prettier --check "force-app/**/*.{js,cls}"` — clean
+- [ ] `scripts/quality/mutate.sh` — 13 as expected, 0 unexpected
+- [ ] **Decide two things that this design cannot decide for you**, both of them
+      business questions rather than technical ones:
+      - What do Webinar / Roadshow / Dinner-Gala events become under the new taxonomy?
+        (design.md Open Question 20 — the migration script refuses to guess)
+      - What is the real `Topic__c` list? The values shipped are placeholders from the demo
+        data's domain (Open Question 19)
+
+### B. Remap the retired event types — existing orgs only
+
+- [ ] See what is out there:
+  ```bash
+  sf data query -o poc-sandbox \
+    -q "SELECT Event_Type__c, COUNT(Id) FROM Marketing_Event__c GROUP BY Event_Type__c"
+  ```
+- [ ] Open `scripts/r6-pre-deploy.apex` and fill in the `REMAP` map at the top. Valid targets
+      are `Symposium`, `OIP`, `Conference`, or `''` to clear the field. **The script throws and
+      changes nothing until you do** — a guessed mapping writes a wrong type onto historical
+      records that the recommendation work then reads as truth
+- [ ] Run it:
+  ```bash
+  sf apex run --file scripts/r6-pre-deploy.apex -o poc-sandbox
+  ```
+- [ ] Read the debug output. The last count must be **zero** events still holding a retired
+      value. If it is not, the deploy in section C will fail
+
+### C. Deploy
+
+- [ ] Validate first — this is where a missed remap shows up:
+  ```bash
+  sf project deploy start -o poc-sandbox --dry-run
+  ```
+- [ ] Deploy and run the tests:
+  ```bash
+  sf project deploy start -o poc-sandbox
+  sf apex run test -o poc-sandbox --wait 10 --code-coverage
+  ```
+- [ ] No destructive manifests in R6 — nothing is deleted, so do not run them
+
+### D. Post-deploy configuration
+
+- [ ] **Replace the `Topic__c` values** (Setup → Object Manager → Marketing Event → Fields →
+      Topic) with the real taxonomy, then **back-fill past events**. Until both are done the
+      attendance history exists but nothing can be judged similar to anything, which is the
+      whole point of R6
+- [ ] Re-assign `Event AM` / `Event Approver` — both sets gained fields, and `Attended__c` is
+      the first invitee field an AM is allowed to *write*
+- [ ] Add `Topic__c` to the Marketing Event page layout if your org uses its own layout rather
+      than the one shipped here
+- [ ] Confirm the *Event Management* report folder now shows three reports
+
+### E. Verify
+
+- [ ] Open a past event → **All Invitees** → the Attended column is there, ticks are only
+      possible on **Approved** rows, and Save Attendance is greyed out until something changes
+- [ ] Tick two people, save, reload — the ticks persist and the summary line counts them
+      against the approved total, not against everybody
+- [ ] Untick one, save — attendance is reversible; a mis-tick that could not be corrected is a
+      reason for people to stop ticking honestly
+- [ ] Try to tick a Draft or Rejected row: it must be disabled in the UI **and** refused by the
+      database (`Attended_Requires_Approved`). Check the second by editing the record directly,
+      not just through the LWC
+- [ ] Open an **Event Attendee** → the related list shows event name, date, type and whether
+      they attended
+- [ ] **Reports → Attendee Event History** — grouped by person, only rows where Attended is
+      true, per-group record count is that person's event count
+- [ ] **Reports → Approved Invitees — by Event** — add the Topic column and filter on one
+      topic; this is the "who has been to anything about Payments" direction, which the
+      attendee-side report deliberately cannot answer (Topic is a multi-select and has no
+      formula counterpart)
+
+### F. If it goes wrong
+
+- [ ] The picklist failure is the likely one and it is harmless: the deploy rolls back whole,
+      the org is untouched, and the fix is section B
+- [ ] R6 deletes nothing, so unlike R5 there is no irreversible half. Rolling back means
+      redeploying the previous commit — `Attended__c` and `Topic__c` would be left behind as
+      unused fields rather than needing a destructive manifest
+- [ ] The one thing that does **not** roll back is the `r6-pre-deploy.apex` remap, because it
+      is a data change. Note the counts from section B before running it

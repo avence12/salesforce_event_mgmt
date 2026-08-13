@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Event_Name__c</fullName>
+    <label>Event Name</label>
+    <description>★R6 Reads up to the parent event. Exists so the Event Attendee page&apos;s related list and the Attendee Event History report can say which event a row is about without the reader following a link — the attendee side of the model is where &quot;which events has this person been to&quot; gets answered, so it has to be legible there.</description>
+    <type>Text</type>
+    <formula>Marketing_Event__r.Name</formula>
+    <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackTrending>false</trackTrending>
+</CustomField>

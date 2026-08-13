@@ -76,7 +76,7 @@ private class EventWorkflowTest {
             Name = 'Q3 2026 Customer Appreciation Gala',
             Event_Date__c = Date.today().addDays(60),
             Location__c = 'The Plaza, New York',
-            Event_Type__c = 'Dinner / Gala'
+            Event_Type__c = 'Conference'
         );
     }
 
@@ -403,6 +403,186 @@ private class EventWorkflowTest {
             InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
             System.assertEquals(4, sel.attendees.size(), 'A rejected invitee is selectable again');
         }
+    }
+
+    // ================= ★R6 attendance =================
+
+    /** Drives one attendee all the way to Approved, so attendance can be recorded on it. */
+    private static Id approvedInvitee(String lastName) {
+        User alex = findUser('amalex');
+        User dana = findUser('mgrdana');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id att = attendeeId(lastName);
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ att });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Id invId = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :att].Id;
+        System.runAs(dana) {
+            decide(invId, true);
+        }
+        return invId;
+    }
+
+    /**
+     * The R6 requirement: which events a person actually went to. Attendance is
+     * recorded against the approved invitee, and the attendee reads its history
+     * back through that same row — there is no second object holding it.
+     */
+    @IsTest
+    static void attendanceIsRecordedAndReadableFromTheAttendee() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        Test.startTest();
+        Id invId = approvedInvitee('Carter');
+        InviteeSelectorController.AttendanceResult res = InviteeSelectorController.saveAttendance(
+            evt.Id,
+            new List<Id>{ invId },
+            new List<Id>()
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, res.marked);
+        System.assertEquals(0, res.cleared);
+        System.assertEquals(0, res.skippedNotApproved);
+
+        // Read it the way the Attendee Event History report does: from the person.
+        List<Event_Invitee__c> history = [
+            SELECT Event_Name__c, Event_Date__c, Event_Type__c, Attended__c
+            FROM Event_Invitee__c
+            WHERE Event_Attendee__c = :emily AND Attended__c = TRUE
+        ];
+        System.assertEquals(1, history.size(), 'The attendee’s history is its invitee rows, not a separate object');
+        System.assertEquals('Q3 2026 Customer Appreciation Gala', history[0].Event_Name__c);
+        System.assertEquals('Conference', history[0].Event_Type__c, 'The event’s type reads up through the formula');
+        System.assertNotEquals(null, history[0].Event_Date__c, 'Recency is half of any recommendation');
+    }
+
+    /** Marking is reversible — a mis-tick must be correctable, or nobody will tick honestly. */
+    @IsTest
+    static void attendanceCanBeCleared() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        Test.startTest();
+        Id invId = approvedInvitee('Carter');
+        InviteeSelectorController.saveAttendance(evt.Id, new List<Id>{ invId }, new List<Id>());
+        InviteeSelectorController.AttendanceResult res = InviteeSelectorController.saveAttendance(
+            evt.Id,
+            new List<Id>(),
+            new List<Id>{ invId }
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, res.cleared);
+        System.assertEquals(false, [SELECT Attended__c FROM Event_Invitee__c WHERE Id = :invId].Attended__c);
+    }
+
+    /**
+     * An unapproved invitee cannot be marked as attended. Without this the attendance
+     * history quietly becomes a second, unreviewed guest list — and one bad row in a
+     * batch must not fail the whole save either.
+     */
+    @IsTest
+    static void markingAnUnapprovedInviteeIsReportedNotWritten() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        Test.startTest();
+        Id approved = approvedInvitee('Carter');
+        Id draft;
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Kim') });
+            draft = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :attendeeId('Kim')].Id;
+        }
+        InviteeSelectorController.AttendanceResult res = InviteeSelectorController.saveAttendance(
+            evt.Id,
+            new List<Id>{ approved, draft },
+            new List<Id>()
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, res.marked, 'The approved row still saves');
+        System.assertEquals(1, res.skippedNotApproved, 'The draft row is reported, not silently dropped');
+        System.assertEquals(false, [SELECT Attended__c FROM Event_Invitee__c WHERE Id = :draft].Attended__c);
+    }
+
+    /** …and the database refuses it too, so the guard does not depend on the controller. */
+    @IsTest
+    static void theDatabaseRefusesAttendanceWithoutApproval() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
+        }
+        Event_Invitee__c draft = [SELECT Id, Status__c FROM Event_Invitee__c LIMIT 1];
+        System.assertEquals('Draft', draft.Status__c);
+
+        Boolean threw = false;
+        try {
+            update new Event_Invitee__c(Id = draft.Id, Attended__c = true);
+        } catch (DmlException e) {
+            threw = true;
+        }
+        System.assert(threw, 'Attended_Requires_Approved must hold independently of the Apex');
+    }
+
+    /** An id belonging to another event must not be writable through this event's save. */
+    @IsTest
+    static void attendanceIsScopedToItsOwnEvent() {
+        Marketing_Event__c other = new Marketing_Event__c(
+            Name = 'Payments Innovation Symposium 2025',
+            Event_Date__c = Date.today().addDays(-90),
+            Event_Type__c = 'Symposium'
+        );
+        insert other;
+
+        Test.startTest();
+        Id invId = approvedInvitee('Carter');
+        // Same invitee id, but saved against the wrong event.
+        InviteeSelectorController.AttendanceResult res = InviteeSelectorController.saveAttendance(
+            other.Id,
+            new List<Id>{ invId },
+            new List<Id>()
+        );
+        Test.stopTest();
+
+        System.assertEquals(0, res.marked, 'The row belongs to a different event and must be out of reach');
+        System.assertEquals(false, [SELECT Attended__c FROM Event_Invitee__c WHERE Id = :invId].Attended__c);
+    }
+
+    @IsTest
+    static void savingNoAttendanceAtAllIsRefused() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Boolean threw = false;
+        try {
+            InviteeSelectorController.saveAttendance(evt.Id, new List<Id>(), new List<Id>());
+        } catch (AuraHandledException e) {
+            threw = true;
+        }
+        System.assert(threw, 'An empty save is a client bug, not a silent no-op');
+    }
+
+    /** getAllInvitees has to tell the UI which rows are even tickable. */
+    @IsTest
+    static void inviteeRowsSayWhetherAttendanceCanBeRecorded() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        Test.startTest();
+        approvedInvitee('Carter');
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Kim') });
+        }
+        Test.stopTest();
+
+        Map<String, InviteeSelectorController.InviteeRow> byName = new Map<String, InviteeSelectorController.InviteeRow>();
+        for (InviteeSelectorController.InviteeRow r : InviteeSelectorController.getAllInvitees(evt.Id)) {
+            byName.put(r.attendeeName, r);
+        }
+        System.assertEquals(true, byName.get('Emily Carter').canAttend, 'Approved rows are tickable');
+        System.assertEquals(false, byName.get('Robert Kim').canAttend, 'Draft rows are not');
+        System.assertEquals(false, byName.get('Emily Carter').attended, 'Nothing is attended until somebody says so');
     }
 
     @IsTest

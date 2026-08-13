@@ -2,6 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Event_Type__c</fullName>
     <label>Event Type</label>
+    <description>★R6 The format of the event. Values replaced in R6: Symposium / OIP / Conference, in place of Conference / Webinar / Roadshow / Dinner / Gala. Because the picklist is restricted, a record still holding a removed value fails the deploy — scripts/r6-pre-deploy.apex remaps them first and refuses to run until an admin has stated what each old value becomes. Coarse by design: this says what shape the event is, not what it is about. Topic__c carries the subject, and it is Topic__c that similarity should be computed from.</description>
     <type>Picklist</type>
     <required>false</required>
     <trackHistory>false</trackHistory>
@@ -9,10 +10,9 @@
         <restricted>true</restricted>
         <valueSetDefinition>
             <sorted>false</sorted>
+            <value><fullName>Symposium</fullName><default>false</default><label>Symposium</label></value>
+            <value><fullName>OIP</fullName><default>false</default><label>OIP</label></value>
             <value><fullName>Conference</fullName><default>false</default><label>Conference</label></value>
-            <value><fullName>Webinar</fullName><default>false</default><label>Webinar</label></value>
-            <value><fullName>Roadshow</fullName><default>false</default><label>Roadshow</label></value>
-            <value><fullName>Dinner / Gala</fullName><default>false</default><label>Dinner / Gala</label></value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

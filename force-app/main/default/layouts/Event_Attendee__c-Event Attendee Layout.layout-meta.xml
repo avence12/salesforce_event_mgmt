@@ -35,14 +35,17 @@
     <!--
       The Event Invitees related list is what makes this page answer "which events has
       this person been invited to" — the question Event_History__c used to hold, now
-      readable straight off the person.
+      readable straight off the person. ★R6 It shows the event's name, date and type
+      and whether they turned up, so the page answers the recommendation question
+      ("what has this person actually shown up for?") without opening a report.
     -->
     <relatedLists>
-        <fields>Marketing_Event__c</fields>
+        <fields>Event_Name__c</fields>
+        <fields>Event_Date__c</fields>
+        <fields>Event_Type__c</fields>
         <fields>Status__c</fields>
+        <fields>Attended__c</fields>
         <fields>Added_By__c</fields>
-        <fields>Approver__c</fields>
-        <fields>Decided_At__c</fields>
         <relatedList>Event_Invitee__c.Event_Attendee__c</relatedList>
     </relatedLists>
 </Layout>

@@ -60,6 +60,21 @@ public with sharing class InviteeSelectorController {
         public String addedByName { get; set; }
         @AuraEnabled
         public Boolean mine { get; set; }
+        @AuraEnabled
+        public Boolean attended { get; set; }
+        /** Only an approved invitee can be marked as attended — the UI greys out the rest. */
+        @AuraEnabled
+        public Boolean canAttend { get; set; }
+    }
+
+    public class AttendanceResult {
+        @AuraEnabled
+        public Integer marked { get; set; }
+        @AuraEnabled
+        public Integer cleared { get; set; }
+        /** Rows the client asked to mark that were not approved. Reported, never silently dropped. */
+        @AuraEnabled
+        public Integer skippedNotApproved { get; set; }
     }
 
     public class SubmitResult {
@@ -244,7 +259,15 @@ public with sharing class InviteeSelectorController {
     public static List<InviteeRow> getAllInvitees(Id eventId) {
         List<InviteeRow> out = new List<InviteeRow>();
         for (Event_Invitee__c inv : [
-            SELECT Id, Invitee_Name__c, Invitee_Title__c, Invitee_Org__c, Status__c, Added_By__r.Name, Added_By__c
+            SELECT
+                Id,
+                Invitee_Name__c,
+                Invitee_Title__c,
+                Invitee_Org__c,
+                Status__c,
+                Attended__c,
+                Added_By__r.Name,
+                Added_By__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId
             ORDER BY Invitee_Org__c, Invitee_Name__c
@@ -256,11 +279,75 @@ public with sharing class InviteeSelectorController {
             r.attendeeTitle = inv.Invitee_Title__c;
             r.company = inv.Invitee_Org__c;
             r.status = inv.Status__c;
+            r.attended = inv.Attended__c;
+            r.canAttend = inv.Status__c == 'Approved';
             r.addedByName = inv.Added_By__r != null ? inv.Added_By__r.Name : null;
             r.mine = inv.Added_By__c == UserInfo.getUserId();
             out.add(r);
         }
         return out;
+    }
+
+    /**
+     * Records who actually turned up, after the event.
+     *
+     * Both lists are explicit rather than "these attended, infer the rest": the
+     * caller's view is capped at 2,000 rows, so inferring absence from what is
+     * missing would silently clear attendance for everybody past the cap.
+     *
+     * Attendance is deliberately not restricted to the AM who added the invitee.
+     * Approval is per-batch because it is a control over what each AM proposes;
+     * attendance is a fact about the room, and whoever ran the event records it.
+     */
+    @AuraEnabled
+    public static AttendanceResult saveAttendance(Id eventId, List<Id> attendedIds, List<Id> notAttendedIds) {
+        Set<Id> wantAttended = new Set<Id>(attendedIds == null ? new List<Id>() : attendedIds);
+        Set<Id> wantAbsent = new Set<Id>(notAttendedIds == null ? new List<Id>() : notAttendedIds);
+        if (wantAttended.isEmpty() && wantAbsent.isEmpty()) {
+            throw new AuraHandledException('Nothing to record.');
+        }
+        // An id in both lists is a client bug; absence is the safer reading.
+        wantAttended.removeAll(wantAbsent);
+
+        Set<Id> touched = new Set<Id>(wantAttended);
+        touched.addAll(wantAbsent);
+
+        AttendanceResult res = new AttendanceResult();
+        res.marked = 0;
+        res.cleared = 0;
+        res.skippedNotApproved = 0;
+
+        List<Event_Invitee__c> changed = new List<Event_Invitee__c>();
+        // Scoped to the event as well as the ids: an id from another event would
+        // otherwise be writable through this method.
+        for (Event_Invitee__c inv : [
+            SELECT Id, Status__c, Attended__c
+            FROM Event_Invitee__c
+            WHERE Marketing_Event__c = :eventId AND Id IN :touched
+        ]) {
+            Boolean target = wantAttended.contains(inv.Id);
+            if (target && inv.Status__c != 'Approved') {
+                // Attended_Requires_Approved would refuse this at the database; catching
+                // it here means one unapproved row cannot fail the whole save.
+                res.skippedNotApproved++;
+                continue;
+            }
+            if (inv.Attended__c == target) {
+                continue; // already in the requested state
+            }
+            inv.Attended__c = target;
+            changed.add(inv);
+            if (target) {
+                res.marked++;
+            } else {
+                res.cleared++;
+            }
+        }
+
+        if (!changed.isEmpty()) {
+            update changed;
+        }
+        return res;
     }
 
     // ---------- internals ----------

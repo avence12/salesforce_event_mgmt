@@ -175,6 +175,34 @@ response, and if they are not, they are real. Note that the CRUD/FLS surface *sh
 the Apex now touches one custom object instead of Contact, Lead and two custom objects — so a
 large new crop of CRUD findings would itself be worth reading twice.
 
+Re-run after the R6 revision (attendance + event topics):
+
+```
+LWC tests      181 passing   (14 more — the attendance column, its dirty tracking,
+                              and the both-lists-explicit contract)
+ESLint         clean
+Prettier       clean
+PMD            not run — PMD is not installed in this environment
+Mutation       13/13 as expected (2 new mutants, see below)
+Apex tests     not run — needs an org
+```
+
+**R6 update — the two mutants worth having.** Attendance saving has one contract that is easy
+to get wrong and invisible when you do: the client sends *both* the attended and the
+not-attended list, rather than sending the ticked ones and letting the server infer absence.
+Inferring would silently clear attendance for everybody past the 2,000-row cap the invitee
+list is capped at — a bug that only appears on large events and looks like data loss, not like
+a defect. One mutant replaces the not-attended list with an empty array; another drops the
+`canAttend` filter so unapproved rows get sent. Both are killed. A third checks that the
+summary counts against approved invitees rather than all of them.
+
+The Apex side carries the same contract and is tested for it in `EventWorkflowTest`, including
+the case that matters most: an id belonging to a *different* event must not be writable through
+this event's save. `Attended_Requires_Approved` is asserted twice on purpose — once through the
+controller, which reports the skipped row rather than failing the batch, and once with a direct
+DML that must be refused by the database. A guard that only exists in Apex is a guard that
+disappears the first time somebody uses Data Loader.
+
 ### Known gaps, stated plainly
 
 - **Apex has no local test layer.** Apex tests only run inside an org. Everything the gauntlet
@@ -195,6 +223,15 @@ large new crop of CRUD findings would itself be worth reading twice.
   in an org* — but the reports, the report type and the record-triggered Flow are exercised by
   nothing. Moving code into configuration moved it out of reach of the test suite; that is a real
   cost of the standardisation, not a free win.
+- **★R6 Attendance data is only as good as the marking-up.** Nothing sets `Attended__c`
+  automatically, and no test can cover an AM forgetting to tick the boxes. The design chose that
+  over inferring attendance from approval, because false attendance data is worse than none —
+  but it means the *Attendee Event History* report is empty until somebody does the work, and
+  there is no signal distinguishing "nobody came" from "nobody marked it up".
+- **★R6 `Topic__c` ships with placeholder values, and no test can catch that.** The taxonomy is
+  a business decision; until it is replaced and past events are back-filled, every similarity
+  judgement the R6 work exists to support is noise. This is a data gap, not a code gap, which is
+  exactly why it needs saying here — the whole suite goes green with it unaddressed.
 - **`importWizard.toast()` is dead code** — defined, never called, and the only reason
   `ShowToastEvent` is imported there. It is the one uncovered line in the LWC suite. Left in place
   rather than removed, because deleting it is a behaviour-neutral change that belongs in its own
