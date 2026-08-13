@@ -149,6 +149,43 @@ private class EventWorkflowTest {
     }
 
     /**
+     * Submit and decide both touch User — ManagerId to resolve the approver,
+     * Name for the notification — and neither may write to it. The org's Users are
+     * not this project's to touch, the same as its Accounts and Contacts.
+     */
+    @IsTest
+    static void submitAndApproveNeverModifyUsers() {
+        User alex = findUser('amalex');
+        User dana = findUser('mgrdana');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        List<User> usersBefore = [SELECT Id, Name, ManagerId, LastModifiedDate FROM User ORDER BY Id];
+        Map<Id, User> beforeById = new Map<Id, User>(usersBefore);
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Id inviteeId = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily LIMIT 1].Id;
+        System.runAs(dana) {
+            decide(inviteeId, true);
+        }
+
+        List<User> usersAfter = [SELECT Id, Name, ManagerId, LastModifiedDate FROM User ORDER BY Id];
+        System.assertEquals(usersBefore.size(), usersAfter.size(), 'No User may be created or deleted');
+        for (User u : usersAfter) {
+            User before = beforeById.get(u.Id);
+            System.assertEquals(
+                before.LastModifiedDate,
+                u.LastModifiedDate,
+                'No User may be modified — submit and decide only read ManagerId and Name'
+            );
+            System.assertEquals(before.ManagerId, u.ManagerId, 'Never reparented');
+        }
+    }
+
+    /**
      * The formula fields are what let the reports and the approval page read an
      * invitee without knowing there is an attendee behind it. Nothing about an
      * attendee's own record should have to be re-taught to those consumers.
