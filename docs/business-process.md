@@ -1,13 +1,13 @@
-# Business Process — as built (R5), with the R6 approval chain
+# Business Process — as built (R5), with the R7 approval chain
 
 The end-to-end flow of the PoC after R3 (standard Approval Process + standard Reports), R4 (the
 import stopped writing to Contact) and **R5** (it stopped reading standard objects altogether —
 imported people live on `Event_Attendee__c`, an object this project owns).
 
-> **Steps 1–3, 6 and 7 are built and deployed. Steps 4 and 5 show the ★R6 approval chain, which
+> **Steps 1–3, 6 and 7 are built and deployed. Steps 4 and 5 show the ★R7 approval chain, which
 > is designed but not yet built** — today's org still resolves a single approver, the submitter's
-> manager. The R6 design, its costs and its rejected alternatives are in
-> [design.md → ★R6 Approval routing](../design.md#r6-approval-routing--a-chain-not-a-rung).
+> manager. The R7 design, its costs and its rejected alternatives are in
+> [design.md → ★R7 Approval routing](../design.md#r7-approval-routing--a-chain-not-a-rung).
 
 This is the *current* process, not the one in [requirement.md](../requirement.md) — where the two
 differ, the difference is called out under
@@ -29,7 +29,7 @@ forward the attendee list — which leaves approving to somebody else.
 
 **`cust_cd` is what makes the AM reachable again.** R5 deleted `Account__c` and
 `Account_Owner__c` and never reads an Account, so for one revision nothing knew whose customer an
-attendee was and the only approver the routing could produce was the submitter's manager. R6
+attendee was and the only approver the routing could produce was the submitter's manager. R7
 restores the link with a **customer company code carried on the attendee** and a table mapping it
 to the owning AM and onward up the chain — without reaching an Account, so the premise that an
 Account means a transacting customer is never put under pressure.
@@ -191,7 +191,7 @@ for?" is now the Event Invitees related list on the attendee record, which is wh
 history object used to answer — except it is live rather than a parallel annotation that could
 disagree.
 
-**The chain is resolved once and stamped whole, not walked.** R6 does not re-derive the next
+**The chain is resolved once and stamped whole, not walked.** R7 does not re-derive the next
 approver after each decision; at submit time it writes `Approver_1__c … Approver_N__c` and hands
 the record to the approval process, which owns the sequencing from there. Two things follow. A
 reorganisation halfway up a four-level chain cannot reroute an item somebody is already looking
@@ -218,19 +218,19 @@ block another's. The event carries roll-up counts instead.
 imported as an unrecognisable record; a submit by someone with no Manager fails whole rather than
 partially, so the submitter's Draft count still matches what they just sent.
 
-## What is built, and what R6 still needs
+## What is built, and what R7 still needs
 
 R5 removed the blocker the first version of this document recorded — the selector used to narrow
 to accounts the running user owned, fatal for a BMD user who owns none — so **BMD can propose from
-the whole pool today with no code change at all.** R6 answers the open question that replaced it.
+the whole pool today with no code change at all.** R7 answers the open question that replaced it.
 What remains is a build and three decisions.
 
-**1 · The R6 chain is designed, not built.** Steps 4 and 5 in the diagram are the target; the
+**1 · The R7 chain is designed, not built.** Steps 4 and 5 in the diagram are the target; the
 deployed org still stamps one approver. The build is: `Cust_Cd__c` on `Event_Attendee__c` and its
 `Invitee_Cust_Cd__c` formula on the junction, the `Approval_Route__c` object, `Approver__c` split
 into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of the
 resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
-[design.md → ★R6](../design.md#r6-approval-routing--a-chain-not-a-rung).
+[design.md → ★R7](../design.md#r7-approval-routing--a-chain-not-a-rung).
 
 **2 · The notification design does not survive the chain — this is the sharp edge.** Approvers
 today set *Receive Approval Request Emails = Never* and hear once, from the aggregated email at
@@ -246,16 +246,16 @@ back on and accepting one email per invitee per level.
 professor, a journalist, or anyone else who belongs to no customer has no chain. The design refuses
 rather than falling back, because a fallback makes a data gap into a quieter approval — but that is
 only right if such guests are rare. If they are routine, the chain needs a default route, and that
-is a business decision. [Open Question 18](../design.md#open-questions).
+is a business decision. [Open Question 21](../design.md#open-questions).
 
 **4 · The permission sets are named for the old model, not split wrongly.** `Event_AM` grants
 exactly BMD's job — the import tab, `AttendeeImportController`, `InviteeSelectorController`, event
 create, the reports — and `Event_Approver` grants the approver's. The fix is a rename to
-`Event_BMD`, not a new set. A rename is a delete plus a create in metadata terms, so it needs the
-destructive-changes treatment the [R5 upgrade checklist](../DEPLOYMENT.md#part-7--r5-upgrade-checklist)
-already establishes, and assignments have to be re-applied afterwards. Keeping the old name and
-assigning it to BMD users also works and costs nothing — at the price of a permission set whose
-name says AM and whose contents say BMD.
+`Event_BMD`, not a new set — and it is a plain rename, not a migration: nothing in this repo has
+ever been deployed, so there is no org-side `Event_AM` to declare a destructive change against
+and no existing assignment to re-apply. Keeping the old name and assigning it to BMD users also
+works and costs nothing — at the price of a permission set whose name says AM and whose contents
+say BMD.
 
 **Two things that need no change, worth knowing.** The completion notice fires on `Status__c`
 reaching Approved or Rejected, which only happens after the *final* level, so the one piece of
@@ -270,7 +270,7 @@ its meaning drifts: it becomes "somewhere in a chain" rather than "waiting on on
 | The **AM** imports the list, picks the guests and submits them | **BMD** does all of it | The proposing work is a marketing-department job |
 | Compare the upload against existing Contacts and **update** those whose title or company changed | Every row becomes an `Event_Attendee__c`. **No Contact, Lead or Account is created, read, changed or deleted.** | R4 stopped writing to Contact; R5 stopped reading it. The feature now has no blast radius outside the one object it owns — and no idea which guests are customers |
 | Attendees are Contacts | Attendees are `Event_Attendee__c` | An Account means a transacting customer, and R5 satisfies that premise by never reaching an Account rather than by working around it |
-| Send to the **Account Owner** for sign-off | ★R6 a **chain**: the AM who owns the customer `cust_cd` names, then the regional head, then any level added later — all must agree | R5 had retired the Account Owner rung along with the Account, leaving only the submitter's manager. R6 restores the customer-specific half through a code on the attendee rather than an Account, and goes past the original ask: requirement.md asked for one sign-off, the business needs several. **Answers Open Question 15** |
+| Send to the **Account Owner** for sign-off | ★R7 a **chain**: the AM who owns the customer `cust_cd` names, then the regional head, then any level added later — all must agree | R5 had retired the Account Owner rung along with the Account, leaving only the submitter's manager. R7 restores the customer-specific half through a code on the attendee rather than an Account, and goes past the original ask: requirement.md asked for one sign-off, the business needs several. **Answers Open Question 15** |
 | A "select all" button on a custom approval screen | Mass-select in the standard **Approvals** list view | R3 — the custom console was a hand-built reimplementation of a platform feature; the standard one also brings record locking and a full approval history |
 | The submitter exports the approved contacts from the event | Standard **reports**, filtered to one event or across all | R3 — a report is stateless and re-runnable; it also brings scheduled subscriptions for free |
 
