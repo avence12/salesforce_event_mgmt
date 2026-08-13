@@ -300,11 +300,12 @@ rather than papered over.
 
 ★R6 **The `Event_Type__c` values are simply Symposium / OIP / Conference.** An earlier draft
 of this section treated replacing them as a migration, on the grounds that a restricted
-picklist cannot lose a value that records still hold. That reasoning does not apply here:
-**this project is greenfield — nothing has been deployed and no record holds anything** (see
-`CLAUDE.md`). The values are set, not migrated to. What does still need an answer is what
-"OIP" expands to and what it means, because this design cannot describe a taxonomy it does not
-understand — **Open Question 20.**
+picklist cannot lose a value that records still hold. That reasoning does not apply here.
+**`Marketing_Event__c` is one of this project's own objects and holds no records** — the
+target org has plenty of Account and Contact data, but none of it is ours (see `CLAUDE.md`).
+The values are set, not migrated to. What does still need an answer is what "OIP" expands to
+and what it means, because this design cannot describe a taxonomy it does not understand —
+**Open Question 20.**
 
 ★R6 **No aggregate fields on the attendee, by decision.** "How many events has this person
 been to" is not a field — `Event_Invitee__c` is a Lookup child of the attendee, and a roll-up
@@ -317,9 +318,13 @@ be needed.
 
 **The current specification, in full.** The field lists below are the state of
 `force-app/main/default/objects`, not an accumulation of revision deltas — the revision
-markers elsewhere in this document explain *why* the shape is what it is, but nothing here has
-ever been deployed, so there is no earlier state to reconcile against. What is listed is what
-exists.
+markers elsewhere in this document explain *why* the shape is what it is, but none of these
+three objects has ever been deployed, so there is no earlier state of theirs to reconcile
+against. What is listed is what exists.
+
+Note what is *not* here, and that its absence is the point: no `Account`, no `Contact`, no
+`Lead`. The target org holds real data on all three; this project adds three custom objects
+beside them and touches none of it. A deploy is purely additive to that org.
 
 ```
 Marketing_Event__c                                    OWD: Public Read/Write
