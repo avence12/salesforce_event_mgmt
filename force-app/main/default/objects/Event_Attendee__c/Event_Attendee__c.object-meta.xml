@@ -2,7 +2,7 @@
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Event Attendee</label>
     <pluralLabel>Event Attendees</pluralLabel>
-    <description>The people an imported list is about. R5 makes this the only thing Screen 1 writes: an attendee is a person we have on a list, held on our own object, with no Account, no Contact and no Lead behind it. One row per person, reused across every event — the link to an event is Event_Invitee__c, so inviting the same person to three events is three invitee rows against one attendee.</description>
+    <description>The people an imported list is about. R5 makes this the only thing Screen 1 writes: an attendee is a person we have on a list, held on our own object, created without reference to any Account, Contact or Lead. One row per person, reused across every event — the link to an event is Event_Invitee__c, so inviting the same person to three events is three invitee rows against one attendee. ★R8 An attendee may afterwards be linked to a Contact via Contact__c, but only by a reconciliation run: the import still creates them knowing nothing about the org&apos;s own data, which is what keeps it safe to run against a populated org.</description>
     <nameField>
         <label>Attendee Name</label>
         <type>Text</type>

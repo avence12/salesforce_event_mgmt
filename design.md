@@ -148,6 +148,49 @@ tagged a real event would be fitting itself to placeholder data.
 
 R6 items are marked ★R6.
 
+**Revised 2026-08-14 (R8) — reconciled against the source system's ERD.** The business
+produced the ERD of the system this workflow replaces (`SEIM_EVENT`, `SEIM_PERSON`,
+`SEIM_INVITEE`, plus `SEIM_COMP` / `SEIM_EVENT_COMP_MAP` / `SEIM_REGION_ADMIN`), mapped as
+`SEIM_EVENT` → `Marketing_Event__c`, `SEIM_PERSON` → `Event_Attendee__c`, `SEIM_INVITEE` →
+`Event_Invitee__c`. It is a **reference design, not a migration source** — no legacy row is
+coming across, so no `Legacy_*_Id__c` external ids are needed and nothing here is shaped by
+what the old tables hold.
+
+Three of its differences are structural rather than field-level, and two of them reverse
+decisions R5 made:
+
+1. **`SEIM_PERSON` has no company column at all.** Company, `CUST_CD` and `ACCT_MNGR` live on
+   `SEIM_INVITEE` — a person's employer is a property of *this invitation*, not of the person.
+   Our `Unique_Key__c` puts company inside a person's identity, which is why one person who
+   changes jobs becomes two attendees (Open Question 16).
+2. **The ERD keeps a company as a first-class row (`SEIM_COMP`) and hangs the confirmation
+   state off event × company (`SEIM_EVENT_COMP_MAP`).** The business's answer is to reuse
+   **Account** rather than add an object, and to keep approval **per invitee** while letting an
+   approver act on a whole company's invitees at once.
+3. **The ERD snapshots `SALUTE` / `JOB_TITLE` / `COMP_NAME` onto the invitee**, where R5 reads
+   them live through formulas. The business chose snapshot — which is the concern design.md
+   already recorded under *What is deliberately not stored*: an attendee edited after approval
+   silently rewrites what the approval appears to have shown.
+
+**`Event_Attendee__c.Contact__c` answers Open Question 17** with exactly the recovery that
+question named: a lookup populated by a separate reconciliation step, not by putting matching
+back inside the import. `SEIM_PERSON.CONT_PERSON_SEQ` is that field in the source system.
+
+**What R8 costs, stated before the field lists rather than after:** R5's headline property was
+that the feature touched no standard object at all. Reusing Account and linking to Contact ends
+that, and only the *write* half of it survives — nothing is created, updated or deleted on any
+standard object, which is what
+`AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` actually asserts and
+what makes the deploy safe against a populated org. The half that is gone is "needs no
+permission on standard objects": rendering a Contact or Account link requires Read, and that
+grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 8) rather than
+shipped in `Event_AM`. `CLAUDE.md`'s invariant needs rewording to match: *never writes* stays,
+*never reads* does not.
+
+R8 items are marked ★R8. **Partially applied** — the person- and invitee-level fields below are
+built; the Account snapshot, the identity-key change and the company-grouped approval action
+are pending the open decisions listed under *Open Questions* 23–25.
+
 ## Problem Statement
 
 Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV) from conferences and other systems. Today there is no structured way to: (1) get those people into Salesforce at all, (2) assemble an event invitee list that several AMs contribute to, (3) get per-person sign-off from a manager, and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox.
@@ -229,6 +272,7 @@ erDiagram
     Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
     Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
     User               ||--o{ Event_Invitee__c : "Added_By__c and Approver__c"
+    Contact            ||--o{ Event_Attendee__c : "R8 Contact__c, optional, SetNull"
 
     Marketing_Event__c {
         Text        Name
@@ -245,6 +289,7 @@ erDiagram
         Text  Last_Name__c "required, no surname means no identity"
         Email Email__c "optional and NOT unique"
         Text  Company__c "free text, no Account lookup"
+        Lookup Contact__c FK "R8, optional, set by reconciliation not by the import"
         Text  Unique_Key__c UK "normalised last, first, company, email"
     }
 
@@ -349,12 +394,24 @@ Marketing_Event__c                                    OWD: Public Read/Write
 Event_Attendee__c                                     OWD: Public Read/Write
   (one row per person, reused across every event)
   Name                       Text(80)                 "First Last", assembled by the import
+  Salutation__c           ★R8 Text(40)                 free text, not a picklist
   First_Name__c              Text(40)
   Last_Name__c               Text(80), required       no surname = no identity; import skips
+  Other_Language_Name__c  ★R8 Text(255)                the name in its own script
   Email__c                   Email                    optional, and deliberately NOT unique
   Title__c                   Text(128)
+  Other_Language_Job_Title__c ★R8 Text(255)
   Company__c                 Text(255)                free text; no lookup to Account, by design
   Mobile__c                  Phone                    as given, never normalised
+  Work_Phone__c           ★R8 Phone                    kept beside Mobile__c, not instead of it
+  Address__c              ★R8 Text Area(255)           one field, not five - see the field description
+  Contact__c              ★R8 Lookup -> Contact, SetNull
+                                                      "also exists as a Contact in the org".
+                                                      Written by reconciliation, NEVER by the
+                                                      import. SetNull, never Restrict - this
+                                                      must not block the org deleting a Contact
+  Is_Known_Contact__c     ★R8 Formula, Checkbox        NOT(ISBLANK(Contact__c)); readable without
+                                                      any grant on Contact
   Source_File__c             Text(255)                which upload it last came in on
   Imported_On__c             DateTime                 refreshed on re-import
   Unique_Key__c              Text(255), unique, ExtId normalised last|first|company|email
@@ -370,6 +427,10 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
                                                       Approved | Rejected
                                                       system-managed; FLS read-only
   Attended__c             ★R6 Checkbox                 actually turned up. NOT a Status value
+  VIP__c                  ★R8 Checkbox                 VIP *at this event*, hence on the junction
+  Remark__c               ★R8 Text Area(255)           the AM's case for inviting them; shown on
+                                                      the approval page. Not approval comments,
+                                                      which belong to a decision instead
   Added_By__c                Lookup -> User, SetNull  which AM added the row
   Approver__c                Lookup -> User, SetNull  submitter's manager, frozen at submit
   Submitted_At__c            DateTime
@@ -1217,8 +1278,11 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
 19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
 20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
-17. ★R5 **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
+17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 21. ★R7 **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
+23. ★R8 **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
+24. ★R8 **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
+25. ★R8 **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.
 22. ★R7 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. Five is the suggested starting point for a two-level chain. Worth checking the org's actual cap and the business's honest ceiling in the same conversation.
 
 ## Success Criteria

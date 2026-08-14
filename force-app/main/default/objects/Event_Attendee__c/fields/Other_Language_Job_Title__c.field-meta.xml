@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Other_Language_Job_Title__c</fullName>
+    <label>Other Language Job Title</label>
+    <description>★R8 SEIM_PERSON.OTHER_LANG_JOB_TITLE. The job title in the same script as Other_Language_Name__c. Person-level and live: unlike the invitee&apos;s snapshot of Title__c, this one is not frozen at invite time, because no approval decision is made on it.</description>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

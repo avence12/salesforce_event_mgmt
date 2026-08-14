@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Other_Language_Name__c</fullName>
+    <label>Other Language Name</label>
+    <description>★R8 SEIM_PERSON.OTHER_LANG_NAME. The person&apos;s name in their own script, held beside the Latin one rather than instead of it — a guest list printed for a regional event needs both. Not part of Unique_Key__c: the same person may appear with this column filled in one file and empty in another, and making identity depend on it would split them into two attendees.</description>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

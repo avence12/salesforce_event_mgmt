@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Contact__c</fullName>
+    <label>Contact</label>
+    <description>★R8 SEIM_PERSON.CONT_PERSON_SEQ. Populated means &quot;this person also exists as a Contact in the org&quot;; blank means we have not established that, which is not the same as knowing they are not one. This is the field Open Question 17 named as the recovery for what R5 gave up — the answer to &quot;which of tonight&apos;s guests are existing customers?&quot;
+
+Two rules travel with it, and the field is unsafe without them.
+
+1. THE IMPORT MUST NOT SET THIS. Screen 1 still reads no standard object; matching a CSV row against Contact is what R4 and R5 spent two revisions removing, and putting it back inside the import would restore the ambiguity problem along with it. This field is populated by a separate reconciliation step that an admin runs deliberately.
+2. deleteConstraint is SetNull and may never be Restrict. Restrict would let an attendee record block the org from deleting its own Contact — bad-neighbour behaviour on an object this project does not own. SetNull means a deleted Contact silently unlinks, and that is the correct trade: our data goes quiet, theirs stays theirs.
+
+What it costs: reading the linked Contact&apos;s name requires Read on Contact, which the Event_AM permission set deliberately does not grant. That grant is an org decision and lives in the post-deploy checklist, not in this repo. Is_Known_Contact__c exists so the useful half of this field — the yes/no — is readable and reportable without it.</description>
+    <type>Lookup</type>
+    <referenceTo>Contact</referenceTo>
+    <relationshipLabel>Event Attendees</relationshipLabel>
+    <relationshipName>Event_Attendees</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

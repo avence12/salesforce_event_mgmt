@@ -13,6 +13,8 @@
             <layoutItems><behavior>Readonly</behavior><field>Invitee_Org__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Status__c</field></layoutItems>
             <layoutItems><behavior>Edit</behavior><field>Attended__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>VIP__c</field></layoutItems>
+            <layoutItems><behavior>Edit</behavior><field>Remark__c</field></layoutItems>
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Added_By__c</field></layoutItems>

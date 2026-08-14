@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Remark__c</fullName>
+    <label>Remark</label>
+    <description>★R8 SEIM_INVITEE.REMARK. The AM&apos;s note about why this person is on the list — distinct from the approval process&apos;s comments, which belong to a decision and are only visible in the approval history. This one is a property of the row, readable before anyone decides anything, and it is shown on the approval page so the approver sees the case being made. Text Area (255) rather than Long Text so it can be filtered and sorted in reports; a Long Text Area cannot be either.</description>
+    <type>TextArea</type>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+</CustomField>

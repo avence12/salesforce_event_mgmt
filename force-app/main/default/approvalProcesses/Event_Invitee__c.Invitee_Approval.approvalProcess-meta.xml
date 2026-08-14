@@ -26,10 +26,18 @@
       setting back — the two must move together or approvers hear nothing at all.
     -->
 
+    <!--
+      ★R8 VIP__c and Remark__c join the page because they are the only two fields that
+      say anything the approver cannot already infer: everything else here identifies the
+      person, while these two are the AM's case for inviting them. An approval screen that
+      shows only identity asks the approver to decide on a name.
+    -->
     <approvalPageFields>
         <field>Invitee_Name__c</field>
         <field>Invitee_Title__c</field>
         <field>Invitee_Org__c</field>
+        <field>VIP__c</field>
+        <field>Remark__c</field>
         <field>Added_By__c</field>
         <field>Marketing_Event__c</field>
     </approvalPageFields>

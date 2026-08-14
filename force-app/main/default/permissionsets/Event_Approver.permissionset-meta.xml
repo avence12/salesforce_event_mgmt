@@ -80,6 +80,21 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R8 Both readable, neither editable: they are the AM's account of why this person
+      is worth inviting, and an approver reads that account rather than editing it.
+      Remark__c is on the approval page for the same reason.
+    -->
+    <fieldPermissions>
+        <field>Event_Invitee__c.VIP__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Remark__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Event_Name__c</field>
         <readable>true</readable>
@@ -177,6 +192,42 @@
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Attendee__c.Mobile__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Salutation__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Work_Phone__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Address__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Other_Language_Name__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Attendee__c.Other_Language_Job_Title__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <!--
+      ★R8 The approver gets the yes/no and not the link, for the same reason the AM does:
+      no Contact grant is made anywhere in this repo. "Is this guest already known to us?"
+      is a fair question to weigh an invitation against; "which Contact are they?" is the
+      org's data to release, not this project's.
+    -->
+    <fieldPermissions>
+        <field>Event_Attendee__c.Is_Known_Contact__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
