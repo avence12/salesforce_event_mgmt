@@ -1,0 +1,143 @@
+<template>
+    <lightning-card title="Approvals by Company" icon-name="standard:approval">
+        <lightning-button
+            slot="actions"
+            label="Refresh"
+            variant="neutral"
+            onclick={handleRefresh}
+            disabled={loading}
+        ></lightning-button>
+
+        <div class="slds-p-around_medium">
+            <template lwc:if={loading}>
+                <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
+            </template>
+
+            <template lwc:if={hasPending}>
+                <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">
+                    {headerLabel}. Tick a company to select everyone from it, or tick people individually — then approve
+                    or reject. Nothing is selected to begin with.
+                </p>
+
+                <lightning-input
+                    class="slds-m-bottom_small"
+                    label="Comment (optional, recorded on the approval)"
+                    value={comment}
+                    onchange={handleComment}
+                ></lightning-input>
+
+                <template for:each={displayGroups} for:item="g">
+                    <div key={g.groupKey} class="company slds-m-bottom_small">
+                        <div
+                            class="company-header slds-p-around_x-small slds-grid slds-wrap slds-grid_vertical-align-center"
+                        >
+                            <div class="slds-col slds-grow">
+                                <label class="slds-grid slds-grid_vertical-align-center company-label">
+                                    <input
+                                        type="checkbox"
+                                        class="slds-m-right_x-small"
+                                        data-group-box={g.groupKey}
+                                        checked={g.allSelected}
+                                        onchange={handleGroupToggle}
+                                    />
+                                    <span class="slds-text-heading_small">{g.company}</span>
+                                </label>
+                                <div class="slds-text-body_small slds-text-color_weak slds-m-left_large">
+                                    <template lwc:if={g.hasCustomer}>
+                                        <span class="cust-cd">{g.custCdLabel}</span>
+                                    </template>
+                                    <template lwc:else>
+                                        <span class="no-customer" title="This guest belongs to no customer account"
+                                            >Not a customer</span
+                                        >
+                                    </template>
+                                    <span class="slds-m-left_small">{g.countLabel}</span>
+                                </div>
+                            </div>
+                            <div class="slds-col slds-no-flex slds-grid slds-gutters_xx-small">
+                                <lightning-button
+                                    class="slds-m-right_xx-small"
+                                    label={g.approveLabel}
+                                    variant="brand"
+                                    data-group={g.groupKey}
+                                    disabled={g.actionsDisabled}
+                                    onclick={handleGroupApprove}
+                                ></lightning-button>
+                                <lightning-button
+                                    label={g.rejectLabel}
+                                    variant="destructive-text"
+                                    data-group={g.groupKey}
+                                    disabled={g.actionsDisabled}
+                                    onclick={handleGroupReject}
+                                ></lightning-button>
+                            </div>
+                        </div>
+
+                        <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                            <thead class="slds-assistive-text">
+                                <tr>
+                                    <th scope="col">Select</th>
+                                    <th scope="col">Invitee</th>
+                                    <th scope="col">Title</th>
+                                    <th scope="col">Added by</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={g.rows} for:item="r">
+                                    <tr key={r.inviteeId}>
+                                        <td style="width: 2.5rem">
+                                            <input
+                                                type="checkbox"
+                                                data-id={r.inviteeId}
+                                                checked={r.selected}
+                                                onchange={handleRowToggle}
+                                            />
+                                        </td>
+                                        <td>
+                                            <span>{r.nameLabel}</span>
+                                            <template lwc:if={r.vip}>
+                                                <span class="slds-badge slds-badge_lightest slds-m-left_x-small vip"
+                                                    >VIP</span
+                                                >
+                                            </template>
+                                            <template lwc:if={r.hasRemark}>
+                                                <div class="slds-text-body_small slds-text-color_weak remark">
+                                                    {r.remark}
+                                                </div>
+                                            </template>
+                                        </td>
+                                        <td>{r.title}</td>
+                                        <td class="slds-text-body_small slds-text-color_weak">{r.addedByName}</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+                <div class="slds-m-top_medium slds-border_top slds-p-top_small slds-grid slds-gutters_xx-small">
+                    <lightning-button
+                        class="slds-m-right_xx-small"
+                        label={approveAllLabel}
+                        variant="brand"
+                        disabled={bulkDisabled}
+                        onclick={handleApproveSelected}
+                    ></lightning-button>
+                    <lightning-button
+                        label={rejectAllLabel}
+                        variant="destructive-text"
+                        disabled={bulkDisabled}
+                        onclick={handleRejectSelected}
+                    ></lightning-button>
+                </div>
+            </template>
+
+            <template lwc:else>
+                <p class="slds-text-body_regular slds-text-color_weak">
+                    Nothing on this event is waiting on you. Invitees appear here once an AM submits them and the
+                    approval routes to you.
+                </p>
+            </template>
+        </div>
+    </lightning-card>
+</template>

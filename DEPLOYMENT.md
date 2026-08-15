@@ -179,7 +179,13 @@ rather than inherit from a `git push`.
    has and the one that means "customer account number". If your org keeps it on a custom field
    instead, change the single line in `InviteeSelectorController.stampSnapshot` — no schema
    change here, and no field is ever added to Account by this project.
-10. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+10. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
+    Company* ships on the Marketing Event record page above the attendee selector. An AM who is
+    nobody's approver sees it in its empty state, which is one line of text rather than an empty
+    table. If that is unwanted, add a component visibility filter on the page or assign a
+    second record page by profile. Both change how your org's pages are laid out, so neither is
+    deployed from here.
+11. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 

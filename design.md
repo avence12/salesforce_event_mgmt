@@ -187,11 +187,9 @@ grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 8)
 shipped in `Event_AM`. `CLAUDE.md`'s invariant needs rewording to match: *never writes* stays,
 *never reads* does not.
 
-R8 items are marked ★R8. **The data model is complete; one screen is not.** The person fields,
-the Contact link, the person and customer snapshots on the invitee are all built. Open
-Questions 23 and 24 are answered above and in place. What remains is Open Question 25 — how an
-approver approves a whole company's invitees in one action — which is a screen decision waiting
-on a wireframe, not a modelling one. Nothing routes to `Account_Manager__c` yet either; R7's
+R8 items are marked ★R8. **All of it is built.** The person fields, the Contact link, the person
+and customer snapshots on the invitee, and the company-grouped approval screen — Open Questions
+23, 24 and 25 are answered above and in place. Nothing routes to `Account_Manager__c` yet: R7's
 chain is still unbuilt, and R8 only gives it the key it needs.
 
 ## Problem Statement
@@ -926,6 +924,57 @@ This is the honest boundary of "no code": the two places where the platform genu
 declarative answer are aggregate notifications (here) and the pre-commit CSV diff (Screen 1).
 Everything else in Screens 4 and 5 goes.
 
+### ★R8 Screen 4b — Approvals by Company (`approvalsByCompany` LWC)
+
+**The boundary drawn above moved, and it is worth saying so plainly rather than folding this
+in quietly.** R3 deleted a hand-built approval console because it reimplemented a platform
+feature; R8 adds a custom approval screen back. That is a partial reversal, and the paragraph
+above now has a third exception.
+
+**What forced it.** The requirement is *approval stays per invitee, but an approver ticks one
+company and decides everyone from it*. The standard Approval Requests list cannot serve that,
+for a structural reason rather than a cosmetic one: its rows are `ProcessInstanceWorkitem`
+records, so it can display, sort and group only by fields on the work item — Related To,
+Submitted By, Date. **A field on the target record, which is where the company lives, is not
+available to it at all.** The company is not merely inconvenient to find on that screen; it is
+absent, so there is nothing to select on.
+
+**What it is not.** The platform still owns the approval. The process definition, the routing,
+the record lock, the `Status__c` and `Decided_At__c` field updates and the `ProcessInstance`
+audit trail are all standard, and `InviteeApprovalController.decide` calls `Approval.process`
+rather than writing a status itself. What the component adds is a way to *choose* the work
+items. That is the difference from the console R3 deleted, which reimplemented the decision.
+
+**The alternative that was rejected, and why.** A list view on `Event_Invitee__c` filtered to
+`Approver__c = me`, grouped by `Invitee_Org__c`, with a custom mass-approve list-view button:
+roughly 40 lines against ~300, and a much smaller walk-back of R3. It lost on the phone.
+requirement.md asks for approval on iOS, approvers habitually decide from a handset, and a
+standard list view's checkboxes are the wrong target size there — the feature would exist and
+not get used. **That reasoning is only as good as the premise**; if it turns out approvals
+are made at a desk, the list-view button is the better answer and this component is 300 lines
+of avoidable code.
+
+**Two interaction decisions worth recording.**
+
+- **Nothing starts selected.** Pre-ticking every row would make "approve everybody" the path
+  of least resistance, which inverts what an approval is for. The company tick *is* the
+  requirement's one tick; the decision button is deliberately a second, separate act.
+- **Unlinked guests group by their company text, not into one bucket.** An earlier sketch put
+  every guest with no Account under a single "No customer" heading. That would have put a
+  professor from one university and a journalist from an unrelated paper behind the same
+  *Approve all* button — precisely the accidental bulk approval the screen exists to prevent.
+  Groups with no Account are labelled *Not a customer* instead, which is also the first place
+  Open Question 21 becomes visible to a human.
+
+**Costs, stated:**
+
+| Cost | Detail |
+|---|---|
+| ~300 lines of LWC + Apex, plus tests | Against ~40 for the list-view button. Bought with the phone experience |
+| It is scoped to one event | The component lives on the Marketing Event record page, so "everything awaiting me across all events" is a question it cannot answer. The standard Approvals list still can, just not grouped |
+| An AM sees it in its empty state | One line of text on every event page. Hiding it needs a component visibility filter or a per-profile record page — an admin decision about their org's pages, so it is a post-deploy step |
+| A cap of 200 per decision | `Approval.process` is DML; an enormous group would fail on limits. Refusing at a stated number beats a governor limit surfacing as an unexplained error. **Unverified against a real org** |
+
 ### Screen 5 — Export (★R3: standard Reports, no custom code)
 
 R3 deletes `EventExportController` (355 lines), the `approvedExport` LWC and the *Approved
@@ -1315,7 +1364,7 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 21. ★R7 **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
 23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
 24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
-25. ★R8 **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.
+25. ★R8 ~~**How does an approver approve a whole company's invitees at once?**~~ **Answered: a custom LWC on the event page — see *Screen 4b* below.** The business chose the component over the list-view button after seeing both wireframed, and the deciding argument was the phone: a standard list view's checkboxes are the wrong target size on a handset, and requirement.md asks for approval on iOS. The cost is accepted rather than avoided — ~300 lines where 40 would have done, and a partial walk-back of R3. Original text: **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.
 22. ★R7 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. Five is the suggested starting point for a two-level chain. Worth checking the org's actual cap and the business's honest ceiling in the same conversation.
 
 ## Success Criteria

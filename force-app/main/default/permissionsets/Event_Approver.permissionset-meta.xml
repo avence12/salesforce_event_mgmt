@@ -266,6 +266,16 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R8 The company-grouped approval screen. This is the only Apex an approver runs, and
+      it is granted here rather than on Event_AM because approving is what this set is for —
+      an AM who is also somebody's approver gets it by holding both sets, which is the
+      accurate description of that person rather than a widening of either role.
+    -->
+    <classAccesses>
+        <apexClass>InviteeApprovalController</apexClass>
+        <enabled>true</enabled>
+    </classAccesses>
     <tabSettings>
         <tab>Marketing_Event__c</tab>
         <visibility>Visible</visibility>

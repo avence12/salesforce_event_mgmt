@@ -1,0 +1,34 @@
+.company {
+    border: 1px solid var(--lwc-colorBorder, #e5e5e5);
+    border-radius: var(--lwc-borderRadiusMedium, 0.25rem);
+    overflow: hidden;
+}
+
+.company-header {
+    background: var(--lwc-colorBackgroundAlt2, #f3f2f2);
+}
+
+/* The company row is the one-tick target the requirement asks for, so give the whole
+   label a pointer rather than only the 13px checkbox — on a phone that difference is
+   the difference between the feature working and not. */
+.company-label {
+    cursor: pointer;
+}
+
+.cust-cd {
+    font-family: var(--lwc-fontFamilyMonospace, monospace);
+}
+
+/* Stated, not hidden: a guest with no customer has no approval chain behind them, and
+   an approver deciding on one should be able to see that at a glance. */
+.no-customer {
+    font-style: italic;
+}
+
+.remark {
+    max-width: 40ch;
+}
+
+.vip {
+    letter-spacing: 0.04em;
+}
