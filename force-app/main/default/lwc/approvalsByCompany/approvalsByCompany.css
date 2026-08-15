@@ -1,11 +1,11 @@
 .company {
-    border: 1px solid var(--lwc-colorBorder, #e5e5e5);
-    border-radius: var(--lwc-borderRadiusMedium, 0.25rem);
+    border: 1px solid var(--slds-g-color-neutral-base-80, #c9c9c9);
+    border-radius: 0.25rem;
     overflow: hidden;
 }
 
 .company-header {
-    background: var(--lwc-colorBackgroundAlt2, #f3f2f2);
+    background: var(--slds-g-color-neutral-base-95, #f3f3f3);
 }
 
 /* The company row is the one-tick target the requirement asks for, so give the whole
@@ -16,7 +16,7 @@
 }
 
 .cust-cd {
-    font-family: var(--lwc-fontFamilyMonospace, monospace);
+    font-family: monospace;
 }
 
 /* Stated, not hidden: a guest with no customer has no approval chain behind them, and
@@ -31,4 +31,8 @@
 
 .vip {
     letter-spacing: 0.04em;
+}
+
+.col-select {
+    width: 2.5rem;
 }

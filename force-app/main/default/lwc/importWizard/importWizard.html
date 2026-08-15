@@ -69,7 +69,7 @@
                 <table class="slds-table slds-table_bordered slds-table_cell-buffer">
                     <thead>
                         <tr class="slds-line-height_reset">
-                            <th scope="col" style="width: 2rem"></th>
+                            <th scope="col" class="col-select"></th>
                             <th scope="col">Name</th>
                             <th scope="col">Company</th>
                             <th scope="col">Email</th>
@@ -127,7 +127,15 @@
             <!-- STEP 3 -->
             <template lwc:if={isStep3}>
                 <template lwc:if={applyResult}>
-                    <div class="slds-text-heading_medium slds-m-bottom_small">Import complete ✅</div>
+                    <div class="slds-text-heading_medium slds-m-bottom_small slds-grid slds-grid_vertical-align-center">
+                        <lightning-icon
+                            icon-name="utility:success"
+                            variant="success"
+                            size="small"
+                            class="slds-m-right_x-small"
+                        ></lightning-icon>
+                        <span>Import complete</span>
+                    </div>
                     <p>
                         <b>{applyResult.attendeesCreated}</b> attendee(s) created,
                         <b>{applyResult.attendeesUpdated}</b> already known and refreshed.<br />
