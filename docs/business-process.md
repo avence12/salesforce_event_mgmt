@@ -225,11 +225,14 @@ to accounts the running user owned, fatal for a BMD user who owns none — so **
 the whole pool today with no code change at all.** R7 answers the open question that replaced it.
 What remains is a build and three decisions.
 
-**1 · The R7 chain is designed, not built.** Steps 4 and 5 in the diagram are the target; the
-deployed org still stamps one approver. The build is: `Cust_Cd__c` on `Event_Attendee__c` and its
-`Invitee_Cust_Cd__c` formula on the junction, the `Approval_Route__c` object, `Approver__c` split
-into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of the
-resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
+**1 · The R7 chain is designed, not built — but R8 has already laid the key it routes on.**
+Steps 4 and 5 in the diagram are the target; the deployed org still stamps one approver.
+`Cust_Cd__c` now exists on `Event_Invitee__c` — on the invitee rather than the attendee, because
+a customer code follows the employer and would be silently wrong on anyone who changed jobs —
+snapshotted from the Account behind the person's Contact link, along with `Account__c` and
+`Account_Manager__c`. What remains to build is the `Approval_Route__c` object, `Approver__c`
+split into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of
+the resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
 [design.md → ★R7](../design.md#r7-approval-routing--a-chain-not-a-rung).
 
 **2 · The notification design does not survive the chain — this is the sharp edge.** Approvers

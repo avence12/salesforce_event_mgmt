@@ -174,7 +174,12 @@ rather than inherit from a `git push`.
    The link is populated by a reconciliation run, never by the import — Screen 1 reads no
    standard object, and that is asserted in
    `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts`.
-9. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+9. **★R8 Confirm where this org keeps the customer code.** `Event_Invitee__c.Cust_Cd__c` is
+   snapshotted from the standard `Account.AccountNumber`, because that is the field every org
+   has and the one that means "customer account number". If your org keeps it on a custom field
+   instead, change the single line in `InviteeSelectorController.stampSnapshot` — no schema
+   change here, and no field is ever added to Account by this project.
+10. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 

@@ -157,6 +157,34 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
+        <field>Event_Invitee__c.Invitee_Salutation__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <!--
+      ★R8 The customer snapshot, read-only because it is a snapshot. Cust_Cd__c and the
+      two lookups are stamped by Apex at add time; a hand-edit would turn a record of what
+      was true into an assertion about what someone wishes were true. Note again that no
+      Account grant appears anywhere in this set: Apex can read an Account to take the
+      snapshot without one, and the text fields carry the answer afterwards, so an AM with
+      no Account access still sees the company and the code — just not a clickable link.
+    -->
+    <fieldPermissions>
+        <field>Event_Invitee__c.Account__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Cust_Cd__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Account_Manager__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
         <field>Event_Invitee__c.Added_By_Me__c</field>
         <readable>true</readable>
         <editable>false</editable>

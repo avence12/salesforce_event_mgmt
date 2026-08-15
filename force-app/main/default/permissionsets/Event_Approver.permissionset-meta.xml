@@ -156,6 +156,31 @@
         <editable>false</editable>
     </fieldPermissions>
     <fieldPermissions>
+        <field>Event_Invitee__c.Invitee_Salutation__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <!--
+      ★R8 An approver needs the company and the customer code more than an AM does: those
+      are what a company-grouped approval is grouped *by*. Read-only, and no Account grant
+      here either — the code and the name are plain text on our own object.
+    -->
+    <fieldPermissions>
+        <field>Event_Invitee__c.Account__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Cust_Cd__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Account_Manager__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
         <field>Event_Invitee__c.Added_By_Me__c</field>
         <readable>true</readable>
         <editable>false</editable>

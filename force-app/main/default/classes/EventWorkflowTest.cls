@@ -186,12 +186,12 @@ private class EventWorkflowTest {
     }
 
     /**
-     * The formula fields are what let the reports and the approval page read an
-     * invitee without knowing there is an attendee behind it. Nothing about an
-     * attendee's own record should have to be re-taught to those consumers.
+     * ★R8 Name and email still read through live; title, salutation and company are
+     * snapshotted. A guest with no Contact behind them keeps the company text the import
+     * gave — the field is never blank merely because somebody is nobody's customer.
      */
     @IsTest
-    static void inviteeReadsThroughToTheAttendee() {
+    static void inviteeSnapshotsThePersonAndFallsBackToTheImportedCompany() {
         User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id helene = attendeeId('Dubois');
@@ -201,18 +201,148 @@ private class EventWorkflowTest {
         }
 
         Event_Invitee__c inv = [
-            SELECT Invitee_Name__c, Invitee_Org__c, Invitee_Title__c, Invitee_Email__c
+            SELECT
+                Invitee_Name__c,
+                Invitee_Org__c,
+                Invitee_Title__c,
+                Invitee_Email__c,
+                Account__c,
+                Cust_Cd__c,
+                Account_Manager__c
             FROM Event_Invitee__c
             WHERE Event_Attendee__c = :helene
         ];
         System.assertEquals('Hélène Dubois', inv.Invitee_Name__c, 'Non-ASCII names survive the formula');
-        System.assertEquals('Université de Genève', inv.Invitee_Org__c, 'Company text stands in for an Account');
+        System.assertEquals('Université de Genève', inv.Invitee_Org__c, 'Falls back to the imported company text');
         System.assertEquals('Attendee', inv.Invitee_Title__c);
         System.assertNotEquals(null, inv.Invitee_Email__c);
+
+        // Blank, not guessed. A guest who belongs to no customer has no customer to name,
+        // and inventing one from the company text is the mistake the Contact link exists
+        // to avoid.
+        System.assertEquals(null, inv.Account__c, 'No Contact behind them means no Account');
+        System.assertEquals(null, inv.Cust_Cd__c);
+        System.assertEquals(null, inv.Account_Manager__c);
 
         // The point of the whole revision: inviting somebody invents no customer record.
         System.assertEquals(0, [SELECT COUNT() FROM Account], 'No Account may be created anywhere in this flow');
         System.assertEquals(0, [SELECT COUNT() FROM Contact]);
+        System.assertEquals(0, [SELECT COUNT() FROM Lead]);
+    }
+
+    /**
+     * ★R8 The whole reason the formulas became snapshots. Editing an attendee after they
+     * have been invited must not rewrite what the invitation — and therefore the approval
+     * that was made on it — appears to have said.
+     */
+    @IsTest
+    static void editingTheAttendeeLaterDoesNotRewriteTheInvitation() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+        }
+
+        Test.startTest();
+        update new Event_Attendee__c(Id = emily, Title__c = 'Managing Director', Company__c = 'Globex');
+        Test.stopTest();
+
+        Event_Invitee__c inv = [
+            SELECT Invitee_Title__c, Invitee_Org__c, Invitee_Name__c
+            FROM Event_Invitee__c
+            WHERE Event_Attendee__c = :emily
+        ];
+        System.assertEquals('Attendee', inv.Invitee_Title__c, 'The title at invitation time is what the row keeps');
+        System.assertEquals('Acme Corp', inv.Invitee_Org__c, 'Likewise the company they were invited as');
+        // Name is still a live formula, deliberately: the ERD does not snapshot it, and a
+        // corrected spelling should reach every list the person appears on.
+        System.assertEquals('Emily Carter', inv.Invitee_Name__c);
+    }
+
+    /**
+     * ★R8 The customer arrives through the Contact link and nowhere else. This is the
+     * mechanism that gives the Account Owner rung something to stand on again without the
+     * import ever matching anybody against the org's own data.
+     */
+    @IsTest
+    static void aLinkedContactPutsTheCustomerOnTheInvitee() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        // Fixture only, and created inside this method rather than in @TestSetup so the
+        // other tests keep asserting a world with no Account in it at all.
+        Account acme = new Account(Name = 'Acme Corporation', AccountNumber = 'CUST-0042');
+        insert acme;
+        Contact emilyContact = new Contact(FirstName = 'Emily', LastName = 'Carter', AccountId = acme.Id);
+        insert emilyContact;
+        update new Event_Attendee__c(Id = emily, Contact__c = emilyContact.Id);
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+        }
+
+        Event_Invitee__c inv = [
+            SELECT Invitee_Org__c, Account__c, Cust_Cd__c, Account_Manager__c
+            FROM Event_Invitee__c
+            WHERE Event_Attendee__c = :emily
+        ];
+        System.assertEquals(acme.Id, inv.Account__c, 'Reached through Contact__r.AccountId');
+        System.assertEquals(
+            'Acme Corporation',
+            inv.Invitee_Org__c,
+            'The Account name wins over the imported text once there is an Account'
+        );
+        System.assertEquals('CUST-0042', inv.Cust_Cd__c, 'AccountNumber is the assumed home of the customer code');
+        System.assertEquals(
+            [SELECT OwnerId FROM Account WHERE Id = :acme.Id].OwnerId,
+            inv.Account_Manager__c,
+            'ACCT_MNGR is the Account owner, not whoever added the row'
+        );
+
+        Event_Attendee__c person = [SELECT Is_Known_Contact__c FROM Event_Attendee__c WHERE Id = :emily];
+        System.assertEquals(true, person.Is_Known_Contact__c);
+    }
+
+    /**
+     * ★R8 Reading the org's data is allowed where a decision was recorded for it; writing
+     * to it is not, and adding an invitee is a place the boundary could plausibly slip.
+     */
+    @IsTest
+    static void addingAnInviteeNeverWritesToAccountOrContact() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        Account acme = new Account(Name = 'Acme Corporation', AccountNumber = 'CUST-0042');
+        insert acme;
+        Contact emilyContact = new Contact(FirstName = 'Emily', LastName = 'Carter', AccountId = acme.Id);
+        insert emilyContact;
+        update new Event_Attendee__c(Id = emily, Contact__c = emilyContact.Id);
+
+        Account accountBefore = [SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate FROM Account];
+        Contact contactBefore = [SELECT Id, AccountId, LastModifiedDate FROM Contact];
+
+        Test.startTest();
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+        }
+        Test.stopTest();
+
+        Account accountAfter = [SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate FROM Account];
+        System.assertEquals(accountBefore.LastModifiedDate, accountAfter.LastModifiedDate, 'Account read, not written');
+        System.assertEquals(accountBefore.Name, accountAfter.Name);
+        System.assertEquals(accountBefore.AccountNumber, accountAfter.AccountNumber);
+        System.assertEquals(accountBefore.OwnerId, accountAfter.OwnerId, 'Never reassigned');
+
+        Contact contactAfter = [SELECT Id, AccountId, LastModifiedDate FROM Contact];
+        System.assertEquals(contactBefore.LastModifiedDate, contactAfter.LastModifiedDate, 'Contact read, not written');
+        System.assertEquals(contactBefore.AccountId, contactAfter.AccountId, 'Never reparented');
+
+        System.assertEquals(1, [SELECT COUNT() FROM Account], 'No Account created');
+        System.assertEquals(1, [SELECT COUNT() FROM Contact], 'No Contact created');
         System.assertEquals(0, [SELECT COUNT() FROM Lead]);
     }
 
@@ -419,7 +549,7 @@ private class EventWorkflowTest {
             System.assertEquals(true, all[0].mine);
             System.assertEquals('Draft', all[0].status);
             System.assertEquals('Emily Carter', all[0].attendeeName);
-            System.assertEquals('Acme Corp', all[0].company, 'Read through Invitee_Org__c, not the lookup');
+            System.assertEquals('Acme Corp', all[0].company, 'Read from the Invitee_Org__c snapshot, not the lookup');
         }
     }
 

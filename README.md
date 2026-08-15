@@ -18,7 +18,7 @@ End-to-end flow diagram: [docs/business-process.md](docs/business-process.md)
 **Two roles.** **BMD** proposes — steps 1–4 above — and the **AM** approves. R5 had left the AM
 unreachable: it deleted the `Account__c` / `Account_Owner__c` fields that carried "whose customer
 is this", so the only approver the routing could produce was the submitter's manager. **★R7
-answers that** with a customer code (`cust_cd`) on the attendee and an `Approval_Route__c` table
+answers that** with a customer code (`cust_cd`) on the invitee and an `Approval_Route__c` table
 mapping it to the owning AM and onward to the regional head — a chain, where every level must
 agree and further levels cost rows rather than a deploy. **R7 is designed, not built**: see
 [design.md → ★R7 Approval routing](design.md#r7-approval-routing--a-chain-not-a-rung) and the
@@ -115,9 +115,9 @@ OWD check. The workflow reads none of those objects, so it asks nothing of them.
 
 - 500-row import cap.
 - **Multi-level approval is designed but not built (★R7).** The deployed org stamps one approver, the submitter's manager. The AM → regional head chain, its `Approval_Route__c` table and its costs — chiefly that levels 2+ get no notification until a step-entry action is added — are in [design.md → ★R7](design.md#r7-approval-routing--a-chain-not-a-rung). Naming an AM as the BMD user's Manager is the interim demo path.
-- **No link between an attendee and an existing customer.** Someone who is both is two unrelated records, and "which of tonight's guests are customers?" — answerable in R4 — is not answerable now. Open Question 17 in design.md names the recovery.
-- **The manager is the only approver, until R7 is built.** Nothing deployed knows whose customer an attendee is. R7 answers this with `cust_cd`; until it ships, the Account Owner does not see invitees to their own customers. **Open Question 15.**
-- **Organisation is free text.** "Acme Corp" and "ACME Corp." group and report separately, and nothing reconciles them.
+- **★R8 An attendee can be linked to a Contact, but nothing links them automatically.** `Event_Attendee__c.Contact__c` records that an imported person is also a Contact, and `Is_Known_Contact__c` makes "which of tonight's guests are already known to us?" reportable. The import still matches nobody against anything — the link is written by a separate reconciliation run, so until that runs the answer is "not established" rather than "no".
+- **The manager is the only approver, until R7 is built.** The row now knows whose customer an invitee is — `Account_Manager__c`, snapshotted through the Contact link — but nothing routes to it yet. Until R7 ships, the Account Owner still does not see invitees to their own customers. **Open Question 15.**
+- **Organisation is free text for anyone with no Contact behind them.** An invitee linked to an Account takes that Account's name; everyone else keeps the text the CSV gave, so "Acme Corp" and "ACME Corp." still group and report separately for exactly those rows.
 - **Every proposer sees every attendee.** Per-user scoping went with the Account it was based on. Tightening `Event_Attendee__c`'s OWD is the production lever, but it needs another basis for scoping first.
 - **A junk Email cell costs the address, not the person.** `Email__c` is a typed field; a value that is not an address is dropped, and the preview says so on that row.
 - **No Lead Convert path.** An attendee who becomes a real customer is promoted by hand.

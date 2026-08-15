@@ -187,9 +187,12 @@ grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 8)
 shipped in `Event_AM`. `CLAUDE.md`'s invariant needs rewording to match: *never writes* stays,
 *never reads* does not.
 
-R8 items are marked ★R8. **Partially applied** — the person- and invitee-level fields below are
-built; the Account snapshot, the identity-key change and the company-grouped approval action
-are pending the open decisions listed under *Open Questions* 23–25.
+R8 items are marked ★R8. **The data model is complete; one screen is not.** The person fields,
+the Contact link, the person and customer snapshots on the invitee are all built. Open
+Questions 23 and 24 are answered above and in place. What remains is Open Question 25 — how an
+approver approves a whole company's invitees in one action — which is a screen decision waiting
+on a wireframe, not a modelling one. Nothing routes to `Account_Manager__c` yet either; R7's
+chain is still unbuilt, and R8 only gives it the key it needs.
 
 ## Problem Statement
 
@@ -273,6 +276,7 @@ erDiagram
     Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
     User               ||--o{ Event_Invitee__c : "Added_By__c and Approver__c"
     Contact            ||--o{ Event_Attendee__c : "R8 Contact__c, optional, SetNull"
+    Account            ||--o{ Event_Invitee__c : "R8 Account__c, snapshot via the Contact"
 
     Marketing_Event__c {
         Text        Name
@@ -302,6 +306,10 @@ erDiagram
         Lookup       Added_By__c FK "which AM added this row"
         Checkbox     Attended__c "R6, actually turned up, only if Approved"
         Text         Unique_Key__c UK "EventId plus AttendeeId"
+        Lookup       Account__c FK "R8, the customer, snapshot at add time"
+        Text         Cust_Cd__c "R8, the code R7 routes the chain on"
+        Lookup       Account_Manager__c FK "R8, Account owner, NOT Added_By__c"
+        Text         Invitee_Org__c "R8, snapshot, was a formula"
         Formula      Invitee_Name__c "reads through to the attendee"
         Formula      Event_Name__c "R6, reads up to the event"
         Formula      Event_Date__c "R6, reads up to the event"
@@ -437,11 +445,26 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
   Decided_At__c              DateTime                 stamped on approve and reject alike
   Unique_Key__c              Text(40), unique, ExtId  EventId + AttendeeId
 
-  -- reads DOWN to the attendee --
+  -- reads DOWN to the attendee, LIVE --
   Invitee_Name__c            Formula, Text            Event_Attendee__r.Name
   Invitee_Email__c           Formula, Text            Event_Attendee__r.Email__c
-  Invitee_Title__c           Formula, Text            Event_Attendee__r.Title__c
-  Invitee_Org__c             Formula, Text            Event_Attendee__r.Company__c
+
+  -- SNAPSHOT of the person, stamped at add time --  ★R8
+  Invitee_Salutation__c   ★R8 Text(40)                 SEIM_INVITEE.SALUTE
+  Invitee_Title__c        ★R8 Text(128)                SEIM_INVITEE.JOB_TITLE. WAS a formula
+  Invitee_Org__c          ★R8 Text(255)                SEIM_INVITEE.COMP_NAME. WAS a formula.
+                                                      Account name where there is one,
+                                                      imported company text otherwise
+
+  -- SNAPSHOT of the customer, via Event_Attendee__r.Contact__r.Account --  ★R8
+  Account__c              ★R8 Lookup -> Account, SetNull   SEIM_INVITEE.COMP_SEQ
+  Cust_Cd__c              ★R8 Text(40)                 SEIM_INVITEE.CUST_CD, from
+                                                      Account.AccountNumber <- ASSUMPTION
+  Account_Manager__c      ★R8 Lookup -> User, SetNull  SEIM_INVITEE.ACCT_MNGR = Account.OwnerId.
+                                                      NOT the same person as Added_By__c
+                                                      (all three blank for a guest with no
+                                                       Contact behind them - that is a real
+                                                       state, see Open Question 21)
 
   -- reads UP to the event --  ★R6
   Event_Name__c              Formula, Text            Marketing_Event__r.Name
@@ -595,11 +618,21 @@ expected later.** Everyone in the chain must agree.
 
 #### The routing basis
 
-`cust_cd` arrives in the CSV and lands on `Event_Attendee__c.Cust_Cd__c`, surfaced on the
-junction as `Invitee_Cust_Cd__c` alongside the other `Invitee_*__c` formulas so the approval
-process, the reports and the approval page can all read one field. It is a **code, not a
-relationship** — nothing dereferences it to an Account, and R5's "reads and writes one object"
-property is unchanged.
+~~`cust_cd` arrives in the CSV and lands on `Event_Attendee__c.Cust_Cd__c`, surfaced on the
+junction as `Invitee_Cust_Cd__c`.~~ ★R8 **Corrected on both counts, and the field is already
+built.** It is `Event_Invitee__c.Cust_Cd__c`, a snapshot rather than a formula, and it does not
+arrive in the CSV at all — it is read from the Account behind the invitee's Contact link when
+the invitee is added.
+
+The placement matters more than it looks. A customer code follows the *employer*, so holding it
+on the person means it is quietly wrong from the day they change jobs — and the approval would
+route to the previous customer's chain without anything looking broken. On the invitee it is
+frozen against the invitation it belongs to.
+
+It is still a **code, not a relationship**, in the way that counts for R7: the chain lookup
+compares a string against `Approval_Route__c.Cust_Cd__c` and dereferences nothing at approval
+time. What did change is R5's "reads and writes one object" property — R8 reads Account to take
+the snapshot. It still writes only its own objects.
 
 Consequence worth stating: a row whose `cust_cd` is blank or unmapped has no chain, and
 therefore cannot be submitted. Under R5 anyone could be invited and the submitter's manager
@@ -1280,8 +1313,8 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 21. ★R7 **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
-23. ★R8 **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
-24. ★R8 **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
+23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
+24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
 25. ★R8 **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.
 22. ★R7 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. Five is the suggested starting point for a two-level chain. Worth checking the org's actual cap and the business's honest ceiling in the same conversation.
 

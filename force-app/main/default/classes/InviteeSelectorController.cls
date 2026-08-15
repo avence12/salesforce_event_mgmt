@@ -17,6 +17,13 @@
  *     manager, which is what requirement.md asked for before Account Owner was
  *     ever used as a stand-in for it.
  *
+ * ★R8 The second of those is no longer permanent. Adding an invitee now snapshots the
+ * customer behind them — Account, customer code and account manager, reached through
+ * Event_Attendee__c.Contact__c — so the Account Owner rung has something to stand on
+ * again. Nothing routes to it yet: submitMyInvitees still resolves the submitter's
+ * manager and only that. The field is there so the R7 chain has a key to look up, and
+ * so a guest who belongs to no customer is visibly blank rather than quietly guessed.
+ *
  * Already-invited people are hidden; Rejected ones reappear and re-adding resets
  * the existing row to Draft. Submission hands off to the standard Approval Process
  * — this class resolves who approves, the process owns the status from there.
@@ -143,30 +150,54 @@ public with sharing class InviteeSelectorController {
 
         // Ids the client sent that do not resolve are dropped rather than trusted —
         // the same reason the import re-classifies server-side.
-        Set<Id> real = new Map<Id, Event_Attendee__c>([SELECT Id FROM Event_Attendee__c WHERE Id IN :attendeeIds])
-            .keySet();
+        //
+        // ★R8 The same query carries everything the invitee snapshots. The Account is
+        // reached through the Contact link and never guessed from the company text:
+        // Contact__c is set by a deliberate reconciliation run, so an Account here means
+        // somebody established that this person is that customer's, rather than that two
+        // strings looked alike.
+        Map<Id, Event_Attendee__c> attendees = new Map<Id, Event_Attendee__c>(
+            [
+                SELECT
+                    Id,
+                    Salutation__c,
+                    Title__c,
+                    Company__c,
+                    Contact__r.AccountId,
+                    Contact__r.Account.Name,
+                    Contact__r.Account.AccountNumber,
+                    Contact__r.Account.OwnerId
+                FROM Event_Attendee__c
+                WHERE Id IN :attendeeIds
+            ]
+        );
 
         List<Event_Invitee__c> toInsert = new List<Event_Invitee__c>();
         List<Event_Invitee__c> toReset = new List<Event_Invitee__c>();
 
         for (Id attendeeId : attendeeIds) {
-            if (!real.contains(attendeeId)) {
+            Event_Attendee__c attendee = attendees.get(attendeeId);
+            if (attendee == null) {
                 continue;
             }
             Event_Invitee__c existing = existingByAttendee.get(attendeeId);
             if (existing == null) {
-                toInsert.add(
-                    new Event_Invitee__c(
-                        Marketing_Event__c = eventId,
-                        Event_Attendee__c = attendeeId,
-                        Status__c = 'Draft',
-                        Added_By__c = UserInfo.getUserId(),
-                        Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(attendeeId)
-                    )
+                Event_Invitee__c fresh = new Event_Invitee__c(
+                    Marketing_Event__c = eventId,
+                    Event_Attendee__c = attendeeId,
+                    Status__c = 'Draft',
+                    Added_By__c = UserInfo.getUserId(),
+                    Unique_Key__c = String.valueOf(eventId) + '-' + String.valueOf(attendeeId)
                 );
+                stampSnapshot(fresh, attendee);
+                toInsert.add(fresh);
             } else if (existing.Status__c == 'Rejected') {
                 // Re-add resets the existing row — Unique_Key__c forbids a second row.
                 resetToDraft(existing);
+                // ★R8 Re-stamped, not left alone: a re-add is a fresh invitation, and it
+                // should carry what is true now rather than what was true when the row
+                // was first created and then rejected.
+                stampSnapshot(existing, attendee);
                 toReset.add(existing);
             }
             // Any other status: already invited — silently skipped (UI hides these anyway).
@@ -365,6 +396,45 @@ public with sharing class InviteeSelectorController {
             }
         }
         return ids;
+    }
+
+    /**
+     * ★R8 Freezes onto the invitee what was true of this person, and of the customer they
+     * belong to, at the moment they were put forward. The reference ERD does the same on
+     * SEIM_INVITEE, and the reason is that an approval has to keep showing what the approver
+     * actually saw — a live formula lets a later edit to the attendee rewrite the past.
+     *
+     * The company falls back to the attendee's imported text when there is no Contact behind
+     * them, so the field is never blank just because a guest is nobody's customer. Account__c,
+     * Cust_Cd__c and Account_Manager__c stay blank in that case, which is the honest answer:
+     * there is no customer to name.
+     *
+     * Two things this deliberately does not do. It never writes to Account or Contact — it
+     * only reads them. And it does not bypass sharing: this class is `with sharing`, so an
+     * Account the running user cannot see comes back null and the row falls through to the
+     * text. That is a real gap under a Private Account OWD, and the alternative — reading the
+     * org's customer data `without sharing` to fill in a convenience field — is not a trade
+     * this project gets to make on the org's behalf.
+     */
+    private static void stampSnapshot(Event_Invitee__c inv, Event_Attendee__c attendee) {
+        inv.Invitee_Salutation__c = attendee.Salutation__c;
+        inv.Invitee_Title__c = attendee.Title__c;
+
+        Account customer = attendee.Contact__r == null ? null : attendee.Contact__r.Account;
+        if (customer == null) {
+            inv.Invitee_Org__c = attendee.Company__c;
+            inv.Account__c = null;
+            inv.Cust_Cd__c = null;
+            inv.Account_Manager__c = null;
+            return;
+        }
+        inv.Invitee_Org__c = customer.Name;
+        inv.Account__c = customer.Id;
+        // The one org-specific assumption in this class: AccountNumber is where the customer
+        // code lives. If this org keeps it elsewhere, change this line — see the field's
+        // description and DEPLOYMENT.md.
+        inv.Cust_Cd__c = customer.AccountNumber;
+        inv.Account_Manager__c = customer.OwnerId;
     }
 
     /**

@@ -2,12 +2,15 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Invitee_Title__c</fullName>
     <label>Invitee Title</label>
-    <description>Reads through the attendee. Live rather than snapshotted: correcting a misspelt title on the attendee fixes it on every invitee at once, which is what you want for a field nobody makes decisions on.</description>
+    <description>★R8 SEIM_INVITEE.JOB_TITLE. Was a formula reading Event_Attendee__r.Title__c live; it is now a snapshot stamped when the invitee is added, because the reference ERD snapshots it and the business confirmed that is what it wants.
+
+The reason is the one design.md already recorded as a known risk and never fixed: with a live formula, correcting an attendee&apos;s title after their invitation was approved silently rewrites what the approval appears to have shown. An approval record that changes after the fact is not a record. The API name is unchanged so every report, report type, layout and approval page that already reads it keeps working — a rename would have been churn for nothing.
+
+What the snapshot costs, and it is the mirror image of what it buys: a typo fixed on the attendee no longer propagates. The invitee keeps the wrong spelling until someone edits that row too.</description>
     <type>Text</type>
-    <formula>Event_Attendee__r.Title__c</formula>
-    <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+    <length>128</length>
     <required>false</required>
     <unique>false</unique>
     <externalId>false</externalId>
-    <trackTrending>false</trackTrending>
+    <trackHistory>false</trackHistory>
 </CustomField>

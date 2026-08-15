@@ -2,12 +2,15 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Invitee_Org__c</fullName>
     <label>Invitee Organisation</label>
-    <description>Reads through the attendee&apos;s Company text. R3 had to fall back from an Account snapshot to a Lead&apos;s free text here; R5 has only the free text, because no attendee has an Account. What that gives up is stated in design.md: two spellings of one organisation are two organisations, and nothing reconciles them.</description>
+    <description>★R8 SEIM_INVITEE.COMP_NAME. Was a formula reading the attendee&apos;s Company__c text; it is now a snapshot, and it is the field that carries the ERD&apos;s central correction — a person&apos;s employer is a property of *this invitation*, not of the person. Someone who changes jobs between two events shows the right company on each.
+
+Stamped at add time from Account__c.Name where the attendee is linked to a Contact with an Account, and from the attendee&apos;s imported Company__c text otherwise. Both sources land here so that every consumer — the approval page, both reports, the All Invitees table — reads one field and never has to ask which kind of invitee it is looking at. Which source was used is legible from whether Account__c is populated.
+
+Known gap: a guest with no Contact still gets free text, so &quot;Acme Corp&quot; and &quot;ACME Corp.&quot; remain two organisations for exactly those rows. Linking them to Contacts is what fixes it, one person at a time.</description>
     <type>Text</type>
-    <formula>Event_Attendee__r.Company__c</formula>
-    <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+    <length>255</length>
     <required>false</required>
     <unique>false</unique>
     <externalId>false</externalId>
-    <trackTrending>false</trackTrending>
+    <trackHistory>false</trackHistory>
 </CustomField>
