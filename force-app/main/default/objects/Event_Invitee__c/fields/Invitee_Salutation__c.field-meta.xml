@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Invitee_Salutation__c</fullName>
+    <label>Invitee Salutation</label>
+    <description>★R8 SEIM_INVITEE.SALUTE. Snapshot of the attendee&apos;s Salutation__c at the moment they were added, for the same reason as Invitee_Title__c: a name badge and a printed guest list are produced from the invitation, and reprinting one a year later should give the same words it gave the first time.</description>
+    <type>Text</type>
+    <length>40</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

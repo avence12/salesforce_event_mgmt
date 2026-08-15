@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cust_Cd__c</fullName>
+    <label>Customer Code</label>
+    <description>★R8 SEIM_INVITEE.CUST_CD, and the field R7 routes the approval chain on. On the invitee rather than the attendee, correcting the R7 draft: a customer code follows the employer, and an attendee who changes jobs would otherwise carry a code that is quietly wrong from that day on.
+
+A code, not a relationship. Snapshotted from the Account at add time so that reading it needs no grant on Account and no dereference at approval time — the chain lookup is a string comparison against Approval_Route__c.Cust_Cd__c.
+
+WHICH ACCOUNT FIELD IT COMES FROM IS AN ASSUMPTION: InviteeSelectorController reads the standard Account.AccountNumber, because that is the field every org has and it is the one that means &quot;customer account number&quot;. If this org keeps its customer code somewhere else, that is one line in that class and a note in the post-deploy checklist, not a redesign.</description>
+    <type>Text</type>
+    <length>40</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

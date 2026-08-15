@@ -44,9 +44,12 @@ and proposes its guests from that pool. Each BMD user submits **their own batch*
 standard Approval Process, which reads each invitee's `cust_cd`, looks the chain up in
 `Approval_Route__c`, and stamps every level's approver onto the row at once. The chain then runs
 in order — the AM who owns that customer, then the regional head, then any level added later —
-and everyone must agree; any level's rejection ends it. Approvers decide from the standard
-Approvals list on desktop or the mobile app. When a batch has no pending rows left, its submitter
-is notified, and the approved list is read and exported from standard reports.
+and everyone must agree; any level's rejection ends it. ★R8 Approvers decide from **Approvals by
+Company** on the event page — their pending invitees grouped by the company each was invited as,
+so one tick selects a whole company and one button decides it — or from the standard Approvals
+list on desktop or the mobile app, which still works but cannot group by company. When a batch
+has no pending rows left, its submitter is notified, and the approved list is read and exported
+from standard reports.
 
 ## Flow diagram
 
@@ -125,11 +128,11 @@ flowchart TD
     B5 --> S1
 
     %% ======== 5 · Approve ========
-    subgraph APPROVE["5 · Approve — a chain · standard Approval Process, no custom code"]
+    subgraph APPROVE["5 · Approve — a chain · standard Approval Process decides; R8 adds only the screen that picks the work"]
         direction TB
         P0{"Is Approver_N__c set<br/>for this step?"}:::system
         PSKIP["Step skipped — ifCriteriaNotMet = ApproveRecord.<br/>This is what lets the process ship more steps<br/>than the business currently uses"]:::system
-        P1["Level N approver opens the bell or email link,<br/>then the standard Approvals list<br/>desktop or Salesforce Mobile App"]:::approver
+        P1["Level N approver opens the bell or email link,<br/>then Approvals by Company on the event page —<br/>R8, one tick per company, per-person veto kept.<br/>The standard Approvals list still works too"]:::approver
         P2["Mass-select the pending items"]:::approver
         P3{"Approve or reject?"}:::approver
         PN{"Any level left<br/>above this one?"}:::system
@@ -225,11 +228,14 @@ to accounts the running user owned, fatal for a BMD user who owns none — so **
 the whole pool today with no code change at all.** R7 answers the open question that replaced it.
 What remains is a build and three decisions.
 
-**1 · The R7 chain is designed, not built.** Steps 4 and 5 in the diagram are the target; the
-deployed org still stamps one approver. The build is: `Cust_Cd__c` on `Event_Attendee__c` and its
-`Invitee_Cust_Cd__c` formula on the junction, the `Approval_Route__c` object, `Approver__c` split
-into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of the
-resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
+**1 · The R7 chain is designed, not built — but R8 has already laid the key it routes on.**
+Steps 4 and 5 in the diagram are the target; the deployed org still stamps one approver.
+`Cust_Cd__c` now exists on `Event_Invitee__c` — on the invitee rather than the attendee, because
+a customer code follows the employer and would be silently wrong on anyone who changed jobs —
+snapshotted from the Account behind the person's Contact link, along with `Account__c` and
+`Account_Manager__c`. What remains to build is the `Approval_Route__c` object, `Approver__c`
+split into `Approver_1__c … Approver_N__c`, one gated approval step per field, and a rewrite of
+the resolver inside `submitMyInvitees`. Sizes and rejected alternatives are in
 [design.md → ★R7](../design.md#r7-approval-routing--a-chain-not-a-rung).
 
 **2 · The notification design does not survive the chain — this is the sharp edge.** Approvers

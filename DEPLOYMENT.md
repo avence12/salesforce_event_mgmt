@@ -165,7 +165,27 @@ rather than inherit from a `git push`.
    ```
    It creates attendees and two Marketing Events, and **no Account, Contact or Lead** — so it is safe to run in an org that already has real ones.
 7. **Replace the `Topic__c` placeholder values** with the real taxonomy (Setup → Object Manager → Marketing Event → Fields → Topic) and tag any past events. Until that is done nothing can be judged similar to anything, which is what the attendance history exists for.
-8. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+8. **★R8 Decide whether AMs may see the linked Contact** — optional, and deliberately not
+   deployed. `Event_Attendee__c.Contact__c` records that an imported person also exists as a
+   Contact in the org. The field deploys; the **Read access on Contact** that makes it render
+   as a name does not, because granting a project's users access to the org's customer data is
+   an admin's decision, not a `git push`'s. Without it AMs still see `Is_Known_Contact__c`
+   (yes/no), which is the half of the answer this feature actually needs.
+   The link is populated by a reconciliation run, never by the import — Screen 1 reads no
+   standard object, and that is asserted in
+   `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts`.
+9. **★R8 Confirm where this org keeps the customer code.** `Event_Invitee__c.Cust_Cd__c` is
+   snapshotted from the standard `Account.AccountNumber`, because that is the field every org
+   has and the one that means "customer account number". If your org keeps it on a custom field
+   instead, change the single line in `InviteeSelectorController.stampSnapshot` — no schema
+   change here, and no field is ever added to Account by this project.
+10. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
+    Company* ships on the Marketing Event record page above the attendee selector. An AM who is
+    nobody's approver sees it in its empty state, which is one line of text rather than an empty
+    table. If that is unwanted, add a component visibility filter on the page or assign a
+    second record page by profile. Both change how your org's pages are laid out, so neither is
+    deployed from here.
+11. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 

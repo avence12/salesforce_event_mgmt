@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>VIP__c</fullName>
+    <label>VIP</label>
+    <description>★R8 SEIM_INVITEE.IS_VIP. On the invitee, not the attendee, and that placement is the whole content of the decision: someone is a VIP *at this event* — a keynote speaker at one symposium is an ordinary guest at the next. Marking it person-level would make the flag follow them everywhere and quietly become meaningless. Nothing in the workflow reads it yet; it is a fact for the AM running the room.</description>
+    <type>Checkbox</type>
+    <defaultValue>false</defaultValue>
+    <trackHistory>false</trackHistory>
+</CustomField>

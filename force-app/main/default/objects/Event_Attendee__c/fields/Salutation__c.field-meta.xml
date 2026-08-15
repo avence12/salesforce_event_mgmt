@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Salutation__c</fullName>
+    <label>Salutation</label>
+    <description>★R8 SEIM_PERSON.SALUTE. Free text rather than a picklist: the source lists carry Mr / Ms / Dr / Prof and academic and diplomatic forms this design cannot enumerate in advance, and a restricted picklist would silently drop whatever it has not been told about. The cost is that &quot;Dr&quot; and &quot;Dr.&quot; are two values and nothing reconciles them — acceptable for a field that is only ever printed, never filtered on.</description>
+    <type>Text</type>
+    <length>40</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

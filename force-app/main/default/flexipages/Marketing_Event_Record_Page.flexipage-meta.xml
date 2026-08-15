@@ -16,7 +16,21 @@
         <name>subheader</name>
         <type>Region</type>
     </flexiPageRegions>
+    <!--
+      ★R8 The approver's component sits above the AM's, because an approver arriving at this
+      page has one job and it should be the first thing on it. An AM sees it in its empty
+      state ("Nothing on this event is waiting on you"), which is one short line rather than
+      an empty table. Hiding it from AMs entirely means either a component visibility filter
+      or a second record page assigned by profile — both are admin decisions about their org's
+      page layouts, so they are in the post-deploy checklist rather than shipped here.
+    -->
     <flexiPageRegions>
+        <itemInstances>
+            <componentInstance>
+                <componentName>approvalsByCompany</componentName>
+                <identifier>c_approvalsByCompany</identifier>
+            </componentInstance>
+        </itemInstances>
         <itemInstances>
             <componentInstance>
                 <componentName>attendeeSelector</componentName>

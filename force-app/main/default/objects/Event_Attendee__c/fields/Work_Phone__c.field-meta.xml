@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Work_Phone__c</fullName>
+    <label>Work Phone</label>
+    <description>★R8 SEIM_PERSON.WORK_PHONE_NO. Kept alongside Mobile__c rather than replacing it: the reference ERD carries only a work number and the current CSV carries only a mobile, so collapsing them would lose whichever column the next source file happens to have. Never validated or normalised, for the same reason Mobile__c is not.</description>
+    <type>Phone</type>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+</CustomField>

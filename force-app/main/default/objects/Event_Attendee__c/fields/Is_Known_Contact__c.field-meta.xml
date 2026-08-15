@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Is_Known_Contact__c</fullName>
+    <label>Is Known Contact</label>
+    <description>★R8 True when Contact__c is populated — &quot;we have matched this person to a Contact&quot;. It exists because the lookup itself is only legible to a user who has Read on Contact, and that grant is the org&apos;s to make; this checkbox carries the part of the answer that needs no such permission, so a report can count how many of an event&apos;s guests are already known to the org without exposing which Contacts they are.
+
+Read it as evidence, not as a fact about the world: false means nothing has linked them, which covers both &quot;not a Contact&quot; and &quot;nobody has run the reconciliation yet&quot;.</description>
+    <type>Checkbox</type>
+    <formula>NOT(ISBLANK(Contact__c))</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+</CustomField>

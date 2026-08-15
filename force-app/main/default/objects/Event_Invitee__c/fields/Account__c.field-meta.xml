@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account__c</fullName>
+    <label>Account</label>
+    <description>★R8 SEIM_INVITEE.COMP_SEQ, which pointed at SEIM_COMP. The business chose to reuse Account rather than add a company object, so this is that pointer.
+
+Resolved once, at add time, by following Event_Attendee__r.Contact__r.AccountId — the customer this guest belongs to is derived from the Contact link and never guessed from the company text. An attendee who is not linked to a Contact has no Account here, and that is a real and expected state, not a data error: it is the professor, the journalist, the guest who is nobody&apos;s customer. What follows from it is Open Question 21 — such a row has no Cust_Cd__c and therefore no chain to route to once R7 is built.
+
+SetNull, never Restrict: an invitee row must never be able to block the org from deleting its own Account. Nothing here writes to Account, and nothing dereferences this lookup after the snapshot is taken — Invitee_Org__c and Cust_Cd__c hold the values, so a report can show them without the reader needing any grant on Account.</description>
+    <type>Lookup</type>
+    <referenceTo>Account</referenceTo>
+    <relationshipLabel>Event Invitees</relationshipLabel>
+    <relationshipName>Event_Invitees</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

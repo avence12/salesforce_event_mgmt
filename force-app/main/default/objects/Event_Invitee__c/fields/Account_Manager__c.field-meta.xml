@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account_Manager__c</fullName>
+    <label>Account Manager</label>
+    <description>★R8 SEIM_INVITEE.ACCT_MNGR — the AM who owns the customer this guest belongs to, snapshotted from Account.OwnerId at add time.
+
+Not the same person as Added_By__c, and conflating the two would be the easy mistake: Added_By__c is whoever put this row on the list, which is often somebody else entirely. This one is the relationship owner, and it is the person requirement.md meant by &quot;送出給 Account Owner&quot; before R3 turned that phrase into a proxy for the submitter&apos;s manager. R5 deleted the field this rung needed; R8 has it back through the Contact link, so the control R5 gave up — the customer&apos;s owner sees who is being invited to their customer — is available again without violating the premise that an Account is only ever a real transacting customer.
+
+Frozen at add time rather than read live, for the same reason Approver__c is frozen at submit time: an account changing hands mid-approval must not silently move the decision to somebody who has not seen it. Blank where the guest has no Account.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees For My Accounts</relationshipLabel>
+    <relationshipName>Invitees_For_My_Accounts</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

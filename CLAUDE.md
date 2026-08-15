@@ -31,13 +31,30 @@ simply be made directly.
 
 ### The org's data: do not touch it
 
-The flip side is the real constraint. Account and Contact hold live business data this
-project does not own, and **the workflow reads and writes none of it** — no Account, Contact
-or Lead is created, read, updated or deleted, and the `Event_AM` permission set grants nothing
-on any standard object. That is not stylistic tidiness; it is what makes the deploy safe to
-run against a populated org, and it is asserted in
+The flip side is the real constraint. Account and Contact hold live business data this project
+does not own. **The workflow never writes it** — no Account, Contact or Lead is created,
+updated or deleted, anywhere, by any code path. That is not stylistic tidiness; it is what
+makes the deploy safe to run against a populated org, and it is asserted in
 `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` rather than merely
 intended. Treat it as an invariant, not a preference.
+
+**Reading is a weaker rule, and R8 is where the two parted company.** Until R8 the workflow
+also read nothing — the model contained no standard object at all, which made the no-write
+guarantee true by construction rather than by discipline. R8 reintroduced two references,
+deliberately: `Event_Attendee__c.Contact__c` records that an imported person also exists as a
+Contact, and the invitee snapshots a company from `Contact.Account`. Reading is therefore
+allowed where a decision has been recorded for it; writing is not, at all, ever. Three rules
+keep that boundary honest and none of them is optional:
+
+- **The import still reads nothing.** Screen 1 matches no CSV row against Contact, Lead or
+  Account. The Contact link is populated by a separate reconciliation step an admin runs.
+- **No lookup to a standard object may use `deleteConstraint Restrict`.** Our record must never
+  be able to block the org from deleting its own Contact or Account. `SetNull` always.
+- **No permission on a standard object ships in this repo.** `Event_AM` and `Event_Approver`
+  still grant nothing on Account, Contact or Lead. Apex can read what it needs for a snapshot
+  without those grants; a *user* seeing the linked record needs Read, and that grant is an
+  admin's decision in the post-deploy checklist. Design the UI so the useful half of the answer
+  survives without it — `Is_Known_Contact__c` is the pattern.
 
 **User is a narrower case of the same rule, not an exception to it.** Every record's `OwnerId`
 and `CreatedById`, the manager-routed approval and the approval chain design's
