@@ -45,7 +45,7 @@
                         <table class="slds-table slds-table_bordered slds-table_cell-buffer">
                             <thead>
                                 <tr class="slds-line-height_reset">
-                                    <th scope="col" style="width: 2rem"></th>
+                                    <th scope="col" class="col-select"></th>
                                     <th scope="col">Name</th>
                                     <th scope="col">Title</th>
                                     <th scope="col">Email</th>
@@ -86,7 +86,17 @@
                         class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-m-top_medium slds-wrap"
                     >
                         <template lwc:if={hasHiddenSelected}>
-                            <p class="slds-text-body_small slds-text-color_weak">⚠ {hiddenSelectedNote}</p>
+                            <p
+                                class="slds-text-body_small slds-text-color_weak slds-grid slds-grid_vertical-align-center"
+                            >
+                                <lightning-icon
+                                    icon-name="utility:warning"
+                                    size="x-small"
+                                    variant="warning"
+                                    class="slds-m-right_xx-small"
+                                ></lightning-icon>
+                                {hiddenSelectedNote}
+                            </p>
                         </template>
                         <template lwc:else>
                             <span></span>

@@ -1,5 +1,5 @@
 .stat {
-    border: 1px solid var(--lwc-colorBorder, #dddbda);
+    border: 1px solid var(--slds-g-color-neutral-base-80, #c9c9c9);
     border-radius: 0.25rem;
     padding: 0.5rem 0.75rem;
     text-align: center;
@@ -11,5 +11,9 @@
 }
 .stat span {
     font-size: 0.75rem;
-    color: var(--lwc-colorTextWeak, #706e6b);
+    color: var(--slds-g-color-neutral-base-50, #747474);
+}
+
+.col-select {
+    width: 2rem;
 }
