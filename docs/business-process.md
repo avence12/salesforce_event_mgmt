@@ -49,10 +49,10 @@ A BMD user uploads a CSV of attendees collected elsewhere. Every row with a last
 before anything is written, and upserted on a `last|first|company|email` key so re-uploading a
 file refreshes people instead of duplicating them. The same BMD user creates a Marketing Event
 and proposes its guests from that pool. Each BMD user submits **their own batch** into the
-standard Approval Process, which reads each invitee's `cust_cd`, looks the chain up in
-`Approval_Route__c`, and stamps every level's approver onto the row at once. The chain then runs
-in order — the AM who owns that customer, then the regional head, then any level added later —
-and everyone must agree; any level's rejection ends it. ★R8 Approvers decide from **Approvals by
+standard Approval Process, which resolves each invitee's chain from the org chart — the Account
+Owner behind that invitee, then their manager, then theirs, stopping at the first Regional Head —
+and stamps every level's approver onto the row at once. The chain then runs in order and everyone
+must agree; any level's rejection ends it. ★R8 Approvers decide from **Approvals by
 Company** on the event page — their pending invitees grouped by the company each was invited as,
 so one tick selects a whole company and one button decides it — or from the standard Approvals
 list on desktop or the mobile app, which still works but cannot group by company. When a batch

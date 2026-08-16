@@ -470,14 +470,19 @@ describe('c-attendee-selector', () => {
             expect(refreshApex).toHaveBeenCalledTimes(1);
         });
 
-        it('surfaces the no-manager refusal rather than looking like a success', async () => {
+        it('surfaces an unroutable-chain refusal rather than looking like a success', async () => {
             submitMyInvitees.mockRejectedValue({
-                body: { message: 'your user record has no Manager' }
+                body: {
+                    message:
+                        'No approver could be determined: the only person the chain reaches is you. ' +
+                        'An Account Owner cannot approve their own submission, so this needs a Manager ' +
+                        'set on your user record. Ask an administrator. Nothing was submitted.'
+                }
             });
             await clickSubmit();
             expect(toasts.at(-1)).toMatchObject({
                 variant: 'error',
-                message: 'your user record has no Manager'
+                message: expect.stringContaining('the only person the chain reaches is you')
             });
         });
     });

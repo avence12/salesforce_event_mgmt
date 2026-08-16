@@ -1,0 +1,2200 @@
+<title>Event Workflow Wireframes</title>
+<style>
+  /* ============================================================
+     SLDS token set — values taken from UI_design.md §2.
+     Single light theme on purpose: this page renders Lightning
+     Experience, which has one visual world. Every colour is
+     painted explicitly so the page holds on any host ground.
+     ============================================================ */
+  :root {
+    --brand-30: #014486;
+    --brand-40: #0b5cab;
+    --brand-50: #0176d3;
+    --brand-60: #1b96ff;
+    --brand-tint: #eef4ff;
+
+    --success-50: #2e844a;
+    --success-tint: #eaf5ec;
+    --warning-60: #dd7a01;
+    --warning-50: #a96404;
+    --warning-tint: #fef5e7;
+    --error-50: #ea001e;
+    --error-40: #ba0517;
+    --error-tint: #fef1f1;
+
+    --n-100: #ffffff;
+    --n-98: #fafaf9;
+    --n-95: #f3f3f3;
+    --n-90: #e5e5e5;
+    --n-80: #c9c9c9;
+    --n-65: #939393;
+    --n-50: #747474;
+    --n-30: #444444;
+    --n-10: #181818;
+
+    --border: #dddbda;
+    --radius: 0.25rem;
+    --shadow-card: 0 2px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-modal: 0 4px 11px 0 rgba(0, 0, 0, 0.16), 0 2px 4px 0 rgba(0, 0, 0, 0.12);
+
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Salesforce Sans", Roboto,
+      Helvetica, Arial, "Noto Sans TC", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--n-95);
+    color: var(--n-10);
+    font-family: var(--font);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- document shell ---------- */
+  .doc {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 1rem 5rem;
+  }
+
+  .masthead {
+    background: var(--brand-30);
+    color: var(--n-100);
+    margin: 0 -1rem 2rem;
+    padding: 2.5rem 2rem 2rem;
+  }
+  .masthead-inner { max-width: 1148px; margin: 0 auto; }
+  .eyebrow {
+    font-size: 0.6875rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #9fd0ff;
+    margin: 0 0 0.5rem;
+  }
+  .masthead h1 {
+    font-size: 1.75rem;
+    line-height: 1.2;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    text-wrap: balance;
+  }
+  .masthead p {
+    margin: 0;
+    max-width: 62ch;
+    color: #d6e8fb;
+  }
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+  .meta-chip {
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 15rem;
+    padding: 0.125rem 0.625rem;
+    color: #d6e8fb;
+  }
+
+  .tocbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    padding: 0 0 1.5rem;
+    border-bottom: 1px solid var(--n-80);
+    margin-bottom: 2rem;
+  }
+  .tocbar a {
+    color: var(--brand-40);
+    text-decoration: none;
+    font-size: 0.75rem;
+    border-bottom: 2px solid transparent;
+    padding-bottom: 0.125rem;
+  }
+  .tocbar a:hover,
+  .tocbar a:focus-visible { border-bottom-color: var(--brand-50); }
+
+  section { margin-bottom: 3.5rem; }
+  .sec-head { margin-bottom: 1rem; }
+  .sec-head h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 0.25rem;
+    color: var(--n-10);
+  }
+  .sec-head p {
+    margin: 0;
+    max-width: 74ch;
+    color: var(--n-30);
+  }
+  h3.wf-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    margin: 2rem 0 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .wf-sub {
+    margin: 0 0 0.75rem;
+    color: var(--n-50);
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+  }
+
+  .tag {
+    font-size: 0.625rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 15rem;
+    padding: 0.125rem 0.5rem;
+    font-weight: 600;
+  }
+  .tag-custom { background: var(--brand-tint); color: var(--brand-30); border: 1px solid #bcd9f5; }
+  .tag-standard { background: var(--n-95); color: var(--n-30); border: 1px solid var(--n-80); }
+  .tag-mobile { background: var(--warning-tint); color: var(--warning-50); border: 1px solid #f0d19a; }
+
+  .notes {
+    margin: 0.75rem 0 0;
+    padding: 0.75rem 1rem;
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-left: 3px solid var(--brand-50);
+    border-radius: var(--radius);
+  }
+  .notes ul { margin: 0; padding-left: 1.1rem; }
+  .notes li { margin: 0.25rem 0; color: var(--n-30); }
+  .notes b { color: var(--n-10); }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    background: var(--n-95);
+    border: 1px solid var(--n-90);
+    border-radius: 3px;
+    padding: 0 0.25rem;
+  }
+
+  .scroller { overflow-x: auto; }
+
+  /* ============================================================
+     Lightning Experience chrome
+     ============================================================ */
+  .lex {
+    border: 1px solid var(--n-80);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: var(--shadow-modal);
+    background: var(--n-95);
+    min-width: 900px;
+  }
+  .lex-global {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--brand-50);
+    padding: 0.375rem 0.75rem;
+  }
+  .waffle { display: grid; grid-template-columns: repeat(3, 3px); gap: 2px; }
+  .waffle i { width: 3px; height: 3px; background: var(--n-100); border-radius: 1px; display: block; }
+  .lex-search {
+    flex: 1;
+    max-width: 480px;
+    background: var(--n-100);
+    border-radius: 15rem;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.625rem;
+    color: var(--n-50);
+    font-size: 0.75rem;
+  }
+  .lex-globalright { margin-left: auto; display: flex; align-items: center; gap: 0.625rem; }
+  .avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--brand-30); color: var(--n-100);
+    font-size: 0.625rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  .lex-nav {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--n-100);
+    border-bottom: 1px solid var(--n-90);
+    padding: 0 0.75rem;
+  }
+  .lex-appname {
+    font-weight: 700;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    padding-right: 1.25rem;
+    color: var(--n-10);
+  }
+  .lex-nav a {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--n-30);
+    text-decoration: none;
+    border-bottom: 3px solid transparent;
+  }
+  .lex-nav a.on { color: var(--brand-40); font-weight: 600; border-bottom-color: var(--brand-50); }
+  .lex-body { padding: 0.75rem; background: var(--n-95); }
+
+  /* ---------- page header (record / object) ---------- */
+  .pagehdr {
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .pagehdr-top { display: flex; align-items: flex-start; gap: 0.75rem; }
+  .objicon {
+    width: 40px; height: 40px; border-radius: var(--radius);
+    display: grid; place-items: center; flex: none;
+  }
+  .objicon svg { width: 22px; height: 22px; fill: var(--n-100); }
+  .oi-event { background: #eb7092; }
+  .oi-people { background: #ea7092; }
+  .oi-approval { background: #7f8ded; }
+  .oi-list { background: #5867e8; }
+  .oi-report { background: #ec4f4f; }
+  .pagehdr-titles { flex: 1; min-width: 0; }
+  .pagehdr-kicker {
+    font-size: 0.6875rem;
+    color: var(--n-50);
+    letter-spacing: 0.02em;
+  }
+  .pagehdr-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--n-10);
+  }
+  .pagehdr-actions { display: flex; gap: 0.375rem; align-items: center; flex: none; }
+  .highlights {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--n-90);
+  }
+  .hl-label {
+    font-size: 0.6875rem;
+    color: var(--n-50);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .hl-value { font-size: 0.8125rem; color: var(--n-10); font-weight: 600; }
+  .hl-value.link { color: var(--brand-50); font-weight: 400; }
+
+  /* ---------- card ---------- */
+  .card {
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+  .card + .card { margin-top: 0.75rem; }
+  .card-hdr {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--n-90);
+  }
+  .card-hdr .objicon { width: 26px; height: 26px; border-radius: 3px; }
+  .card-hdr .objicon svg { width: 15px; height: 15px; }
+  .card-hdr h4 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--n-10);
+    flex: 1;
+  }
+  .card-body { padding: 1rem; }
+  .card-foot {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--n-90);
+    display: flex;
+    gap: 0.375rem;
+    align-items: center;
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 32px;
+    padding: 0 1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--n-100);
+    color: var(--brand-50);
+    font-size: 0.8125rem;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .btn svg { width: 13px; height: 13px; fill: currentColor; }
+  .btn-brand { background: var(--brand-50); border-color: var(--brand-50); color: var(--n-100); }
+  .btn-destructive-text { color: var(--error-40); }
+  .btn[disabled], .btn.is-disabled {
+    background: var(--n-100);
+    border-color: var(--n-90);
+    color: var(--n-65);
+  }
+  .btn-brand.is-disabled { background: var(--n-90); border-color: var(--n-90); color: var(--n-65); }
+  .btn-sm { height: 26px; padding: 0 0.625rem; font-size: 0.75rem; }
+
+  /* ---------- form elements ---------- */
+  .field { display: block; }
+  .field-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--n-30);
+    margin-bottom: 0.125rem;
+  }
+  .field-label .req { color: var(--error-50); margin-right: 2px; }
+  .input, .select, .filebox {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 32px;
+    padding: 0 0.75rem;
+    background: var(--n-100);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--n-10);
+    font-size: 0.8125rem;
+  }
+  .input.placeholder, .select.placeholder { color: var(--n-50); }
+  .select { justify-content: space-between; }
+  .select svg { width: 11px; height: 11px; fill: var(--n-30); }
+  .filebox {
+    height: auto;
+    padding: 0.5rem 0.75rem;
+    gap: 0.75rem;
+    border-style: dashed;
+    background: var(--n-98);
+  }
+  .help {
+    font-size: 0.75rem;
+    color: var(--n-50);
+    margin: 0.25rem 0 0;
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.5rem;
+  }
+  .col-span { grid-column: 1 / -1; }
+
+  input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    accent-color: var(--brand-50);
+  }
+
+  /* ---------- progress indicator ---------- */
+  .progress {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding: 0 0.5rem;
+  }
+  .progress-step { display: flex; align-items: center; flex: 1; }
+  .progress-step:last-child { flex: none; }
+  .marker {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--n-100);
+    border: 2px solid var(--n-80);
+    flex: none;
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .marker svg { width: 8px; height: 8px; fill: var(--n-100); }
+  .progress-step .lbl {
+    font-size: 0.75rem;
+    color: var(--n-50);
+    margin-left: 0.5rem;
+    white-space: nowrap;
+  }
+  .progress-line { flex: 1; height: 2px; background: var(--n-80); margin: 0 0.75rem; }
+  .progress-step.done .marker { background: var(--brand-50); border-color: var(--brand-50); }
+  .progress-step.done .lbl { color: var(--n-30); }
+  .progress-step.done .progress-line { background: var(--brand-50); }
+  .progress-step.current .marker { border-color: var(--brand-50); box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.16); }
+  .progress-step.current .lbl { color: var(--n-10); font-weight: 600; }
+
+  /* ---------- stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+  .stat {
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    padding: 0.625rem 0.75rem;
+    background: var(--n-98);
+  }
+  .stat b { display: block; font-size: 1.5rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 0.75rem; color: var(--n-50); }
+  .stat.new b { color: var(--brand-40); }
+  .stat.known b { color: var(--n-30); }
+  .stat.skip b { color: var(--warning-50); }
+
+  /* ---------- tables ---------- */
+  table.t {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  table.t th {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--n-30);
+    background: var(--n-98);
+    border-bottom: 1px solid var(--border);
+    padding: 0.375rem 0.5rem;
+    white-space: nowrap;
+  }
+  table.t td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--n-10);
+    vertical-align: top;
+  }
+  table.t td.weak { color: var(--n-50); }
+  table.t tr.group td {
+    background: var(--n-95);
+    font-weight: 700;
+    color: var(--n-30);
+    font-size: 0.75rem;
+  }
+  table.t .col-x { width: 34px; }
+  table.t .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .bordered { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+  /* ---------- badges ---------- */
+  .badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    border-radius: 15rem;
+    padding: 0.0625rem 0.5rem;
+    background: #ecebea;
+    color: var(--n-10);
+    white-space: nowrap;
+  }
+  .badge-new { background: #cfe9fe; color: var(--brand-30); }
+  .badge-known { background: #ecebea; color: var(--n-30); }
+  .badge-skip { background: #fdf0d5; color: var(--warning-50); }
+  .badge-approved { background: #cdefc4; color: #194e31; }
+  .badge-pending { background: #fdf0d5; color: var(--warning-50); }
+  .badge-rejected { background: #fddde3; color: var(--error-40); }
+  .badge-draft { background: #ecebea; color: var(--n-30); }
+  .badge-vip { background: var(--brand-tint); color: var(--brand-30); border: 1px solid #bcd9f5; }
+  /* Quieter than VIP on purpose: VIP is a claim about the guest, the level is context
+     about the decision and must not compete for attention on every row. */
+  .badge-level { background: var(--n-95); color: var(--n-30); border: 1px solid var(--n-90); font-weight: 400; }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+  .tabs span {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--n-30);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tabs span.on { color: var(--brand-40); font-weight: 600; border-bottom-color: var(--brand-50); }
+
+  /* ---------- inline alerts ---------- */
+  .alert {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    border-radius: var(--radius);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .alert svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+  .alert-warning { background: #fef5e7; color: #5c3d00; border: 1px solid #f0d19a; }
+  .alert-warning svg { fill: var(--warning-60); }
+  .alert-success { background: var(--success-tint); color: #194e31; border: 1px solid #b7ddc2; }
+  .alert-success svg { fill: var(--success-50); }
+
+  .footnote { font-size: 0.75rem; color: var(--n-50); margin: 0.5rem 0 0; }
+  .spread { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+
+  /* ---------- company group (approvalsByCompany) ---------- */
+  .company { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.75rem; overflow: hidden; }
+  .company-hdr {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    background: var(--n-98);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .company-hdr .grow { flex: 1; min-width: 200px; }
+  .company-name { font-size: 0.9375rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+  .company-sub { font-size: 0.75rem; color: var(--n-50); margin-left: 1.4rem; }
+  .cust-cd { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--n-30); }
+  .no-customer { color: var(--warning-50); }
+  .remark { font-size: 0.75rem; color: var(--n-50); }
+
+  /* ---------- modal ---------- */
+  .modal-stage {
+    background: rgba(24, 24, 24, 0.45);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--n-80);
+  }
+  .modal {
+    max-width: 620px;
+    margin: 0 auto;
+    background: var(--n-100);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-modal);
+    overflow: hidden;
+  }
+  .modal-hdr {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--n-90);
+    display: flex;
+    align-items: center;
+  }
+  .modal-hdr h4 { margin: 0; font-size: 1.125rem; font-weight: 400; color: var(--n-10); }
+  .modal-body { padding: 1rem; }
+  .modal-foot {
+    padding: 0.625rem 1rem;
+    background: var(--n-95);
+    border-top: 1px solid var(--n-90);
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.375rem;
+  }
+  .section-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--n-30);
+    border-bottom: 1px solid var(--n-90);
+    padding-bottom: 0.25rem;
+    margin: 0 0 0.75rem;
+  }
+  .section-label.mt { margin-top: 1.25rem; }
+
+  /* ---------- phone ---------- */
+  .phone-row { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+  .phone {
+    width: 340px;
+    flex: none;
+    border: 10px solid #181818;
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: var(--shadow-modal);
+    background: var(--n-95);
+  }
+  .phone-bar {
+    background: var(--brand-50);
+    color: var(--n-100);
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .burger { display: grid; gap: 3px; }
+  .burger i { display: block; width: 14px; height: 2px; background: var(--n-100); border-radius: 1px; }
+  .phone-body { padding: 0.5rem; }
+  .phone .company-hdr { padding: 0.5rem; }
+  .phone .btn { width: 100%; justify-content: center; }
+  .phone-actions { display: grid; gap: 0.375rem; }
+  .phone-note { flex: 1; min-width: 260px; }
+
+  /* ---------- flow diagram ---------- */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.75rem;
+    color: var(--n-30);
+  }
+  .legend i {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    margin-right: 0.375rem;
+    vertical-align: -1px;
+  }
+  .flowwrap {
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 1rem;
+  }
+  .flowwrap svg { display: block; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    max-width: 640px;
+    margin: 0 auto 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    background: var(--success-50);
+    color: var(--n-100);
+    box-shadow: var(--shadow-modal);
+    font-size: 0.8125rem;
+  }
+  .toast svg { width: 15px; height: 15px; fill: var(--n-100); flex: none; margin-top: 2px; }
+  .toast .x { margin-left: auto; opacity: 0.85; flex: none; }
+  .toast b { font-weight: 700; }
+
+  /* ---------- approval chain cases ---------- */
+  .chain-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 0.75rem;
+  }
+  .chain-card {
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 0.875rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+  .chain-case {
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--n-30);
+  }
+  .chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+  .chain li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.3125rem 0.5rem;
+    border: 1px solid var(--n-90);
+    border-radius: var(--radius);
+    background: var(--n-98);
+  }
+  .chain li.stops { border-color: var(--success-50); background: var(--success-tint); }
+  .chain li.dropped { border-style: dashed; background: var(--n-100); color: var(--n-50); }
+  .chain li.dropped b { text-decoration: line-through; color: var(--n-50); }
+  .chain li.none { border-color: var(--error-50); background: var(--error-tint); color: #8a0b14; }
+  .lvl {
+    flex: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--brand-50);
+    color: var(--n-100);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    display: grid; place-items: center;
+    align-self: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .chain li.dropped .lvl { background: var(--n-65); }
+  .chain li.none .lvl { background: var(--error-40); }
+  .chain .who { flex: 1; min-width: 0; }
+  .chain .who b { display: block; font-weight: 600; }
+  .chain .role { display: block; font-size: 0.6875rem; color: var(--n-50); }
+  .chain li.stops .role { color: #194e31; }
+  .chain-note { margin: 0; font-size: 0.75rem; color: var(--n-30); }
+  .chain-note b { color: var(--n-10); }
+  .setting-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    background: var(--n-100);
+    border: 1px solid var(--n-90);
+    border-left: 3px solid var(--brand-50);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+  .setting-strip div { min-width: 170px; }
+  .setting-strip .hl-label { margin-bottom: 0.125rem; }
+  .setting-strip .hl-value { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 400; }
+
+  a:focus-visible, .tocbar a:focus-visible {
+    outline: 2px solid var(--brand-50);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 640px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr; }
+    .masthead h1 { font-size: 1.375rem; }
+  }
+</style>
+
+<svg style="display: none" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1114 9.5 4.5 4.5 0 019.5 14z"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2z"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2zm0-4h-2v-4h2z"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 5h18v3H3zm0 5.5h18v3H3zM3 16h18v3H3z"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V10h14z"/></symbol>
+  <symbol id="i-approval" viewBox="0 0 24 24"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8zM7 20h10v2H7z"/></symbol>
+  <symbol id="i-report" viewBox="0 0 24 24"><path d="M4 20h4V10H4zm6 0h4V4h-4zm6 0h4v-7h-4z"/></symbol>
+</svg>
+
+<div class="masthead">
+  <div class="masthead-inner">
+    <p class="eyebrow">Salesforce Event Management PoC · design.md R9</p>
+    <h1>Event Workflow Wireframes</h1>
+    <p>
+      The end-to-end flow, the approval chain it now routes on, and every screen it passes
+      through — drawn against the Lightning Design System spec in <code>UI_design.md</code>.
+      Screen structure follows the LWC templates as built, so the mock-ups and the code say
+      the same thing.
+    </p>
+    <div class="masthead-meta">
+      <span class="meta-chip">3 custom LWCs</span>
+      <span class="meta-chip">3 standard screens</span>
+      <span class="meta-chip">R9 multi-level chain</span>
+      <span class="meta-chip">SLDS 2 styling hooks</span>
+      <span class="meta-chip">English UI · US/EU audience</span>
+    </div>
+  </div>
+</div>
+
+<div class="doc">
+  <nav class="tocbar" aria-label="Sections">
+    <a href="#flow">Process flow</a>
+    <a href="#chain">Approval chain</a>
+    <a href="#s1">1 · Import Attendees</a>
+    <a href="#s2">2 · Create Event</a>
+    <a href="#s3">3 · Event Invitees</a>
+    <a href="#s4">4 · Approval Requests</a>
+    <a href="#s4b">4b · Approvals by Company</a>
+    <a href="#s4m">4b · On a phone</a>
+    <a href="#s5">5 · Approved Invitees report</a>
+    <a href="#states">Empty and error states</a>
+  </nav>
+
+  <!-- ================= FLOW ================= -->
+  <section id="flow">
+    <div class="sec-head">
+      <h2>Process flow</h2>
+      <p>
+        Seven steps from an uploaded CSV to an exported approved list. The spine is the happy
+        path; boxes to the left are refusals that write nothing, boxes to the right are the
+        records the flow reads and writes. Step 5 loops once per approval level.
+      </p>
+    </div>
+
+    <div class="legend">
+      <span><i style="background: #eef4ff; border: 1px solid #0176d3"></i>BMD user action</span>
+      <span><i style="background: #f5f5f5; border: 1px solid #acacac"></i>Platform / Apex</span>
+      <span><i style="background: #fef5e7; border: 1px solid #dd7a01"></i>Approver action</span>
+      <span><i style="background: #eaf5ec; border: 1px solid #2e844a"></i>Record store / read source</span>
+      <span><i style="background: #fef1f1; border: 1px solid #ea001e"></i>Refused — nothing written</span>
+    </div>
+
+    <div class="flowwrap scroller">
+      <svg viewBox="0 0 1020 1700" width="1020" height="1700" role="img"
+        aria-label="Flowchart of the seven-step event invitation workflow, from CSV import to approved-list export.">
+        <defs>
+          <marker id="arw" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#747474"></path>
+          </marker>
+          <marker id="arw-dash" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#939393"></path>
+          </marker>
+        </defs>
+
+        <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+
+          <!-- stage rails -->
+          <g>
+            <rect x="14" y="40" width="3" height="448" rx="1.5" fill="#0176d3"></rect>
+            <text transform="rotate(-90 10 264)" x="10" y="264" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#0176d3">1 · IMPORT</text>
+
+            <rect x="14" y="522" width="3" height="156" rx="1.5" fill="#0176d3"></rect>
+            <text transform="rotate(-90 10 600)" x="10" y="600" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#0176d3">2–3 · PROPOSE</text>
+
+            <rect x="14" y="712" width="3" height="290" rx="1.5" fill="#0176d3"></rect>
+            <text transform="rotate(-90 10 857)" x="10" y="857" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#0176d3">4 · SUBMIT</text>
+
+            <rect x="14" y="1036" width="3" height="424" rx="1.5" fill="#dd7a01"></rect>
+            <text transform="rotate(-90 10 1248)" x="10" y="1248" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#a96404">5 · APPROVE</text>
+
+            <rect x="14" y="1494" width="3" height="68" rx="1.5" fill="#0176d3"></rect>
+            <text transform="rotate(-90 10 1528)" x="10" y="1528" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#0176d3">6 · NOTIFY</text>
+
+            <rect x="14" y="1596" width="3" height="54" rx="1.5" fill="#0176d3"></rect>
+            <text transform="rotate(-90 10 1623)" x="10" y="1623" text-anchor="middle" font-size="10"
+              letter-spacing="1.2" fill="#0176d3">7 · EXPORT</text>
+          </g>
+
+          <!-- connectors: spine -->
+          <g stroke="#747474" stroke-width="1.5" fill="none" marker-end="url(#arw)">
+            <path d="M510,94 L510,126"></path>
+            <path d="M510,196 L510,228"></path>
+            <path d="M510,298 L510,330"></path>
+            <path d="M510,386 L510,418"></path>
+            <path d="M510,488 L510,520"></path>
+            <path d="M510,576 L510,608"></path>
+            <path d="M510,678 L510,710"></path>
+            <path d="M510,766 L510,798"></path>
+            <path d="M510,900 L510,932"></path>
+            <path d="M510,1002 L510,1034"></path>
+            <path d="M510,1104 L510,1136"></path>
+            <path d="M510,1238 L510,1270"></path>
+            <path d="M510,1372 L510,1404"></path>
+            <path d="M510,1460 L510,1492"></path>
+            <path d="M510,1562 L510,1594"></path>
+          </g>
+
+          <!-- connectors: branches -->
+          <g stroke="#747474" stroke-width="1.5" fill="none" marker-end="url(#arw)">
+            <path d="M340,264 L292,264"></path>
+            <path d="M330,848 L292,848"></path>
+            <path d="M330,1188 L292,1188"></path>
+          </g>
+          <g stroke="#939393" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arw-dash)">
+            <path d="M680,454 L718,454"></path>
+            <path d="M340,454 L292,454"></path>
+            <path d="M718,844 L680,844"></path>
+          </g>
+          <!-- loop back to the next level -->
+          <g stroke="#a96404" stroke-width="1.5" fill="none" marker-end="url(#arw)">
+            <path d="M690,1322 L740,1322 L740,1070 L682,1070"></path>
+          </g>
+          <text x="754" y="1285" font-size="11" fill="#a96404" transform="rotate(-90 754 1285)"
+            text-anchor="middle">yes — on to the next level</text>
+
+          <!-- the level-entry notification hangs off the loop -->
+          <g stroke="#939393" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arw-dash)">
+            <path d="M740,1164 L786,1164"></path>
+          </g>
+          <rect x="790" y="1122" width="200" height="84" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="890" y="1145" text-anchor="middle" font-size="12" fill="#181818">
+            <tspan x="890" dy="0">The step's approval action</tspan>
+            <tspan x="890" dy="16">advances Current_Level__c;</tspan>
+            <tspan x="890" dy="16">Invitee_Level_Advanced tells</tspan>
+            <tspan x="890" dy="16">the next level, once each</tspan>
+          </text>
+
+          <!-- branch labels -->
+          <g font-size="11" fill="#444444">
+            <text x="316" y="258" text-anchor="middle">no</text>
+            <text x="316" y="842" text-anchor="middle">no</text>
+            <text x="316" y="1182" text-anchor="middle">reject</text>
+            <text x="524" y="922" fill="#444444">yes</text>
+            <text x="524" y="1258" fill="#444444">approve</text>
+            <text x="524" y="1392" fill="#444444">no — final level</text>
+          </g>
+
+          <!-- ============ nodes ============ -->
+          <!-- 1 upload -->
+          <rect x="340" y="40" width="340" height="54" rx="27" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#014486">Upload the attendee CSV</text>
+
+          <!-- 2 parse -->
+          <rect x="340" y="128" width="340" height="68" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="152" text-anchor="middle" font-size="13" fill="#181818">
+            <tspan x="510" dy="0">Parsed in the browser — delimiter sniffed,</tspan>
+            <tspan x="510" dy="16">strict UTF-8, de-duplicated within the file</tspan>
+            <tspan x="510" dy="16" font-size="11" fill="#444444">importWizard · max 500 rows</tspan>
+          </text>
+
+          <!-- 3 preview -->
+          <rect x="340" y="230" width="340" height="68" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="254" text-anchor="middle" font-size="13" fill="#181818">
+            <tspan x="510" dy="0">Preview every row against the pool key</tspan>
+            <tspan x="510" dy="16">New · Already known · Skipped</tspan>
+            <tspan x="510" dy="16" font-size="11" fill="#444444">nothing is written yet</tspan>
+          </text>
+
+          <!-- 3L skipped -->
+          <rect x="30" y="230" width="262" height="68" rx="4" fill="#fef1f1" stroke="#ea001e"></rect>
+          <text x="161" y="254" text-anchor="middle" font-size="13" fill="#8a0b14">
+            <tspan x="161" dy="0">No last name — no identity</tspan>
+            <tspan x="161" dy="16">to key on. Skipped, and the</tspan>
+            <tspan x="161" dy="16">row writes nothing</tspan>
+          </text>
+
+          <!-- 4 review -->
+          <rect x="340" y="332" width="340" height="54" rx="4" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="364" text-anchor="middle" font-size="13" fill="#014486">BMD reviews the preview and ticks the rows</text>
+
+          <!-- 5 upsert -->
+          <rect x="340" y="420" width="340" height="68" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="444" text-anchor="middle" font-size="13" fill="#181818">
+            <tspan x="510" dy="0">Re-classified server-side, then one upsert</tspan>
+            <tspan x="510" dy="16">on Unique_Key__c — a re-run refreshes</tspan>
+            <tspan x="510" dy="16">people instead of duplicating them</tspan>
+          </text>
+
+          <!-- 5R pool -->
+          <rect x="718" y="420" width="272" height="68" rx="4" fill="#eaf5ec" stroke="#2e844a"></rect>
+          <text x="854" y="444" text-anchor="middle" font-size="13" fill="#194e31">
+            <tspan x="854" dy="0" font-weight="600">Event_Attendee__c</tspan>
+            <tspan x="854" dy="16">one row per person, shared</tspan>
+            <tspan x="854" dy="16">by every future event</tspan>
+          </text>
+
+          <!-- 5L guarantee -->
+          <rect x="30" y="420" width="262" height="68" rx="4" fill="#fef1f1" stroke="#ea001e"></rect>
+          <text x="161" y="444" text-anchor="middle" font-size="13" fill="#8a0b14">
+            <tspan x="161" dy="0">No contact, lead or account</tspan>
+            <tspan x="161" dy="16">is created, changed or</tspan>
+            <tspan x="161" dy="16">deleted — asserted in tests</tspan>
+          </text>
+
+          <!-- 6 create event -->
+          <rect x="340" y="522" width="340" height="54" rx="4" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="554" text-anchor="middle" font-size="13" fill="#014486">Create the Marketing Event — standard form</text>
+
+          <!-- 7 add invitees -->
+          <rect x="340" y="610" width="340" height="68" rx="4" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="634" text-anchor="middle" font-size="13" fill="#014486">
+            <tspan x="510" dy="0">Propose guests from the pool</tspan>
+            <tspan x="510" dy="16">Event_Invitee__c created as Draft</tspan>
+            <tspan x="510" dy="16" font-size="11" fill="#0b5cab">attendeeSelector · each row records who added it</tspan>
+          </text>
+
+          <!-- 8 submit -->
+          <rect x="340" y="712" width="340" height="54" rx="4" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="744" text-anchor="middle" font-size="13" fill="#014486">Submit my invitees — my own Draft rows only</text>
+
+          <!-- D1 chain? -->
+          <polygon points="510,798 690,848 510,898 330,848" fill="#ffffff" stroke="#0176d3" stroke-width="1.5"></polygon>
+          <text x="510" y="843" text-anchor="middle" font-size="13" fill="#014486">
+            <tspan x="510" dy="0">Does every invitee</tspan>
+            <tspan x="510" dy="16">resolve to a chain?</tspan>
+          </text>
+
+          <!-- D1 L refuse -->
+          <rect x="30" y="814" width="262" height="68" rx="4" fill="#fef1f1" stroke="#ea001e"></rect>
+          <text x="161" y="838" text-anchor="middle" font-size="13" fill="#8a0b14">
+            <tspan x="161" dy="0">No Account Owner, an inactive</tspan>
+            <tspan x="161" dy="16">approver, or a chain that is</tspan>
+            <tspan x="161" dy="16">only me — refused whole</tspan>
+          </text>
+
+          <!-- D1 R the org chart -->
+          <rect x="718" y="810" width="272" height="68" rx="4" fill="#eaf5ec" stroke="#2e844a"></rect>
+          <text x="854" y="834" text-anchor="middle" font-size="13" fill="#194e31">
+            <tspan x="854" dy="0" font-weight="600">The org chart itself</tspan>
+            <tspan x="854" dy="16">Account.OwnerId, User.ManagerId,</tspan>
+            <tspan x="854" dy="16">User.Title — read, never written</tspan>
+          </text>
+
+          <!-- 9 stamp -->
+          <rect x="340" y="934" width="340" height="68" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="958" text-anchor="middle" font-size="13" fill="#181818">
+            <tspan x="510" dy="0">Stamp Approver_1…Approver_5 and</tspan>
+            <tspan x="510" dy="16">Approval_Levels__c, then Approval.process()</tspan>
+            <tspan x="510" dy="16">— resolved once at submit, then frozen</tspan>
+          </text>
+
+          <!-- 10 approver -->
+          <rect x="340" y="1036" width="340" height="68" rx="4" fill="#fef5e7" stroke="#dd7a01"></rect>
+          <text x="510" y="1060" text-anchor="middle" font-size="13" fill="#5c3d00">
+            <tspan x="510" dy="0">Level N approver ticks a company in</tspan>
+            <tspan x="510" dy="16">Approvals by Company — each row says</tspan>
+            <tspan x="510" dy="16">Level N of M when the chain is longer</tspan>
+          </text>
+
+          <!-- D2 decide -->
+          <polygon points="510,1136 690,1188 510,1238 330,1188" fill="#ffffff" stroke="#dd7a01" stroke-width="1.5"></polygon>
+          <text x="510" y="1193" text-anchor="middle" font-size="13" fill="#5c3d00">Approve or reject?</text>
+
+          <!-- D2 L reject -->
+          <rect x="30" y="1154" width="262" height="68" rx="4" fill="#fef1f1" stroke="#ea001e"></rect>
+          <text x="161" y="1178" text-anchor="middle" font-size="13" fill="#8a0b14">
+            <tspan x="161" dy="0">Rejected, and any level can</tspan>
+            <tspan x="161" dy="16">end it. Back to the pool —</tspan>
+            <tspan x="161" dy="16">re-adding resets the same row</tspan>
+          </text>
+
+          <!-- D3 more levels -->
+          <polygon points="510,1270 690,1322 510,1372 330,1322" fill="#ffffff" stroke="#dd7a01" stroke-width="1.5"></polygon>
+          <text x="510" y="1327" text-anchor="middle" font-size="13" fill="#5c3d00">Another level above this one?</text>
+
+          <!-- 11 approved -->
+          <rect x="340" y="1406" width="340" height="54" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="1438" text-anchor="middle" font-size="13" fill="#181818">Status = Approved · Decided_At stamped</text>
+
+          <!-- 12 notify -->
+          <rect x="340" y="1494" width="340" height="68" rx="4" fill="#f5f5f5" stroke="#acacac"></rect>
+          <text x="510" y="1518" text-anchor="middle" font-size="13" fill="#181818">
+            <tspan x="510" dy="0">Flow calls EventNotificationService:</tspan>
+            <tspan x="510" dy="16">when the submitter has nothing left pending,</tspan>
+            <tspan x="510" dy="16">one email and bell — X approved, Y rejected</tspan>
+          </text>
+
+          <!-- 13 export -->
+          <rect x="340" y="1596" width="340" height="54" rx="27" fill="#eef4ff" stroke="#0176d3"></rect>
+          <text x="510" y="1628" text-anchor="middle" font-size="13" font-weight="600" fill="#014486">Report → Export CSV or XLSX</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>Status lives on the invitee, not the event.</b> The event shows roll-up counts, so one AM's pending batch never blocks another's.</li>
+        <li><b>The chain is stamped whole, not walked.</b> All five approver fields are resolved at submit and frozen, so a reorganisation mid-approval cannot reroute an item somebody is already looking at.</li>
+        <li><b>Every step of this is built at R9</b>, including the chain. It routes on the org chart, not on a route table — see the next section for how a chain is resolved.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= APPROVAL CHAIN ================= -->
+  <section id="chain">
+    <div class="sec-head">
+      <h2>Approval chain</h2>
+      <p>
+        Who signs is resolved once, at submit, from the org chart: level 1 is the Account Owner
+        behind the invitee, and each level above is that person's manager, up to the level cap or
+        the first Regional Head — whichever comes first. Two invitees on the same event routinely
+        have different chain lengths, which is why the approver's screen says <i>Level 2 of 3</i>
+        rather than assuming.
+      </p>
+    </div>
+
+    <div class="setting-strip">
+      <div>
+        <div class="hl-label">Level 1</div>
+        <div class="hl-value">Account_Manager__c</div>
+      </div>
+      <div>
+        <div class="hl-label">Each level above</div>
+        <div class="hl-value">User.ManagerId</div>
+      </div>
+      <div>
+        <div class="hl-label">Stops early at</div>
+        <div class="hl-value">User.Title ⊃ “Regional Head”</div>
+      </div>
+      <div>
+        <div class="hl-label">Level cap</div>
+        <div class="hl-value">2 above level 1</div>
+      </div>
+      <div>
+        <div class="hl-label">Steps provisioned</div>
+        <div class="hl-value">5 · Approver_1…5__c</div>
+      </div>
+    </div>
+
+    <div class="chain-grid">
+      <div class="chain-card">
+        <p class="chain-case">Ordinary customer</p>
+        <ol class="chain">
+          <li><span class="lvl">1</span><span class="who"><b>Maya Kessler</b><span class="role">Account Owner</span></span></li>
+          <li><span class="lvl">2</span><span class="who"><b>Ravi Prakash</b><span class="role">her manager</span></span></li>
+          <li><span class="lvl">3</span><span class="who"><b>Ingrid Holm</b><span class="role">his manager — level cap reached</span></span></li>
+        </ol>
+        <p class="chain-note"><b>Three signatures.</b> The cap ends the chain, not a title.</p>
+      </div>
+
+      <div class="chain-card">
+        <p class="chain-case">Owner reports to a Regional Head</p>
+        <ol class="chain">
+          <li><span class="lvl">1</span><span class="who"><b>Peter Lindqvist</b><span class="role">Account Owner</span></span></li>
+          <li class="stops"><span class="lvl">2</span><span class="who"><b>Ingrid Holm</b><span class="role">Regional Head, EMEA — the chain stops here</span></span></li>
+        </ol>
+        <p class="chain-note"><b>Two signatures.</b> A Regional Head is a terminator, not a rung: the chain does not climb past them to fill the cap.</p>
+      </div>
+
+      <div class="chain-card">
+        <p class="chain-case">The submitter owns the account</p>
+        <ol class="chain">
+          <li class="dropped"><span class="lvl">1</span><span class="who"><b>Dana Brooks</b><span class="role">Account Owner — and the submitter, so dropped</span></span></li>
+          <li><span class="lvl">1</span><span class="who"><b>Ravi Prakash</b><span class="role">her manager</span></span></li>
+          <li><span class="lvl">2</span><span class="who"><b>Ingrid Holm</b><span class="role">his manager</span></span></li>
+        </ol>
+        <p class="chain-note"><b>Two signatures.</b> Nobody approves their own invitation, and dropping a level shortens the chain rather than buying another one at the top.</p>
+      </div>
+
+      <div class="chain-card">
+        <p class="chain-case">Guest with no customer</p>
+        <ol class="chain">
+          <li class="none"><span class="lvl">!</span><span class="who"><b>Elena Kaufmann</b><span class="role">no Contact link, so no Account Owner</span></span></li>
+        </ol>
+        <p class="chain-note">
+          <b>No chain, so the whole batch is refused</b> — with a named error, nothing written, and
+          the rows left in Draft. The remedy is data: an account kept for non-customer guests, whose
+          owner becomes their level 1.
+        </p>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>The cap and the title markers are one Custom Metadata record</b>, <code>Approval_Chain_Setting__mdt.Default</code> — raising the cap to 3 or 4 starts populating <code>Approver_4__c</code> and <code>Approver_5__c</code> with no deploy.</li>
+        <li><b>Title matching is a case-insensitive substring</b>, because real titles carry a region. That also matches “Assistant to the Regional Head”, which is why the marker is a setting an admin can narrow rather than a string in the code.</li>
+        <li><b>Unverified from this repo:</b> whether this org populates <code>User.Title</code> at all. An unmatched title does not error — every chain simply climbs to the cap, so the symptom is approvals taking one signature longer than expected.</li>
+        <li><b>What it costs:</b> the chain can no longer be edited as data. Changing who signs means changing the org chart, which is an administrator's Setup change rather than a row an operations team can add.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 1 ================= -->
+  <section id="s1">
+    <div class="sec-head">
+      <h2>Screen 1 · Import External Attendee List</h2>
+      <p>
+        A three-step wizard on its own app page. The whole point of the middle step is that
+        the user sees the consequence of the file before anything is written.
+      </p>
+    </div>
+
+    <h3 class="wf-title">Step 2 — Preview <span class="tag tag-custom">Custom LWC</span></h3>
+    <p class="wf-sub">force-app/main/default/lwc/importWizard</p>
+
+    <div class="scroller">
+      <div class="lex">
+        <div class="lex-global">
+          <div class="waffle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lex-search"><svg viewBox="0 0 24 24" width="12" height="12" fill="#747474"><use href="#i-search"></use></svg>Search…</div>
+          <div class="lex-globalright"><div class="avatar">DB</div></div>
+        </div>
+        <div class="lex-nav">
+          <span class="lex-appname">Event Management</span>
+          <a href="#s1">Home</a>
+          <a href="#s3">Marketing Events</a>
+          <a class="on" href="#s1">Import Attendees</a>
+          <a href="#s5">Reports</a>
+        </div>
+        <div class="lex-body">
+          <div class="card">
+            <div class="card-hdr">
+              <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
+              <h4>Import External Attendee List</h4>
+            </div>
+            <div class="card-body">
+              <div class="progress">
+                <div class="progress-step done">
+                  <span class="marker"><svg viewBox="0 0 24 24"><use href="#i-check"></use></svg></span>
+                  <span class="lbl">1 Upload File</span>
+                  <span class="progress-line"></span>
+                </div>
+                <div class="progress-step current">
+                  <span class="marker"></span>
+                  <span class="lbl">2 Preview Attendees</span>
+                  <span class="progress-line"></span>
+                </div>
+                <div class="progress-step">
+                  <span class="marker"></span>
+                  <span class="lbl">3 Import Results</span>
+                </div>
+              </div>
+
+              <p style="margin: 0 0 0.75rem">
+                Uploaded: <b>attendees-berlin-fintech-2026.csv</b> (128 rows)
+              </p>
+
+              <div class="stats">
+                <div class="stat new"><b>96</b><span>New attendees</span></div>
+                <div class="stat known"><b>27</b><span>Already known (will refresh)</span></div>
+                <div class="stat skip"><b>5</b><span>Skipped (invalid)</span></div>
+              </div>
+
+              <div class="bordered">
+                <table class="t">
+                  <thead>
+                    <tr>
+                      <th class="col-x"></th>
+                      <th>Name</th>
+                      <th>Company</th>
+                      <th>Email</th>
+                      <th>What will happen</th>
+                      <th>Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Import Anna Weber"></td>
+                      <td>Anna Weber</td>
+                      <td>Nordbank AG</td>
+                      <td>anna.weber@nordbank.example</td>
+                      <td class="weak">Will be created</td>
+                      <td><span class="badge badge-new">New</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Import Marcus Reid"></td>
+                      <td>Marcus Reid</td>
+                      <td>Helvetia Insurance</td>
+                      <td>m.reid@helvetia.example</td>
+                      <td class="weak">Title, mobile and source file will refresh</td>
+                      <td><span class="badge badge-known">Already known</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Import Sofia Almeida"></td>
+                      <td>Sofia Almeida</td>
+                      <td>Banco Atlântico</td>
+                      <td>sofia.almeida@batlantico.example</td>
+                      <td class="weak">Will be created</td>
+                      <td><span class="badge badge-new">New</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Import Tom Whitfield"></td>
+                      <td>Tom Whitfield</td>
+                      <td>Helvetia Insurance</td>
+                      <td class="weak">—</td>
+                      <td class="weak">Will be created · “n/a” is not an address, so it is dropped and the person kept</td>
+                      <td><span class="badge badge-new">New</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" disabled aria-label="Row skipped, cannot be imported"></td>
+                      <td class="weak">(no last name)</td>
+                      <td>Technische Universität München</td>
+                      <td>e.kaufmann@tum.example</td>
+                      <td class="weak">Nothing is written — a person with no surname cannot be recognised later</td>
+                      <td><span class="badge badge-skip">Skipped</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="spread" style="margin-top: 1rem">
+                <button class="btn" type="button">
+                  <svg viewBox="0 0 24 24"><use href="#i-download"></use></svg>Download Skipped Rows
+                </button>
+                <div style="display: flex; gap: 0.375rem">
+                  <button class="btn" type="button">Back</button>
+                  <button class="btn btn-brand" type="button">Import 123 Attendees</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>Skipped rows are unticked and disabled</b>, not hidden — the count on screen has to match the file the user is holding.</li>
+        <li><b>The primary button carries the number</b> it will act on, so the commit is never a guess.</li>
+        <li>Row selection is a plain checkbox rather than <code>lightning-datatable</code> because rows carry a per-row explanation column.</li>
+      </ul>
+    </div>
+
+    <h3 class="wf-title">Step 1 — Upload <span class="tag tag-custom">Custom LWC</span></h3>
+    <div class="card" style="max-width: 720px">
+      <div class="card-hdr">
+        <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
+        <h4>Import External Attendee List</h4>
+      </div>
+      <div class="card-body">
+        <div class="progress">
+          <div class="progress-step current">
+            <span class="marker"></span><span class="lbl">1 Upload File</span><span class="progress-line"></span>
+          </div>
+          <div class="progress-step">
+            <span class="marker"></span><span class="lbl">2 Preview Attendees</span><span class="progress-line"></span>
+          </div>
+          <div class="progress-step"><span class="marker"></span><span class="lbl">3 Import Results</span></div>
+        </div>
+        <p class="help" style="margin-bottom: 0.5rem">
+          Upload a CSV (.csv) file — comma, semicolon or tab separated. Everyone in it becomes an
+          <b>Event Attendee</b>, ready to be invited to any event. Expected headers: First Name,
+          Last Name, Email, Company (Title and Mobile optional).
+        </p>
+        <p class="help" style="margin-bottom: 0.5rem">
+          Nothing else in the org is touched: no contact, lead or account is created, changed or read.
+          People already imported are recognised by name, company and email, so re-uploading a file
+          updates them instead of duplicating them.
+        </p>
+        <p class="help" style="margin-bottom: 0.75rem">
+          Save it as <b>UTF-8</b> (in Excel: File → Save As → “CSV UTF-8”), otherwise accented names
+          cannot be read.
+        </p>
+        <label class="field">
+          <span class="field-label">CSV file (.csv)</span>
+          <span class="filebox">
+            <span class="btn btn-sm">Upload File</span>
+            <span style="color: var(--n-50)">or drop a file here</span>
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <h3 class="wf-title">Step 3 — Results <span class="tag tag-custom">Custom LWC</span></h3>
+    <div class="card" style="max-width: 720px">
+      <div class="card-hdr">
+        <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
+        <h4>Import External Attendee List</h4>
+      </div>
+      <div class="card-body">
+        <div class="progress">
+          <div class="progress-step done">
+            <span class="marker"><svg viewBox="0 0 24 24"><use href="#i-check"></use></svg></span>
+            <span class="lbl">1 Upload File</span><span class="progress-line"></span>
+          </div>
+          <div class="progress-step done">
+            <span class="marker"><svg viewBox="0 0 24 24"><use href="#i-check"></use></svg></span>
+            <span class="lbl">2 Preview Attendees</span><span class="progress-line"></span>
+          </div>
+          <div class="progress-step current"><span class="marker"></span><span class="lbl">3 Import Results</span></div>
+        </div>
+        <div class="alert alert-success">
+          <svg viewBox="0 0 24 24"><use href="#i-check"></use></svg>
+          <div>
+            <b>Import complete.</b> 96 attendees created, 27 already known and refreshed.
+            No contact, lead or account was created, changed or deleted.
+          </div>
+        </div>
+        <p class="help">Invite them from an event: open a Marketing Event and use <b>Add Attendees</b>.</p>
+        <p class="help">
+          <b>5 rows</b> could not be imported — download the list, fix them in the file and upload
+          again. Starting another import discards it.
+        </p>
+        <div style="display: flex; gap: 0.375rem; margin-top: 0.75rem">
+          <button class="btn" type="button">
+            <svg viewBox="0 0 24 24"><use href="#i-download"></use></svg>Download Skipped Rows
+          </button>
+          <button class="btn" type="button">Import Another File</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 2 ================= -->
+  <section id="s2">
+    <div class="sec-head">
+      <h2>Screen 2 · Create Marketing Event</h2>
+      <p>
+        The standard create modal with a curated layout — no custom code. Status is deliberately
+        absent: it belongs to the invitee, not the event.
+      </p>
+    </div>
+
+    <h3 class="wf-title">New Marketing Event <span class="tag tag-standard">Standard record form</span></h3>
+
+    <div class="modal-stage">
+      <div class="modal">
+        <div class="modal-hdr"><h4>New Marketing Event</h4></div>
+        <div class="modal-body">
+          <p class="section-label">Event Information</p>
+          <div class="form-grid">
+            <label class="field">
+              <span class="field-label"><span class="req">*</span>Event Name</span>
+              <span class="input">FinTech Forum Berlin 2026</span>
+            </label>
+            <label class="field">
+              <span class="field-label"><span class="req">*</span>Event Date</span>
+              <span class="input">17/09/2026</span>
+            </label>
+            <label class="field">
+              <span class="field-label">Event Type</span>
+              <span class="select">Conference <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
+            </label>
+            <label class="field">
+              <span class="field-label">Location</span>
+              <span class="input">Berlin, DE</span>
+            </label>
+            <label class="field col-span">
+              <span class="field-label">Topic</span>
+              <span class="select">Digital Banking; Payments <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
+              <span class="help">Multi-select — what similarity is computed from later.</span>
+            </label>
+            <label class="field">
+              <span class="field-label">Expected Attendees</span>
+              <span class="input">150</span>
+            </label>
+            <label class="field">
+              <span class="field-label">Event Owner</span>
+              <span class="input placeholder">Dana Brooks</span>
+            </label>
+            <label class="field col-span">
+              <span class="field-label">Description</span>
+              <span class="input" style="height: 64px; align-items: flex-start; padding-top: 0.5rem">
+                Annual customer and partner forum, Berlin.
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" type="button">Cancel</button>
+          <button class="btn" type="button">Save &amp; New</button>
+          <button class="btn btn-brand" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>No Status field.</b> Several AMs submit independent batches, so an event-level state machine would deadlock. The event shows counts instead.</li>
+        <li>Save navigates straight to the record page, which is where Screen 3 lives.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 3 ================= -->
+  <section id="s3">
+    <div class="sec-head">
+      <h2>Screen 3 · Event Invitees</h2>
+      <p>
+        The event record page: standard highlights panel carrying the roll-up counts, with the
+        attendee selector below it. Two tabs — propose guests, then read and mark up the whole list.
+      </p>
+    </div>
+
+    <h3 class="wf-title">Add Attendees tab <span class="tag tag-custom">Custom LWC</span></h3>
+    <p class="wf-sub">force-app/main/default/lwc/attendeeSelector</p>
+
+    <div class="scroller">
+      <div class="lex">
+        <div class="lex-global">
+          <div class="waffle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lex-search"><svg viewBox="0 0 24 24" width="12" height="12" fill="#747474"><use href="#i-search"></use></svg>Search…</div>
+          <div class="lex-globalright"><div class="avatar">DB</div></div>
+        </div>
+        <div class="lex-nav">
+          <span class="lex-appname">Event Management</span>
+          <a href="#s3">Home</a>
+          <a class="on" href="#s3">Marketing Events</a>
+          <a href="#s1">Import Attendees</a>
+          <a href="#s5">Reports</a>
+        </div>
+        <div class="lex-body">
+          <div class="pagehdr">
+            <div class="pagehdr-top">
+              <span class="objicon oi-event"><svg viewBox="0 0 24 24"><use href="#i-calendar"></use></svg></span>
+              <div class="pagehdr-titles">
+                <div class="pagehdr-kicker">Marketing Event</div>
+                <div class="pagehdr-title">FinTech Forum Berlin 2026</div>
+              </div>
+              <div class="pagehdr-actions">
+                <button class="btn btn-sm" type="button">Edit</button>
+                <button class="btn btn-sm" type="button">Printable View</button>
+              </div>
+            </div>
+            <div class="highlights">
+              <div><div class="hl-label">Event Date</div><div class="hl-value">17/09/2026</div></div>
+              <div><div class="hl-label">Type</div><div class="hl-value">Conference</div></div>
+              <div><div class="hl-label">Approved</div><div class="hl-value">27</div></div>
+              <div><div class="hl-label">Pending</div><div class="hl-value">12</div></div>
+              <div><div class="hl-label">Rejected</div><div class="hl-value">3</div></div>
+              <div><div class="hl-label">Owner</div><div class="hl-value link">Dana Brooks</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr">
+              <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+              <h4>Event Invitees</h4>
+            </div>
+            <div class="card-body">
+              <div class="tabs"><span class="on">Add Attendees</span><span>All Invitees</span></div>
+
+              <p class="help" style="margin-bottom: 0.75rem">
+                Everyone here came from an imported attendee list. They are not contacts or leads and
+                belong to no account — the organisation below is the text their file carried.
+              </p>
+
+              <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.75rem; margin-bottom: 0.75rem">
+                <label class="field">
+                  <span class="field-label">Organisation</span>
+                  <span class="select">All organisations <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
+                </label>
+                <label class="field">
+                  <span class="field-label">Search name / email / title</span>
+                  <span class="input placeholder">Search…</span>
+                </label>
+              </div>
+
+              <div class="alert alert-warning">
+                <svg viewBox="0 0 24 24"><use href="#i-warning"></use></svg>
+                <div>Showing the first 2,000 attendees. Narrow by organisation or search to see the rest.</div>
+              </div>
+
+              <div class="bordered">
+                <table class="t">
+                  <thead>
+                    <tr><th class="col-x"></th><th>Name</th><th>Title</th><th>Email</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr class="group"><td colspan="4">Nordbank AG (14)</td></tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Select Anna Weber"></td>
+                      <td>Anna Weber</td><td>Head of Payments</td><td>anna.weber@nordbank.example</td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
+                      <td>Jonas Fischer</td><td>Treasury Manager</td><td>j.fischer@nordbank.example</td>
+                    </tr>
+                    <tr class="group"><td colspan="4">Helvetia Insurance (9)</td></tr>
+                    <tr>
+                      <td><input type="checkbox" aria-label="Select Marcus Reid"></td>
+                      <td>Marcus Reid</td><td>CTO</td><td>m.reid@helvetia.example</td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Select Tom Whitfield"></td>
+                      <td>Tom Whitfield</td><td>Data Platform Lead</td><td class="weak">—</td>
+                    </tr>
+                    <tr class="group"><td colspan="4">Technische Universität München (3)</td></tr>
+                    <tr>
+                      <td><input type="checkbox" aria-label="Select Elena Kaufmann"></td>
+                      <td>Elena Kaufmann</td><td>Professor, Financial Computing</td><td>e.kaufmann@tum.example</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="spread" style="margin-top: 1rem">
+                <p class="help" style="display: flex; align-items: center; gap: 0.375rem; margin: 0">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="#dd7a01"><use href="#i-warning"></use></svg>
+                  6 of the 9 selected are hidden by the current filter.
+                </p>
+                <div style="display: flex; gap: 0.375rem">
+                  <button class="btn" type="button">Add 9 Attendees</button>
+                  <button class="btn btn-brand" type="button">Submit My 14 Invitees for Approval</button>
+                </div>
+              </div>
+              <p class="help" style="margin-top: 0.5rem">
+                Each invitee records who added it. You submit only your own batch — other AMs'
+                selections are unaffected. Submitting sends each invitee to the account manager who
+                owns their customer, and up the approval chain from there.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="wf-title">After Submit <span class="tag tag-custom">Toast</span></h3>
+    <p class="wf-sub">slds-notify_toast · the only place an AM meets the chain</p>
+    <div style="background: var(--n-95); border: 1px solid var(--n-90); border-radius: var(--radius); padding: 1rem">
+      <div class="toast">
+        <svg viewBox="0 0 24 24"><use href="#i-check"></use></svg>
+        <div>
+          <b>Submitted.</b> 14 invitee(s) sent for approval — 3 approver(s) notified at level 1.
+          The longest chain is 3 levels — each level decides in turn, and you hear once every one
+          of them has.
+        </div>
+        <span class="x" aria-hidden="true">✕</span>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>Grouped by company text</b>, because an attendee has no Account behind them. Two spellings of one organisation group separately, and the screen does not pretend otherwise.</li>
+        <li><b>Selections survive a filter change</b>, so the component says out loud when the Add count includes rows that are off screen — a count silently disagreeing with the table is worse than a note.</li>
+        <li>Both buttons carry counts; <b>Submit</b> is the brand button because it is the one irreversible act on this tab.</li>
+        <li><b>The chain sentence appears only when a chain is longer than one level</b> — on the common case it would be noise, and on the uncommon one it is the whole news.</li>
+        <li><b>A batch is all-or-nothing.</b> One invitee that reaches no Account Owner refuses the whole submission, including the rows that could have been routed. Nothing moves out of Draft.</li>
+        <li>
+          <b>The helper text names the first approver, not the whole ladder.</b> It used to read
+          “sends each invitee to <i>your manager</i>”, which R9 made wrong; an AM needs to know who
+          gets it first, and the toast supplies the depth once the chain is actually resolved.
+        </li>
+      </ul>
+    </div>
+
+    <h3 class="wf-title">All Invitees tab <span class="tag tag-custom">Custom LWC</span></h3>
+    <div class="card">
+      <div class="card-hdr">
+        <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+        <h4>Event Invitees</h4>
+      </div>
+      <div class="card-body">
+        <div class="tabs"><span>Add Attendees</span><span class="on">All Invitees</span></div>
+        <div class="bordered">
+          <table class="t">
+            <thead>
+              <tr><th>Name</th><th>Title</th><th>Organisation</th><th>Status</th><th>Added By</th><th>Attended</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Anna Weber</td><td>Head of Payments</td><td>Nordbank AG</td>
+                <td><span class="badge badge-approved">Approved</span></td><td class="weak">Dana Brooks</td>
+                <td><input type="checkbox" checked aria-label="Anna Weber attended"></td>
+              </tr>
+              <tr>
+                <td>Jonas Fischer</td><td>Treasury Manager</td><td>Nordbank AG</td>
+                <td><span class="badge badge-approved">Approved</span></td><td class="weak">Dana Brooks</td>
+                <td><input type="checkbox" aria-label="Jonas Fischer attended"></td>
+              </tr>
+              <tr>
+                <td>Marcus Reid</td><td>CTO</td><td>Helvetia Insurance</td>
+                <td><span class="badge badge-pending">Pending Approval</span></td><td class="weak">Luis Ortega</td>
+                <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
+              </tr>
+              <tr>
+                <td>Elena Kaufmann</td><td>Professor, Financial Computing</td><td>Technische Universität München</td>
+                <td><span class="badge badge-draft">Draft</span></td><td class="weak">Luis Ortega</td>
+                <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
+              </tr>
+              <tr>
+                <td>Sofia Almeida</td><td>Head of Digital</td><td>Banco Atlântico</td>
+                <td><span class="badge badge-rejected">Rejected</span></td><td class="weak">Dana Brooks</td>
+                <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="spread" style="margin-top: 1rem">
+          <p class="help" style="margin: 0">1 of 27 approved invitees marked as attended.</p>
+          <button class="btn" type="button">Save Attendance</button>
+        </div>
+        <p class="help" style="margin-top: 0.5rem">
+          Mark who actually turned up after the event. Only approved invitees can be ticked — an event
+          nobody marks up has no attendance history rather than a wrong one.
+        </p>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>Attendance is a separate fact from approval.</b> Approval is permission to come; the tick is evidence somebody came, and nothing sets it automatically.</li>
+        <li>Status is read-only here — it is written by the approval process, not by the AM.</li>
+        <li><b>Elena Kaufmann is stuck in Draft, and that is R9 showing through.</b> She belongs to no customer, so she reaches no Account Owner and her submission is refused — she can be added to an event and never submitted until an account exists for guests like her.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 4 ================= -->
+  <section id="s4">
+    <div class="sec-head">
+      <h2>Screen 4 · Approval Requests</h2>
+      <p>
+        The platform's own approval surface: the bell, the email, the Approvals list, the record
+        lock and the audit trail. It works everywhere, but it cannot group by company — which is
+        exactly what Screen 4b exists for.
+      </p>
+    </div>
+
+    <h3 class="wf-title">Items to Approve <span class="tag tag-standard">Standard Salesforce</span></h3>
+    <div class="card">
+      <div class="card-hdr">
+        <span class="objicon oi-approval"><svg viewBox="0 0 24 24"><use href="#i-approval"></use></svg></span>
+        <h4>Items to Approve (12)</h4>
+        <button class="btn btn-sm" type="button">Approve</button>
+        <button class="btn btn-sm" type="button">Reject</button>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table class="t">
+          <thead>
+            <tr>
+              <th class="col-x"><input type="checkbox" aria-label="Select all"></th>
+              <th>Related To</th><th>Type</th><th>Most Recent Approver</th><th>Date Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" checked aria-label="Select INV-00241"></td>
+              <td style="color: var(--brand-50)">INV-00241</td><td class="weak">Event Invitee</td>
+              <td class="weak">Dana Brooks</td><td class="weak">14/08/2026 09:12</td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked aria-label="Select INV-00242"></td>
+              <td style="color: var(--brand-50)">INV-00242</td><td class="weak">Event Invitee</td>
+              <td class="weak">Dana Brooks</td><td class="weak">14/08/2026 09:12</td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" aria-label="Select INV-00243"></td>
+              <td style="color: var(--brand-50)">INV-00243</td><td class="weak">Event Invitee</td>
+              <td class="weak">Luis Ortega</td><td class="weak">14/08/2026 11:40</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>The rows are work items, not invitees.</b> Company, title and remark live on the target record, so this list cannot show or sort by them at all — the reason Screen 4b was built.</li>
+        <li>Approvers set <b>Receive Approval Request Emails = Never</b>; the one aggregated email from <code>EventNotificationService</code> is the notification instead of 40 per-item mails.</li>
+        <li><b>Levels 2 and up are told when their turn begins</b>, not at submit. Each step's approval action advances <code>Current_Level__c</code>, and the <code>Invitee_Level_Advanced</code> flow turns that into one aggregated notice per approver per event — without it, a Regional Head would never hear anything at all.</li>
+        <li><b>A rejection at any level ends the whole request</b>; no level above is asked.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 4B ================= -->
+  <section id="s4b">
+    <div class="sec-head">
+      <h2>Screen 4b · Approvals by Company</h2>
+      <p>
+        Approval stays per invitee; the approver decides a whole company in one tick. The component
+        chooses the work items — the platform still owns the decision, the lock and the audit trail.
+      </p>
+    </div>
+
+    <h3 class="wf-title">On the event record page <span class="tag tag-custom">Custom LWC</span></h3>
+    <p class="wf-sub">force-app/main/default/lwc/approvalsByCompany</p>
+
+    <div class="scroller">
+      <div class="lex">
+        <div class="lex-global">
+          <div class="waffle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lex-search"><svg viewBox="0 0 24 24" width="12" height="12" fill="#747474"><use href="#i-search"></use></svg>Search…</div>
+          <div class="lex-globalright"><div class="avatar">MK</div></div>
+        </div>
+        <div class="lex-nav">
+          <span class="lex-appname">Event Management</span>
+          <a href="#s4b">Home</a>
+          <a class="on" href="#s4b">Marketing Events</a>
+          <a href="#s5">Reports</a>
+        </div>
+        <div class="lex-body">
+          <div class="card">
+            <div class="card-hdr">
+              <span class="objicon oi-approval"><svg viewBox="0 0 24 24"><use href="#i-approval"></use></svg></span>
+              <h4>Approvals by Company</h4>
+              <button class="btn btn-sm" type="button">Refresh</button>
+            </div>
+            <div class="card-body">
+              <p class="help" style="margin-bottom: 0.75rem">
+                5 invitees on FinTech Forum Berlin 2026 are waiting on you. Tick a company to select
+                everyone from it, or tick people individually — then approve or reject.
+                Nothing is selected to begin with.
+              </p>
+
+              <label class="field" style="margin-bottom: 1rem">
+                <span class="field-label">Comment (optional, recorded on the approval)</span>
+                <span class="input placeholder">Add a comment…</span>
+              </label>
+
+              <div class="company">
+                <div class="company-hdr">
+                  <div class="grow">
+                    <label class="company-name">
+                      <input type="checkbox" checked aria-label="Select everyone from Nordbank AG">
+                      Nordbank AG
+                    </label>
+                    <div class="company-sub">
+                      <span class="cust-cd">CUST-4471</span>
+                      <span style="margin-left: 0.75rem">3 waiting on you</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 0.375rem">
+                    <button class="btn btn-sm btn-brand" type="button">Approve all 3</button>
+                    <button class="btn btn-sm btn-destructive-text" type="button">Reject all 3</button>
+                  </div>
+                </div>
+                <table class="t">
+                  <tbody>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Anna Weber"></td>
+                      <td>
+                        Anna Weber
+                        <span class="badge badge-vip">VIP</span>
+                        <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 3</span>
+                        <div class="remark">Keynote panellist — confirmed by marketing.</div>
+                      </td>
+                      <td>Head of Payments</td>
+                      <td class="weak">Dana Brooks</td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
+                      <td>
+                        Jonas Fischer
+                        <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 3</span>
+                      </td>
+                      <td>Treasury Manager</td><td class="weak">Dana Brooks</td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Lena Hoffmann"></td>
+                      <td>
+                        Lena Hoffmann
+                        <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 3</span>
+                      </td>
+                      <td>Product Owner, Cards</td><td class="weak">Dana Brooks</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="company">
+                <div class="company-hdr">
+                  <div class="grow">
+                    <label class="company-name">
+                      <input type="checkbox" aria-label="Select everyone from Helvetia Insurance">
+                      Helvetia Insurance
+                    </label>
+                    <div class="company-sub">
+                      <span class="cust-cd">CUST-2093</span>
+                      <span style="margin-left: 0.75rem">2 waiting on you</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 0.375rem">
+                    <button class="btn btn-sm btn-brand" type="button">Approve all 2</button>
+                    <button class="btn btn-sm btn-destructive-text" type="button">Reject all 2</button>
+                  </div>
+                </div>
+                <table class="t">
+                  <tbody>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" aria-label="Select Marcus Reid"></td>
+                      <td>
+                        Marcus Reid
+                        <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 2</span>
+                      </td>
+                      <td>CTO</td><td class="weak">Luis Ortega</td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" aria-label="Select Tom Whitfield"></td>
+                      <td>
+                        Tom Whitfield
+                        <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 2</span>
+                        <div class="remark">Runs their data platform — worth the seat.</div>
+                      </td>
+                      <td>Data Platform Lead</td><td class="weak">Luis Ortega</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="display: flex; gap: 0.375rem; border-top: 1px solid var(--n-90); padding-top: 0.75rem">
+                <button class="btn btn-brand" type="button">Approve 3 Selected</button>
+                <button class="btn btn-destructive-text" type="button">Reject 3 Selected</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>Nothing starts selected.</b> Pre-ticking every row would make "approve everybody" the path of least resistance, which inverts what an approval is for.</li>
+        <li><b>“Level 1 of 3” is deliberately quieter than VIP.</b> VIP is a claim about the guest and should catch the eye; the level is context about the decision — whether this signature is the last one — and must not compete for attention on every row. It is hidden entirely on a one-level chain.</li>
+        <li><b>Two invitees on one event legitimately show different chain lengths</b>, because a Regional Head ends a chain wherever they appear. Nordbank's owner is three rungs below one; Helvetia's reports to one directly.</li>
+        <li><b>“Waiting on me” is read from <code>ProcessInstanceWorkitem</code></b>, not from a field comparison. <code>Approver_2__c</code> is populated from the moment of submission, so a field test would let a level-2 approver act on work that level 1 has not released yet.</li>
+        <li>
+          <b>The <i>Not a customer</i> group can no longer hold pending rows.</b> Routing starts at
+          the Account Owner, so a guest with no Contact link is refused at submit and never reaches
+          this screen. The branch survives in the template from R8; the guests it was drawn for now
+          need an account kept for them, which is a manual step in DEPLOYMENT.md.
+        </li>
+        <li><b>Remark and VIP sit on the row</b>, because they are the AM's case for inviting this person, and the approver is the reader they were written for.</li>
+        <li>Capped at 200 invitees per decision: refusing at a stated number beats a governor limit surfacing as an unexplained error.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= 4B MOBILE ================= -->
+  <section id="s4m">
+    <div class="sec-head">
+      <h2>Screen 4b · On a phone</h2>
+      <p>
+        Approvers habitually decide from a handset, and this is the reason the component exists at
+        all rather than a list-view button — the company tick is a comfortable target, a list view's
+        row checkboxes are not.
+      </p>
+    </div>
+
+    <div class="phone-row">
+      <div class="phone">
+        <div class="phone-bar">
+          <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>FinTech Forum Berlin 2026</span>
+        </div>
+        <div class="phone-body">
+          <div class="card">
+            <div class="card-hdr" style="padding: 0.625rem 0.75rem">
+              <span class="objicon oi-approval"><svg viewBox="0 0 24 24"><use href="#i-approval"></use></svg></span>
+              <h4 style="font-size: 0.875rem">Approvals by Company</h4>
+            </div>
+            <div class="card-body" style="padding: 0.75rem">
+              <p class="help" style="margin-bottom: 0.625rem">5 invitees are waiting on you.</p>
+
+              <div class="company">
+                <div class="company-hdr">
+                  <div class="grow">
+                    <label class="company-name" style="font-size: 0.875rem">
+                      <input type="checkbox" checked aria-label="Select everyone from Nordbank AG">
+                      Nordbank AG
+                    </label>
+                    <div class="company-sub"><span class="cust-cd">CUST-4471</span>
+                      <span style="margin-left: 0.5rem">3 waiting</span></div>
+                  </div>
+                </div>
+                <table class="t">
+                  <tbody>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Anna Weber"></td>
+                      <td>Anna Weber
+                        <span class="badge badge-vip">VIP</span>
+                        <span class="badge badge-level">Level 1 of 3</span>
+                        <div class="remark">Head of Payments</div></td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
+                      <td>Jonas Fischer <span class="badge badge-level">Level 1 of 3</span>
+                        <div class="remark">Treasury Manager</div></td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Lena Hoffmann"></td>
+                      <td>Lena Hoffmann <span class="badge badge-level">Level 1 of 3</span>
+                        <div class="remark">Product Owner, Cards</div></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="company">
+                <div class="company-hdr">
+                  <div class="grow">
+                    <label class="company-name" style="font-size: 0.875rem">
+                      <input type="checkbox" aria-label="Select everyone from Helvetia Insurance">
+                      Helvetia Insurance
+                    </label>
+                    <div class="company-sub"><span class="cust-cd">CUST-2093</span>
+                      <span style="margin-left: 0.5rem">2 waiting</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="phone-actions">
+                <button class="btn btn-brand" type="button">Approve 3 Selected</button>
+                <button class="btn btn-destructive-text" type="button">Reject 3 Selected</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone-note">
+        <div class="notes" style="margin-top: 0">
+          <ul>
+            <li><b>The company header is the primary target</b> — one tap selects everyone from it, which is the requirement's single tick.</li>
+            <li><b>Group action buttons drop off</b> below the small breakpoint; the two bulk buttons at the bottom stay full width and stay reachable with a thumb.</li>
+            <li><b>Title moves under the name</b> instead of into its own column — the same rows, re-flowed rather than a second template.</li>
+            <li>This is the standard Salesforce Mobile App rendering the same LWC. No native app is involved.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCREEN 5 ================= -->
+  <section id="s5">
+    <div class="sec-head">
+      <h2>Screen 5 · Approved Invitees report</h2>
+      <p>
+        Export is a saved report, not custom code: one event or all of them, a decision-date range
+        in the running user's timezone, and a subscription if somebody wants it by email.
+      </p>
+    </div>
+
+    <h3 class="wf-title">Approved Invitees — by Event <span class="tag tag-standard">Standard report</span></h3>
+
+    <div class="scroller">
+      <div class="lex">
+        <div class="lex-global">
+          <div class="waffle" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lex-search"><svg viewBox="0 0 24 24" width="12" height="12" fill="#747474"><use href="#i-search"></use></svg>Search…</div>
+          <div class="lex-globalright"><div class="avatar">DB</div></div>
+        </div>
+        <div class="lex-nav">
+          <span class="lex-appname">Event Management</span>
+          <a href="#s5">Home</a>
+          <a href="#s3">Marketing Events</a>
+          <a href="#s1">Import Attendees</a>
+          <a class="on" href="#s5">Reports</a>
+        </div>
+        <div class="lex-body">
+          <div class="pagehdr">
+            <div class="pagehdr-top">
+              <span class="objicon oi-report"><svg viewBox="0 0 24 24"><use href="#i-report"></use></svg></span>
+              <div class="pagehdr-titles">
+                <div class="pagehdr-kicker">Report · Event Management</div>
+                <div class="pagehdr-title">Approved Invitees — by Event</div>
+              </div>
+              <div class="pagehdr-actions">
+                <button class="btn btn-sm" type="button">Subscribe</button>
+                <button class="btn btn-sm" type="button">Edit</button>
+                <button class="btn btn-sm btn-brand" type="button">Export</button>
+              </div>
+            </div>
+            <div class="highlights">
+              <div><div class="hl-label">Filters</div><div class="hl-value">Status equals Approved</div></div>
+              <div><div class="hl-label">Decided</div><div class="hl-value">01/08/2026 – 15/08/2026</div></div>
+              <div><div class="hl-label">Grouped by</div><div class="hl-value">Event Name</div></div>
+              <div><div class="hl-label">Rows</div><div class="hl-value">41</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body" style="padding: 0">
+              <table class="t">
+                <thead>
+                  <tr>
+                    <th>Invitee Name</th><th>Title</th><th>Organisation</th><th>Email</th>
+                    <th>Approver 1</th><th class="num">Levels</th><th>Decided At</th><th>Added By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="group"><td colspan="8">FinTech Forum Berlin 2026 (27)</td></tr>
+                  <tr>
+                    <td>Anna Weber</td><td>Head of Payments</td><td>Nordbank AG</td>
+                    <td>anna.weber@nordbank.example</td><td class="weak">Maya Kessler</td>
+                    <td class="num weak">3</td>
+                    <td class="weak">14/08/2026 16:20</td><td class="weak">Dana Brooks</td>
+                  </tr>
+                  <tr>
+                    <td>Jonas Fischer</td><td>Treasury Manager</td><td>Nordbank AG</td>
+                    <td>j.fischer@nordbank.example</td><td class="weak">Maya Kessler</td>
+                    <td class="num weak">3</td>
+                    <td class="weak">14/08/2026 16:20</td><td class="weak">Dana Brooks</td>
+                  </tr>
+                  <tr>
+                    <td>Sofia Almeida</td><td>Head of Digital</td><td>Banco Atlântico</td>
+                    <td>sofia.almeida@batlantico.example</td><td class="weak">Maya Kessler</td>
+                    <td class="num weak">3</td>
+                    <td class="weak">15/08/2026 08:05</td><td class="weak">Dana Brooks</td>
+                  </tr>
+                  <tr class="group"><td colspan="8">Payments Symposium Zurich 2026 (14)</td></tr>
+                  <tr>
+                    <td>Marcus Reid</td><td>CTO</td><td>Helvetia Insurance</td>
+                    <td>m.reid@helvetia.example</td><td class="weak">Peter Lindqvist</td>
+                    <td class="num weak">2</td>
+                    <td class="weak">09/08/2026 10:44</td><td class="weak">Luis Ortega</td>
+                  </tr>
+                  <tr>
+                    <td>Tom Whitfield</td><td>Data Platform Lead</td><td>Helvetia Insurance</td>
+                    <td class="weak">—</td><td class="weak">Peter Lindqvist</td>
+                    <td class="num weak">2</td>
+                    <td class="weak">09/08/2026 10:44</td><td class="weak">Luis Ortega</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>One report covers both entry points.</b> To get one event, filter it; to get all of them, don't.</li>
+        <li><b>"My Approved Invitees"</b> is the same report filtered to <code>Added By = $User.Id</code>.</li>
+        <li><b>Approver became Approver 1, and Levels joined it.</b> Levels 2–5 and <code>Current_Level__c</code> are in the report type but unchecked by default — a fully approved row's interesting number is how many people had to agree, not which of five fields held them.</li>
+        <li>The date filter is evaluated in the running user's timezone by the platform, which is what removed the custom exporter's timezone-boundary handling.</li>
+        <li><b>Known gap:</b> the standard exporter does not guard against CSV formula injection. Only Screen 1's Download Skipped Rows still does.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= STATES ================= -->
+  <section id="states">
+    <div class="sec-head">
+      <h2>Empty and error states</h2>
+      <p>
+        Every component that mutates data has to render loading, empty and error explicitly.
+        These are the three the demo actually hits.
+      </p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem">
+      <div class="card">
+        <div class="card-hdr">
+          <span class="objicon oi-approval"><svg viewBox="0 0 24 24"><use href="#i-approval"></use></svg></span>
+          <h4>Approvals by Company</h4>
+        </div>
+        <div class="card-body">
+          <p class="help" style="margin: 0">
+            Nothing on this event is waiting on you. Invitees appear here once an AM submits them and
+            the approval routes to you.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+          <h4>Event Invitees</h4>
+        </div>
+        <div class="card-body">
+          <p class="help" style="margin: 0">
+            No selectable attendees — everyone imported has already been added to this event, or no
+            list has been imported yet. Use the <b>Import Attendees</b> tab to upload one.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
+          <h4>Import External Attendee List</h4>
+        </div>
+        <div class="card-body">
+          <div class="alert" style="background: var(--error-tint); border: 1px solid #f5b8bd; color: #8a0b14; margin: 0">
+            <svg viewBox="0 0 24 24" fill="#ba0517"><use href="#i-warning"></use></svg>
+            <div>
+              This file is not UTF-8, so accented names would be stored incorrectly. Re-save it in
+              Excel as <b>CSV UTF-8</b> and upload again.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+          <h4>Event Invitees</h4>
+        </div>
+        <div class="card-body">
+          <div class="alert" style="background: var(--error-tint); border: 1px solid #f5b8bd; color: #8a0b14; margin: 0">
+            <svg viewBox="0 0 24 24" fill="#ba0517"><use href="#i-warning"></use></svg>
+            <div>
+              Nothing was submitted. <b>Elena Kaufmann</b> belongs to no customer account, so there
+              is no approver to route to. Remove her from the batch, or ask an administrator to
+              place her under the account kept for non-customer guests.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>An error names the fix</b>, not just the fault — the wizard echoes the header row it actually read when a file turns out not to be an attendee list at all.</li>
+        <li><b>The submit refusal names the person</b>, because "no approver found" would leave an AM to guess which of forty rows caused it. It is all-or-nothing by design: routing the rest and leaving the rest behind would hide the data problem instead of forcing it.</li>
+        <li>The empty approval card is visible to AMs on every event page. Hiding it needs a component visibility filter, which is an admin's decision about their own record pages.</li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="footnote">
+    Structure follows the LWC templates in <code>force-app/main/default/lwc</code> as built at R9;
+    styling follows <code>UI_design.md</code>. Colours are SLDS values compiled into this page rather
+    than loaded from the platform, so verify them against your org's SLDS version before go-live.
+  </p>
+</div>
