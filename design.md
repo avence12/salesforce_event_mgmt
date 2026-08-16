@@ -295,7 +295,7 @@ Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV)
 
 ## Recommended Approach (B) — Detailed Design
 
-Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tmp/gstack-sketch.png`). Five screens, all English UI — the sketches cover the first four; Screen 5 (Approved Exports) was added after approval.
+Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tmp/gstack-sketch.png`). Five screens, all English UI — the sketches cover the first four; Screen 5 (Approved Exports) was added after approval. **That scratchpad file no longer exists.** [`docs/wireframes.html`](docs/wireframes.html) is the current set — the process flow, the ★R9 chain resolution rule, and all six screens as built, styled against `UI_design.md`.
 
 ### Data model
 
