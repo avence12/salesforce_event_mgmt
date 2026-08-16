@@ -40,7 +40,9 @@
         <fields>Status__c</fields>
         <fields>Attended__c</fields>
         <fields>Added_By__c</fields>
-        <fields>Approver__c</fields>
+        <fields>Approver_1__c</fields>
+        <fields>Current_Level__c</fields>
+        <fields>Approval_Levels__c</fields>
         <relatedList>Event_Invitee__c.Marketing_Event__c</relatedList>
     </relatedLists>
 </Layout>

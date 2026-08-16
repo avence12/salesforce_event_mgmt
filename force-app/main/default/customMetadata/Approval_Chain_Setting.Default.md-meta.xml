@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata
+    xmlns="http://soap.sforce.com/2006/04/metadata"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+>
+    <label>Default</label>
+    <protected>false</protected>
+    <values>
+        <field>Regional_Head_Titles__c</field>
+        <value xsi:type="xsd:string">Regional Head</value>
+    </values>
+    <values>
+        <field>Max_Levels_Above_Account_Owner__c</field>
+        <value xsi:type="xsd:double">2</value>
+    </values>
+</CustomMetadata>

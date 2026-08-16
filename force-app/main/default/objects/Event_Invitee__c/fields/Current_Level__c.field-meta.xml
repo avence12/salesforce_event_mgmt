@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Current_Level__c</fullName>
+    <label>Current Level</label>
+    <description>★R9 Which level of the approval chain the invitee is waiting on: 1 while the Account Owner has it, 2 once they have approved and it has moved up, and so on. Set to 1 by the initial submission action and advanced by each step&apos;s approval action; blank on a Draft row.
+
+It exists because a chain took a meaning away from Pending_Count__c. With one approver, &quot;pending&quot; meant &quot;waiting on one named person&quot;; with a chain it means &quot;somewhere in a chain&quot;, which is a less useful thing for an AM to read. This field gives the answer back to reports and to the approval screen without anyone having to open the Approval History.
+
+Two honest limits. It is written by workflow field updates attached to approval steps, so it is only as accurate as those actions firing — verify on a real org, which this repo cannot. And it is not what decides who may act: that is the approval process&apos;s own work item, which InviteeApprovalController reads directly rather than trusting this number.</description>
+    <type>Number</type>
+    <precision>2</precision>
+    <scale>0</scale>
+    <required>false</required>
+    <unique>false</unique>
+    <trackHistory>false</trackHistory>
+</CustomField>

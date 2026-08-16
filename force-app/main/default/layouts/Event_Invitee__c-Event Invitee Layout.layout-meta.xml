@@ -20,7 +20,6 @@
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Added_By__c</field></layoutItems>
-            <layoutItems><behavior>Readonly</behavior><field>Approver__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Submitted_At__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Decided_At__c</field></layoutItems>
             <layoutItems><behavior>Readonly</behavior><field>Event_Date__c</field></layoutItems>
@@ -45,6 +44,36 @@
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Readonly</behavior><field>Account_Manager__c</field></layoutItems>
+        </layoutColumns>
+        <style>TwoColumnsTopToBottom</style>
+    </layoutSections>
+    <!--
+      ★R9 The chain, in its own section rather than one Approver field among the timestamps.
+      Five lookups and two numbers is too much to read as a detail; as a section it answers
+      the question an AM actually asks of this page — "who still has to say yes, and where
+      has it got to?" — in one glance. Levels 4 and 5 are shown even though nothing populates
+      them today: a blank level is how this page says the chain ended, and hiding them would
+      make a three-level chain and a five-level one look identical.
+
+      The Approval History related list below is the audit trail and this section is the
+      forecast. They are not the same thing: history says who has decided, the chain says who
+      is still to.
+    -->
+    <layoutSections>
+        <customLabel>false</customLabel>
+        <detailHeading>false</detailHeading>
+        <editHeading>true</editHeading>
+        <label>Approval Chain</label>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>Approver_1__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approver_2__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approver_3__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approver_4__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approver_5__c</field></layoutItems>
+        </layoutColumns>
+        <layoutColumns>
+            <layoutItems><behavior>Readonly</behavior><field>Current_Level__c</field></layoutItems>
+            <layoutItems><behavior>Readonly</behavior><field>Approval_Levels__c</field></layoutItems>
         </layoutColumns>
         <style>TwoColumnsTopToBottom</style>
     </layoutSections>

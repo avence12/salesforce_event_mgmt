@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approval_Levels__c</fullName>
+    <label>Approval Levels</label>
+    <description>★R9 How many levels this invitee&apos;s chain has, stamped by ApprovalChainService at submit time alongside the Approver_N__c fields. Two invitees on the same event routinely differ: one belongs to a customer whose Account Owner is a Regional Head and needs one signature, another needs three.
+
+Read with Current_Level__c it gives the approver and the AM the same one-line answer — &quot;level 2 of 3&quot; — that the Approval History would otherwise have to be opened for. Blank on a Draft row.</description>
+    <type>Number</type>
+    <precision>2</precision>
+    <scale>0</scale>
+    <required>false</required>
+    <unique>false</unique>
+    <trackHistory>false</trackHistory>
+</CustomField>

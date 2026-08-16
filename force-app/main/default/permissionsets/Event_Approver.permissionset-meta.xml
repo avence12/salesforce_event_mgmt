@@ -130,8 +130,44 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R9 An approver reads the levels above and below their own, and edits none of them.
+      Seeing the rest of the chain is part of deciding: "two more people will look at this"
+      and "I am the last signature" are different decisions, and the row is where that is
+      written down.
+    -->
     <fieldPermissions>
-        <field>Event_Invitee__c.Approver__c</field>
+        <field>Event_Invitee__c.Approver_1__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_2__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_3__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_4__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_5__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Current_Level__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approval_Levels__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

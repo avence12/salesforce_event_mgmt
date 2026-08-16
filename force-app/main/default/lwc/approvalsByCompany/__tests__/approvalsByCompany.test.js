@@ -33,7 +33,9 @@ const ACME = {
             salutation: 'Ms',
             vip: false,
             remark: null,
-            addedByName: 'Alex AM'
+            addedByName: 'Alex AM',
+            level: 2,
+            levels: 3
         },
         {
             inviteeId: 'a02000000000002',
@@ -42,7 +44,9 @@ const ACME = {
             salutation: null,
             vip: false,
             remark: null,
-            addedByName: 'Alex AM'
+            addedByName: 'Alex AM',
+            level: 2,
+            levels: 3
         },
         {
             inviteeId: 'a02000000000003',
@@ -51,7 +55,9 @@ const ACME = {
             salutation: 'Dr',
             vip: true,
             remark: 'Keynote guest, confirmed by marketing',
-            addedByName: 'Alex AM'
+            addedByName: 'Alex AM',
+            level: 2,
+            levels: 3
         }
     ]
 };
@@ -69,7 +75,9 @@ const GENEVA = {
             salutation: 'Prof',
             vip: false,
             remark: null,
-            addedByName: 'Maria AM'
+            addedByName: 'Maria AM',
+            level: 1,
+            levels: 1
         }
     ]
 };
@@ -144,6 +152,25 @@ describe('c-approvals-by-company', () => {
             expect(text).toContain('Dr Lena Farrow');
             expect(text).toContain('VIP');
             expect(text).toContain('Keynote guest, confirmed by marketing');
+        });
+
+        // ★R9 An approver in the middle of a chain is deciding something different from the
+        // last signature, and neither the standard Approvals list nor the record page tells
+        // them which they are.
+        it('says which level of the chain the approver is on', async () => {
+            const el = build();
+            pendingAdapter.emit([ACME]);
+            await flush();
+
+            expect(el.shadowRoot.textContent).toContain('Level 2 of 3');
+        });
+
+        it('shows no level badge when the chain has only one level', async () => {
+            const el = build();
+            pendingAdapter.emit([GENEVA]);
+            await flush();
+
+            expect(el.shadowRoot.textContent).not.toContain('Level 1 of 1');
         });
 
         it('falls back to the bare name when there is no salutation', async () => {

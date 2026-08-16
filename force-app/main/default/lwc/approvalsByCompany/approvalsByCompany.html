@@ -100,6 +100,13 @@
                                                     >VIP</span
                                                 >
                                             </template>
+                                            <template lwc:if={r.showLevel}>
+                                                <span
+                                                    class="slds-badge slds-badge_lightest slds-m-left_x-small level"
+                                                    title="More approvers follow you in this chain"
+                                                    >{r.levelLabel}</span
+                                                >
+                                            </template>
                                             <template lwc:if={r.hasRemark}>
                                                 <div class="slds-text-body_small slds-text-color_weak remark">
                                                     {r.remark}

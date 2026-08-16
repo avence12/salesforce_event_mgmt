@@ -24,6 +24,12 @@
  *   - **All-or-nothing per action, with the skipped rows reported.** A half-applied
  *     "Approve all 12" is worse than a refused one, and a silently short count reads as
  *     success.
+ *
+ * ★R9 The multi-level chain changed one thing here and it is worth naming: "waiting on me"
+ * is now a question only the approval process can answer, so both methods read
+ * ProcessInstanceWorkitem instead of comparing an approver field. A level-2 approver opening
+ * this screen while level 1 still holds the row sees nothing, which is correct and is not
+ * what a field comparison would have done.
  */
 public with sharing class InviteeApprovalController {
     /** One company's worth of pending work for the running user. */
@@ -56,6 +62,12 @@ public with sharing class InviteeApprovalController {
         public String remark { get; set; }
         @AuraEnabled
         public String addedByName { get; set; }
+        /** ★R9 Which level of the chain this row is on for the person looking at it. */
+        @AuraEnabled
+        public Integer level { get; set; }
+        /** ★R9 How many levels the row's chain has, so the screen can say "level 2 of 3". */
+        @AuraEnabled
+        public Integer levels { get; set; }
     }
 
     public class DecisionResult {
@@ -95,7 +107,7 @@ public with sharing class InviteeApprovalController {
     public static List<CompanyGroup> getMyPendingByCompany(Id eventId) {
         Map<String, CompanyGroup> byKey = new Map<String, CompanyGroup>();
 
-        for (Event_Invitee__c inv : [
+        List<Event_Invitee__c> pending = [
             SELECT
                 Id,
                 Invitee_Name__c,
@@ -106,15 +118,31 @@ public with sharing class InviteeApprovalController {
                 Cust_Cd__c,
                 VIP__c,
                 Remark__c,
-                Added_By__r.Name
+                Added_By__r.Name,
+                Approval_Levels__c,
+                Current_Level__c,
+                Approver_1__c,
+                Approver_2__c,
+                Approver_3__c,
+                Approver_4__c,
+                Approver_5__c
             FROM Event_Invitee__c
-            WHERE
-                Marketing_Event__c = :eventId
-                AND Status__c = 'Pending Approval'
-                AND Approver__c = :UserInfo.getUserId()
+            WHERE Marketing_Event__c = :eventId AND Status__c = 'Pending Approval'
             ORDER BY Invitee_Org__c NULLS LAST, Invitee_Name__c
             LIMIT :PENDING_CAP
-        ]) {
+        ];
+        // ★R9 "Waiting on me" stopped being a field comparison the day the chain grew. A row
+        // whose Approver_2__c is this user is theirs only once level 1 has signed, and the
+        // record itself cannot say whether that has happened — the work item can, and it is
+        // the same authority the standard Approvals list reads. Two bounded queries rather
+        // than one, in exchange for a screen that cannot show somebody work that is not
+        // theirs yet.
+        Set<Id> waitingOnMe = assignedToMe(new Map<Id, Event_Invitee__c>(pending).keySet());
+
+        for (Event_Invitee__c inv : pending) {
+            if (!waitingOnMe.contains(inv.Id)) {
+                continue;
+            }
             String key = inv.Account__c != null
                 ? String.valueOf(inv.Account__c)
                 : 'text:' + (String.isBlank(inv.Invitee_Org__c) ? '' : inv.Invitee_Org__c);
@@ -138,10 +166,53 @@ public with sharing class InviteeApprovalController {
             p.vip = inv.VIP__c;
             p.remark = inv.Remark__c;
             p.addedByName = inv.Added_By__r != null ? inv.Added_By__r.Name : null;
+            p.level = myLevelOn(inv);
+            p.levels = inv.Approval_Levels__c == null ? null : inv.Approval_Levels__c.intValue();
             g.invitees.add(p);
         }
 
         return byKey.values();
+    }
+
+    /** Invitees from the given set whose current approval work item is assigned to this user. */
+    private static Set<Id> assignedToMe(Set<Id> inviteeIds) {
+        Set<Id> out = new Set<Id>();
+        if (inviteeIds.isEmpty()) {
+            return out;
+        }
+        for (ProcessInstanceWorkitem item : [
+            SELECT ProcessInstance.TargetObjectId
+            FROM ProcessInstanceWorkitem
+            WHERE ProcessInstance.TargetObjectId IN :inviteeIds AND ActorId = :UserInfo.getUserId()
+        ]) {
+            out.add(item.ProcessInstance.TargetObjectId);
+        }
+        return out;
+    }
+
+    /**
+     * ★R9 Which rung of this row's chain the running user is.
+     *
+     * Read off the frozen Approver_N__c fields rather than Current_Level__c, deliberately:
+     * the answer is then a property of the record and cannot be wrong because a workflow
+     * field update did not fire. Current_Level__c is the fallback for a delegated approver,
+     * who is acting on somebody else's behalf and appears in no Approver_N__c field.
+     */
+    private static Integer myLevelOn(Event_Invitee__c inv) {
+        Id me = UserInfo.getUserId();
+        List<Id> chain = new List<Id>{
+            inv.Approver_1__c,
+            inv.Approver_2__c,
+            inv.Approver_3__c,
+            inv.Approver_4__c,
+            inv.Approver_5__c
+        };
+        for (Integer i = 0; i < chain.size(); i++) {
+            if (chain[i] == me) {
+                return i + 1;
+            }
+        }
+        return inv.Current_Level__c == null ? null : inv.Current_Level__c.intValue();
     }
 
     /**
@@ -172,15 +243,17 @@ public with sharing class InviteeApprovalController {
         // Re-scoped server-side, and both halves of this matter. The event bound narrows the
         // ids to rows on the page the user is actually looking at; ActorId narrows them to
         // work items assigned to them. Neither is inferable from the client's request.
+        //
+        // ★R9 The Approver__c test that used to sit in this query is gone rather than
+        // renamed to Approver_1__c: with a chain, matching a named field would let a level-2
+        // approver act while level 1 still has the row. The work item is the only thing that
+        // knows whose turn it is, and it was always the authority — the field test was a
+        // cheap duplicate of it that stopped being equivalent.
         Set<Id> mine = new Set<Id>();
         for (Event_Invitee__c inv : [
             SELECT Id
             FROM Event_Invitee__c
-            WHERE
-                Marketing_Event__c = :eventId
-                AND Id IN :requested
-                AND Status__c = 'Pending Approval'
-                AND Approver__c = :UserInfo.getUserId()
+            WHERE Marketing_Event__c = :eventId AND Id IN :requested AND Status__c = 'Pending Approval'
         ]) {
             mine.add(inv.Id);
         }

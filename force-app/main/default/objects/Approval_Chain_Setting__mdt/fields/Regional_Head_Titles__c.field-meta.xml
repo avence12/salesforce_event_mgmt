@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Regional_Head_Titles__c</fullName>
+    <label>Regional Head Titles</label>
+    <description>★R9 Comma-separated markers matched against User.Title, case-insensitively and as a substring. A user whose title contains any of them is a Regional Head, and the chain ends at their approval rather than climbing past them.
+
+Substring rather than equality because real titles carry a region: &quot;Regional Head, EMEA&quot; and &quot;Regional Head of Sales&quot; both have to match one marker. The cost is that a title like &quot;Assistant to the Regional Head&quot; would match too — contrived, but the reason the field is a list rather than a hard-coded string is so an org that hits it can narrow the marker instead of asking for a code change.
+
+Leave it blank to disable early termination entirely: the chain then always climbs the full number of levels the org chart allows.
+
+★R9 This is the one org-shaped assumption in the whole chain, and it is unverified from this repo: nothing here knows whether this org populates User.Title at all, let alone with these words. If it keeps that fact somewhere else — a role, a permission set, a public group — this field is the wrong mechanism and ApprovalChainService.isRegionalHead is the one method to change.</description>
+    <type>Text</type>
+    <length>255</length>
+    <required>false</required>
+    <unique>false</unique>
+    <fieldManageability>SubscriberControlled</fieldManageability>
+</CustomField>

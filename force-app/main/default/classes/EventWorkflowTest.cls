@@ -1,13 +1,23 @@
 /**
- * End-to-end workflow tests: add → submit (approver resolution + notifications) →
- * approve/reject through the standard approval process → completion notification →
- * rejected re-add.
+ * End-to-end workflow tests: add → submit (chain resolution + notifications) →
+ * approve/reject through the standard approval process, level by level → completion
+ * notification → rejected re-add.
  *
- * Two AMs share one manager, which is the whole of the R5 routing rule. The
- * Account Owner and Lead Owner rungs the earlier revisions tested went with the
- * Account and Lead lookups; what replaces those tests is an assertion that a
- * submitter with no manager is refused, because that is now the only way routing
- * can fail.
+ * ★R9 The fixture is an org chart and two customers, because that is what the chain is
+ * made of:
+ *
+ *   Acme Corporation   owned by amowner → mgrdana → rhead ("Regional Head, EMEA") → ceo
+ *   Nordbank AG        owned by mgrdana → rhead → ceo
+ *
+ * With two levels allowed above the Account Owner, an Acme invitee needs three approvals
+ * and a Nordbank invitee needs two — it reaches the Regional Head one rung earlier and
+ * stops there rather than climbing to the ceo. One event therefore carries invitees with
+ * different chain lengths, which is the case the old single-approver design could not
+ * produce at all and the one most likely to be got wrong.
+ *
+ * Hélène Dubois is deliberately linked to no Contact: she is the guest who belongs to no
+ * customer, and the tests assert that she cannot be submitted rather than quietly routing
+ * to somebody's manager.
  */
 @IsTest
 private class EventWorkflowTest {
@@ -15,14 +25,55 @@ private class EventWorkflowTest {
         return [SELECT Id, Name, ManagerId FROM User WHERE Alias = :alias AND IsActive = TRUE LIMIT 1];
     }
 
-    /** Approves or rejects through the platform, the way the Approvals list does. */
-    private static void decide(Id recordId, Boolean approve) {
-        Approval.ProcessWorkitemRequest req = new Approval.ProcessWorkitemRequest();
-        req.setWorkitemId(
-            [SELECT Id FROM ProcessInstanceWorkitem WHERE ProcessInstance.TargetObjectId = :recordId LIMIT 1].Id
-        );
-        req.setAction(approve ? 'Approve' : 'Reject');
-        Approval.process(req);
+    /**
+     * Approves or rejects one level, as whoever the platform says holds the work item.
+     *
+     * Reading the actor rather than taking it as an argument is the point: a test that
+     * names the approver itself would pass even if the routing sent the item somewhere
+     * else entirely.
+     */
+    private static void decideOneLevel(Id recordId, Boolean approve) {
+        List<ProcessInstanceWorkitem> items = [
+            SELECT Id, ActorId
+            FROM ProcessInstanceWorkitem
+            WHERE ProcessInstance.TargetObjectId = :recordId
+        ];
+        System.assertEquals(1, items.size(), 'Exactly one level should hold this invitee at a time');
+        System.runAs(new User(Id = items[0].ActorId)) {
+            Approval.ProcessWorkitemRequest req = new Approval.ProcessWorkitemRequest();
+            req.setWorkitemId(items[0].Id);
+            req.setAction(approve ? 'Approve' : 'Reject');
+            Approval.process(req);
+        }
+    }
+
+    /** Drives an invitee through every remaining level of its chain. */
+    private static Integer approveEveryLevel(Id recordId) {
+        Integer levelsApproved = 0;
+        for (Integer i = 0; i < ApprovalChainService.MAX_PROVISIONED_LEVELS; i++) {
+            if ([SELECT COUNT() FROM ProcessInstanceWorkitem WHERE ProcessInstance.TargetObjectId = :recordId] == 0) {
+                break;
+            }
+            decideOneLevel(recordId, true);
+            levelsApproved++;
+        }
+        return levelsApproved;
+    }
+
+    /** Who the platform currently has the invitee waiting on. */
+    private static Id currentActor(Id recordId) {
+        List<ProcessInstanceWorkitem> items = [
+            SELECT ActorId
+            FROM ProcessInstanceWorkitem
+            WHERE ProcessInstance.TargetObjectId = :recordId
+        ];
+        return items.isEmpty() ? null : items[0].ActorId;
+    }
+
+    /** The shipped configuration, restated so no test depends on what Setup currently holds. */
+    private static void configureChain() {
+        ApprovalChainService.titlesOverride = 'Regional Head';
+        ApprovalChainService.levelsAboveOverride = 2;
     }
 
     private static Event_Attendee__c attendee(String first, String last, String company) {
@@ -40,14 +91,23 @@ private class EventWorkflowTest {
     @TestSetup
     static void setup() {
         Profile std = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        Map<String, String> titles = new Map<String, String>{
+            'amalex' => 'Account Manager',
+            'ammaria' => 'Account Manager',
+            'amowner' => 'Account Manager',
+            'mgrdana' => 'Sales Manager',
+            'rhead' => 'Regional Head, EMEA',
+            'ceo' => 'Chief Executive'
+        };
         List<User> users = new List<User>();
-        for (String alias : new List<String>{ 'amalex', 'ammaria', 'mgrdana' }) {
+        for (String alias : titles.keySet()) {
             users.add(
                 new User(
                     Alias = alias,
                     Username = alias + '.' + System.currentTimeMillis() + '@evtmgmt.poc.test',
                     Email = alias + '@evtmgmt.poc.test',
                     LastName = alias,
+                    Title = titles.get(alias),
                     ProfileId = std.Id,
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'en_US',
@@ -56,21 +116,52 @@ private class EventWorkflowTest {
                 )
             );
         }
+
+        Map<String, Id> byAlias = new Map<String, Id>();
         System.runAs(new User(Id = UserInfo.getUserId())) {
             insert users; // runAs guards against mixed-DML with the setup below
-            // Dana manages both AMs — the only rung the R5 ladder has.
+            for (User u : users) {
+                byAlias.put(u.Alias, u.Id);
+            }
+            // The reporting line the chain climbs. Both AMs report to Dana as well, which is
+            // now incidental — routing starts at the Account Owner, not at the submitter.
             update new List<User>{
-                new User(Id = users[0].Id, ManagerId = users[2].Id),
-                new User(Id = users[1].Id, ManagerId = users[2].Id)
+                new User(Id = byAlias.get('amalex'), ManagerId = byAlias.get('mgrdana')),
+                new User(Id = byAlias.get('ammaria'), ManagerId = byAlias.get('mgrdana')),
+                new User(Id = byAlias.get('amowner'), ManagerId = byAlias.get('mgrdana')),
+                new User(Id = byAlias.get('mgrdana'), ManagerId = byAlias.get('rhead')),
+                new User(Id = byAlias.get('rhead'), ManagerId = byAlias.get('ceo'))
             };
         }
 
-        insert new List<Event_Attendee__c>{
+        // The org's own data, as a fixture. Nothing in the workflow may create, change or
+        // delete any of it — several tests below assert exactly that.
+        List<Account> customers = new List<Account>{
+            new Account(Name = 'Acme Corporation', AccountNumber = 'CUST-0042', OwnerId = byAlias.get('amowner')),
+            new Account(Name = 'Nordbank AG', AccountNumber = 'CUST-0077', OwnerId = byAlias.get('mgrdana'))
+        };
+        insert customers;
+        List<Contact> people = new List<Contact>{
+            new Contact(FirstName = 'Emily', LastName = 'Carter', AccountId = customers[0].Id),
+            new Contact(FirstName = 'Robert', LastName = 'Kim', AccountId = customers[0].Id),
+            new Contact(FirstName = 'James', LastName = 'Mueller', AccountId = customers[1].Id)
+        };
+        insert people;
+
+        List<Event_Attendee__c> attendees = new List<Event_Attendee__c>{
             attendee('Emily', 'Carter', 'Acme Corp'),
             attendee('Robert', 'Kim', 'Acme Corp'),
             attendee('James', 'Mueller', 'Nordbank AG'),
             attendee('Hélène', 'Dubois', 'Université de Genève')
         };
+        insert attendees;
+
+        // The Contact link, as the reconciliation step would leave it — never the import.
+        // Hélène keeps none, which is what makes her the unroutable guest.
+        attendees[0].Contact__c = people[0].Id;
+        attendees[1].Contact__c = people[1].Id;
+        attendees[2].Contact__c = people[2].Id;
+        update attendees;
 
         insert new Marketing_Event__c(
             Name = 'Q3 2026 Customer Appreciation Gala',
@@ -84,10 +175,16 @@ private class EventWorkflowTest {
         return [SELECT Id FROM Event_Attendee__c WHERE Last_Name__c = :last LIMIT 1].Id;
     }
 
+    private static Id inviteeFor(String lastName) {
+        return [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__r.Last_Name__c = :lastName LIMIT 1].Id;
+    }
+
     @IsTest
     static void fullWorkflow_submitApproveReject() {
+        configureChain();
         User alex = findUser('amalex');
         User maria = findUser('ammaria');
+        User owner = findUser('amowner');
         User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id emily = attendeeId('Carter');
@@ -100,41 +197,60 @@ private class EventWorkflowTest {
             System.assertEquals(0, InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily }));
             InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
             System.assertEquals(2, sub.submitted);
-            System.assertEquals(1, sub.approversNotified, 'One submitter has one manager');
+            System.assertEquals(1, sub.approversNotified, 'Both rows are Acme’s, so one level-1 approver');
+            System.assertEquals(3, sub.levels, 'Acme’s chain is Account Owner, manager, Regional Head');
         }
         System.runAs(maria) {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ james });
-            InviteeSelectorController.submitMyInvitees(evt.Id);
+            InviteeSelectorController.SubmitResult sub = InviteeSelectorController.submitMyInvitees(evt.Id);
+            System.assertEquals(2, sub.levels, 'Nordbank is owned by Dana, whose manager is the Regional Head');
         }
 
         // The approval process, not our Apex, owns the status from submission onwards.
-        for (Event_Invitee__c inv : [SELECT Approver__c, Status__c, Submitted_At__c FROM Event_Invitee__c]) {
+        for (Event_Invitee__c inv : [SELECT Status__c, Submitted_At__c, Current_Level__c FROM Event_Invitee__c]) {
             System.assertEquals('Pending Approval', inv.Status__c, 'Initial submission action must set the status');
-            System.assertEquals(dana.Id, inv.Approver__c, 'Every invitee routes to the submitter’s manager');
+            System.assertEquals(1, inv.Current_Level__c.intValue(), 'and must start the chain at level 1');
             System.assertNotEquals(null, inv.Submitted_At__c);
         }
+
+        Map<Id, Event_Invitee__c> byId = new Map<Id, Event_Invitee__c>(
+            [SELECT Id, Approver_1__c, Approver_2__c, Approver_3__c, Approval_Levels__c FROM Event_Invitee__c]
+        );
+        Event_Invitee__c acmeRow = byId.get(inviteeFor('Carter'));
+        System.assertEquals(
+            owner.Id,
+            acmeRow.Approver_1__c,
+            'Level 1 is the Account Owner, not the submitter’s manager'
+        );
+        System.assertEquals(dana.Id, acmeRow.Approver_2__c);
+        System.assertEquals(findUser('rhead').Id, acmeRow.Approver_3__c);
+        System.assertEquals(3, acmeRow.Approval_Levels__c.intValue());
+
+        Event_Invitee__c nordbankRow = byId.get(inviteeFor('Mueller'));
+        System.assertEquals(dana.Id, nordbankRow.Approver_1__c, 'Dana owns Nordbank and is its level 1');
+        System.assertEquals(findUser('rhead').Id, nordbankRow.Approver_2__c);
+        System.assertEquals(null, nordbankRow.Approver_3__c, 'The chain ended at the Regional Head');
+
         System.assertEquals(3, [SELECT COUNT() FROM ProcessInstance], 'One approval instance per invitee');
 
-        List<Event_Invitee__c> alexRows = [
-            SELECT Id
-            FROM Event_Invitee__c
-            WHERE Event_Attendee__c IN (:emily, :robert)
-            ORDER BY Id
-        ];
-
         Test.startTest();
-        System.runAs(dana) {
-            decide(alexRows[0].Id, true);
-            decide(alexRows[1].Id, false);
-        }
+        approveEveryLevel(inviteeFor('Carter'));
+        decideOneLevel(inviteeFor('Kim'), false);
         Test.stopTest();
 
-        Map<Id, Event_Invitee__c> after = new Map<Id, Event_Invitee__c>(
-            [SELECT Id, Status__c, Decided_At__c FROM Event_Invitee__c WHERE Id IN :alexRows]
+        System.assertEquals(
+            'Approved',
+            [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeFor('Carter')].Status__c
         );
-        System.assertEquals('Approved', after.get(alexRows[0].Id).Status__c);
-        System.assertEquals('Rejected', after.get(alexRows[1].Id).Status__c);
-        for (Event_Invitee__c inv : after.values()) {
+        System.assertEquals(
+            'Rejected',
+            [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeFor('Kim')].Status__c
+        );
+        for (Event_Invitee__c inv : [
+            SELECT Decided_At__c
+            FROM Event_Invitee__c
+            WHERE Event_Attendee__c IN (:emily, :robert)
+        ]) {
             System.assertNotEquals(null, inv.Decided_At__c, 'Stamp_Decided_At runs on both outcomes');
         }
 
@@ -149,39 +265,192 @@ private class EventWorkflowTest {
     }
 
     /**
-     * Submit and decide both touch User — ManagerId to resolve the approver,
-     * Name for the notification — and neither may write to it. The org's Users are
-     * not this project's to touch, the same as its Accounts and Contacts.
+     * ★R9 The requirement in one test: everybody in the chain has to agree, in order.
+     *
+     * The assertions in the middle are the ones that matter. After level 1 approves, the
+     * invitee is still Pending and the work item has moved to level 2 — an approval process
+     * that final-approved here would look identical from the AM's side and be wrong.
+     */
+    @IsTest
+    static void everyLevelMustApproveBeforeTheInviteeIs() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Id inviteeId = inviteeFor('Carter');
+
+        Test.startTest();
+        System.assertEquals(findUser('amowner').Id, currentActor(inviteeId), 'Level 1: the Account Owner');
+
+        decideOneLevel(inviteeId, true);
+        System.assertEquals(
+            'Pending Approval',
+            [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeId].Status__c,
+            'One approval out of three must not approve the invitee'
+        );
+        System.assertEquals(findUser('mgrdana').Id, currentActor(inviteeId), 'Level 2: the owner’s manager');
+
+        decideOneLevel(inviteeId, true);
+        System.assertEquals(
+            'Pending Approval',
+            [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeId].Status__c
+        );
+        System.assertEquals(findUser('rhead').Id, currentActor(inviteeId), 'Level 3: the Regional Head');
+
+        decideOneLevel(inviteeId, true);
+        Test.stopTest();
+
+        Event_Invitee__c decided = [SELECT Status__c, Decided_At__c FROM Event_Invitee__c WHERE Id = :inviteeId];
+        System.assertEquals('Approved', decided.Status__c, 'Only the last level approves the record');
+        System.assertNotEquals(null, decided.Decided_At__c);
+        System.assertEquals(null, currentActor(inviteeId), 'and nothing is left waiting on anybody');
+    }
+
+    /**
+     * ★R9 The Regional Head is a terminator, not a rung. Nordbank's owner is one level below
+     * one, so its chain is two long where Acme's is three — and the ceo above the Regional
+     * Head never sees it.
+     */
+    @IsTest
+    static void aChainEndingAtARegionalHeadNeedsNoFurtherApproval() {
+        configureChain();
+        User maria = findUser('ammaria');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(maria) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Mueller') });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Id inviteeId = inviteeFor('Mueller');
+
+        Test.startTest();
+        Integer levels = approveEveryLevel(inviteeId);
+        Test.stopTest();
+
+        System.assertEquals(2, levels, 'Two signatures, not three: the Regional Head ends the chain');
+        System.assertEquals('Approved', [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeId].Status__c);
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM ProcessInstanceWorkitem WHERE ActorId = :findUser('ceo').Id],
+            'The level above the Regional Head must never be asked'
+        );
+    }
+
+    /** ★R9 One rejection anywhere in the chain ends the request — nobody above is asked. */
+    @IsTest
+    static void aRejectionAtAnyLevelEndsTheWholeRequest() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Id inviteeId = inviteeFor('Carter');
+
+        Test.startTest();
+        decideOneLevel(inviteeId, true); // level 1 approves
+        decideOneLevel(inviteeId, false); // level 2 rejects
+        Test.stopTest();
+
+        System.assertEquals('Rejected', [SELECT Status__c FROM Event_Invitee__c WHERE Id = :inviteeId].Status__c);
+        System.assertEquals(null, currentActor(inviteeId), 'Level 3 is never asked');
+    }
+
+    /**
+     * ★R9 The level above hears when the level below finishes. Without this the upper levels
+     * would never be told anything — their items would appear in an Approvals list
+     * unannounced, which is the failure mode a chain introduces and a single approver never
+     * had.
+     */
+    @IsTest
+    static void theNextLevelIsNotifiedWhenTheLevelBelowApproves() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter'), attendeeId('Kim') });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        List<Id> ids = new List<Id>{ inviteeFor('Carter'), inviteeFor('Kim') };
+
+        Test.startTest();
+        decideOneLevel(ids[0], true);
+        decideOneLevel(ids[1], true);
+
+        // Invoked directly, the way the Invitee_Level_Advanced flow invokes it with every id
+        // the transaction touched. Two rows, one level-2 approver, one event: one notice.
+        EventNotificationService.levelNotificationsSent = 0;
+        EventNotificationService.notifyLevelApprovers(ids);
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            EventNotificationService.levelNotificationsSent,
+            'One notification per approver per event, never one per invitee'
+        );
+        for (Event_Invitee__c inv : [SELECT Current_Level__c FROM Event_Invitee__c WHERE Id IN :ids]) {
+            System.assertEquals(2, inv.Current_Level__c.intValue(), 'The step’s approval action advances the marker');
+        }
+    }
+
+    /** A row still on level 1 is nobody's news: they were told at submit time. */
+    @IsTest
+    static void theLevelNotificationSaysNothingAboutLevelOne() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+
+        Test.startTest();
+        EventNotificationService.levelNotificationsSent = 0;
+        EventNotificationService.notifyLevelApprovers(new List<Id>{ inviteeFor('Carter') });
+        Test.stopTest();
+
+        System.assertEquals(0, EventNotificationService.levelNotificationsSent, 'Level 1 hears from the submit, once');
+    }
+
+    /**
+     * Submit and decide both touch User — ManagerId and Title to resolve the chain, Name for
+     * the notification — and neither may write to it. The org's Users are not this project's
+     * to touch, the same as its Accounts and Contacts.
      */
     @IsTest
     static void submitAndApproveNeverModifyUsers() {
+        configureChain();
         User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Id emily = attendeeId('Carter');
 
-        List<User> usersBefore = [SELECT Id, Name, ManagerId, LastModifiedDate FROM User ORDER BY Id];
+        List<User> usersBefore = [SELECT Id, Name, ManagerId, Title, LastModifiedDate FROM User ORDER BY Id];
         Map<Id, User> beforeById = new Map<Id, User>(usersBefore);
 
         System.runAs(alex) {
-            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
-        Id inviteeId = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily LIMIT 1].Id;
-        System.runAs(dana) {
-            decide(inviteeId, true);
-        }
+        approveEveryLevel(inviteeFor('Carter'));
 
-        List<User> usersAfter = [SELECT Id, Name, ManagerId, LastModifiedDate FROM User ORDER BY Id];
+        List<User> usersAfter = [SELECT Id, Name, ManagerId, Title, LastModifiedDate FROM User ORDER BY Id];
         System.assertEquals(usersBefore.size(), usersAfter.size(), 'No User may be created or deleted');
         for (User u : usersAfter) {
             User before = beforeById.get(u.Id);
             System.assertEquals(
                 before.LastModifiedDate,
                 u.LastModifiedDate,
-                'No User may be modified — submit and decide only read ManagerId and Name'
+                'No User may be modified — the chain only reads ManagerId, Title and Name'
             );
             System.assertEquals(before.ManagerId, u.ManagerId, 'Never reparented');
+            System.assertEquals(before.Title, u.Title, 'A Regional Head is found, never appointed');
         }
     }
 
@@ -219,14 +488,14 @@ private class EventWorkflowTest {
 
         // Blank, not guessed. A guest who belongs to no customer has no customer to name,
         // and inventing one from the company text is the mistake the Contact link exists
-        // to avoid.
+        // to avoid. ★R9 It is also the state that now stops the row being submitted at all.
         System.assertEquals(null, inv.Account__c, 'No Contact behind them means no Account');
         System.assertEquals(null, inv.Cust_Cd__c);
         System.assertEquals(null, inv.Account_Manager__c);
 
         // The point of the whole revision: inviting somebody invents no customer record.
-        System.assertEquals(0, [SELECT COUNT() FROM Account], 'No Account may be created anywhere in this flow');
-        System.assertEquals(0, [SELECT COUNT() FROM Contact]);
+        System.assertEquals(2, [SELECT COUNT() FROM Account], 'The two fixture accounts, and not one more');
+        System.assertEquals(3, [SELECT COUNT() FROM Contact]);
         System.assertEquals(0, [SELECT COUNT() FROM Lead]);
     }
 
@@ -255,30 +524,26 @@ private class EventWorkflowTest {
             WHERE Event_Attendee__c = :emily
         ];
         System.assertEquals('Attendee', inv.Invitee_Title__c, 'The title at invitation time is what the row keeps');
-        System.assertEquals('Acme Corp', inv.Invitee_Org__c, 'Likewise the company they were invited as');
+        System.assertEquals(
+            'Acme Corporation',
+            inv.Invitee_Org__c,
+            'The Account name it was invited under, not the attendee’s new company text'
+        );
         // Name is still a live formula, deliberately: the ERD does not snapshot it, and a
         // corrected spelling should reach every list the person appears on.
         System.assertEquals('Emily Carter', inv.Invitee_Name__c);
     }
 
     /**
-     * ★R8 The customer arrives through the Contact link and nowhere else. This is the
-     * mechanism that gives the Account Owner rung something to stand on again without the
-     * import ever matching anybody against the org's own data.
+     * ★R8 The customer arrives through the Contact link and nowhere else. ★R9 And it is
+     * what the whole chain now hangs from: Account.OwnerId is level 1.
      */
     @IsTest
     static void aLinkedContactPutsTheCustomerOnTheInvitee() {
         User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id emily = attendeeId('Carter');
-
-        // Fixture only, and created inside this method rather than in @TestSetup so the
-        // other tests keep asserting a world with no Account in it at all.
-        Account acme = new Account(Name = 'Acme Corporation', AccountNumber = 'CUST-0042');
-        insert acme;
-        Contact emilyContact = new Contact(FirstName = 'Emily', LastName = 'Carter', AccountId = acme.Id);
-        insert emilyContact;
-        update new Event_Attendee__c(Id = emily, Contact__c = emilyContact.Id);
+        Account acme = [SELECT Id, OwnerId FROM Account WHERE Name = 'Acme Corporation'];
 
         System.runAs(alex) {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
@@ -297,10 +562,11 @@ private class EventWorkflowTest {
         );
         System.assertEquals('CUST-0042', inv.Cust_Cd__c, 'AccountNumber is the assumed home of the customer code');
         System.assertEquals(
-            [SELECT OwnerId FROM Account WHERE Id = :acme.Id].OwnerId,
+            acme.OwnerId,
             inv.Account_Manager__c,
             'ACCT_MNGR is the Account owner, not whoever added the row'
         );
+        System.assertEquals(findUser('amowner').Id, inv.Account_Manager__c, 'and that is who level 1 will be');
 
         Event_Attendee__c person = [SELECT Is_Known_Contact__c FROM Event_Attendee__c WHERE Id = :emily];
         System.assertEquals(true, person.Is_Known_Contact__c);
@@ -316,53 +582,56 @@ private class EventWorkflowTest {
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id emily = attendeeId('Carter');
 
-        Account acme = new Account(Name = 'Acme Corporation', AccountNumber = 'CUST-0042');
-        insert acme;
-        Contact emilyContact = new Contact(FirstName = 'Emily', LastName = 'Carter', AccountId = acme.Id);
-        insert emilyContact;
-        update new Event_Attendee__c(Id = emily, Contact__c = emilyContact.Id);
-
-        Account accountBefore = [SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate FROM Account];
-        Contact contactBefore = [SELECT Id, AccountId, LastModifiedDate FROM Contact];
+        Account accountBefore = [
+            SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate
+            FROM Account
+            WHERE Name = 'Acme Corporation'
+        ];
+        Contact contactBefore = [SELECT Id, AccountId, LastModifiedDate FROM Contact WHERE LastName = 'Carter'];
 
         Test.startTest();
         System.runAs(alex) {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
         }
         Test.stopTest();
 
-        Account accountAfter = [SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate FROM Account];
+        Account accountAfter = [
+            SELECT Id, Name, AccountNumber, OwnerId, LastModifiedDate
+            FROM Account
+            WHERE Name = 'Acme Corporation'
+        ];
         System.assertEquals(accountBefore.LastModifiedDate, accountAfter.LastModifiedDate, 'Account read, not written');
         System.assertEquals(accountBefore.Name, accountAfter.Name);
         System.assertEquals(accountBefore.AccountNumber, accountAfter.AccountNumber);
-        System.assertEquals(accountBefore.OwnerId, accountAfter.OwnerId, 'Never reassigned');
+        System.assertEquals(accountBefore.OwnerId, accountAfter.OwnerId, 'Never reassigned — and the chain reads it');
 
-        Contact contactAfter = [SELECT Id, AccountId, LastModifiedDate FROM Contact];
+        Contact contactAfter = [SELECT Id, AccountId, LastModifiedDate FROM Contact WHERE LastName = 'Carter'];
         System.assertEquals(contactBefore.LastModifiedDate, contactAfter.LastModifiedDate, 'Contact read, not written');
         System.assertEquals(contactBefore.AccountId, contactAfter.AccountId, 'Never reparented');
 
-        System.assertEquals(1, [SELECT COUNT() FROM Account], 'No Account created');
-        System.assertEquals(1, [SELECT COUNT() FROM Contact], 'No Contact created');
+        System.assertEquals(2, [SELECT COUNT() FROM Account], 'No Account created');
+        System.assertEquals(3, [SELECT COUNT() FROM Contact], 'No Contact created');
         System.assertEquals(0, [SELECT COUNT() FROM Lead]);
     }
 
     /**
-     * The orphan-row defect, made unreachable. With one rung on the ladder, a
-     * submitter with no manager has nowhere to route at all; the submit must fail
-     * with a named error and leave everything in Draft, rather than creating a
-     * pending row no approver can ever see.
+     * ★R9 The guest who belongs to no customer, and the price of routing on the customer.
+     *
+     * Under R5 anybody could be invited and the submitter's manager approved them. The chain
+     * starts at an Account Owner, so a guest with no Account behind them has nobody defined
+     * to approve — and the design refuses rather than falling back, because a fallback turns
+     * a data gap into a quieter approval. The remedy is a data one: an administrator keeps an
+     * account for non-customer guests and the reconciliation links them to it.
      */
     @IsTest
-    static void unroutableSubmitIsRefusedAndNothingMoves() {
-        User maria = findUser('ammaria');
-        System.runAs(new User(Id = UserInfo.getUserId())) {
-            update new User(Id = maria.Id, ManagerId = null);
-        }
+    static void aGuestWithNoCustomerCannotBeSubmitted() {
+        configureChain();
+        User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Id emily = attendeeId('Carter');
 
-        System.runAs(maria) {
-            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Dubois') });
 
             Boolean threw = false;
             try {
@@ -370,7 +639,7 @@ private class EventWorkflowTest {
             } catch (AuraHandledException e) {
                 threw = true;
             }
-            System.assert(threw, 'No manager → the submit must fail loudly');
+            System.assert(threw, 'No Account Owner → the submit must fail loudly');
         }
 
         System.assertEquals(
@@ -382,11 +651,35 @@ private class EventWorkflowTest {
         System.assertEquals(0, [SELECT COUNT() FROM ProcessInstance], 'Nothing entered the approval process');
     }
 
+    /** ★R9 One unroutable row refuses the whole batch, rather than submitting the rest. */
+    @IsTest
+    static void oneUnroutableRowRefusesTheWholeBatch() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter'), attendeeId('Dubois') });
+            Boolean threw = false;
+            try {
+                InviteeSelectorController.submitMyInvitees(evt.Id);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+            System.assert(threw);
+        }
+
+        System.assertEquals(
+            2,
+            [SELECT COUNT() FROM Event_Invitee__c WHERE Status__c = 'Draft'],
+            'The routable row stays in Draft too — a half-submitted batch is worse than a refused one'
+        );
+        System.assertEquals(0, [SELECT COUNT() FROM ProcessInstance]);
+    }
+
     /**
      * An invitee pointing at nobody has a blank name everywhere it is read, so the
-     * lookup is required at the field level. R5 enforced this with a validation rule
-     * instead, purely so the field could be added to an object that already had rows;
-     * this object has no records anywhere, so the softer form bought nothing.
+     * lookup is required at the field level.
      */
     @IsTest
     static void inviteeWithoutAnAttendeeIsRefused() {
@@ -398,6 +691,25 @@ private class EventWorkflowTest {
             threw = true;
         }
         System.assert(threw, 'A required Event_Attendee__c must refuse an invitee with no attendee');
+    }
+
+    /** ★R9 And the database refuses a pending row with no level 1, independently of the Apex. */
+    @IsTest
+    static void aPendingRowWithNoFirstApproverIsRefusedByTheDatabase() {
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter') });
+        }
+        Event_Invitee__c draft = [SELECT Id FROM Event_Invitee__c LIMIT 1];
+
+        Boolean threw = false;
+        try {
+            update new Event_Invitee__c(Id = draft.Id, Status__c = 'Pending Approval');
+        } catch (DmlException e) {
+            threw = true;
+        }
+        System.assert(threw, 'Approver_Required_When_Pending must hold whatever the Apex does');
     }
 
     /** An attendee somebody has been invited on cannot be deleted out from under the approval. */
@@ -421,36 +733,38 @@ private class EventWorkflowTest {
 
     @IsTest
     static void completionNotificationFiresOnlyWhenTheBatchIsDone() {
+        configureChain();
         User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
 
         System.runAs(alex) {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ attendeeId('Carter'), attendeeId('Kim') });
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
-        List<Event_Invitee__c> rows = [SELECT Id FROM Event_Invitee__c ORDER BY Id];
+        Id first = inviteeFor('Carter');
+        Id second = inviteeFor('Kim');
 
         Test.startTest();
-        EventNotificationService.emailsSent = 0;
-        // One of two decided: the AM still has something pending, so stay quiet.
-        System.runAs(dana) {
-            decide(rows[0].Id, true);
-        }
-        EventNotificationService.notifyCompletions(new List<Id>{ rows[0].Id });
-        System.assertEquals(0, EventNotificationService.emailsSent, 'One row left pending — no completion email yet');
+        EventNotificationService.completionsSent = 0;
+        // One of two decided — and only because every level of its chain has now agreed.
+        approveEveryLevel(first);
+        EventNotificationService.notifyCompletions(new List<Id>{ first });
+        System.assertEquals(
+            0,
+            EventNotificationService.completionsSent,
+            'One row left pending — no completion email yet'
+        );
 
-        System.runAs(dana) {
-            decide(rows[1].Id, true);
-        }
-        EventNotificationService.notifyCompletions(new List<Id>{ rows[1].Id });
-        System.assertEquals(1, EventNotificationService.emailsSent, 'Zero pending left → notify the AM once');
+        approveEveryLevel(second);
+        EventNotificationService.notifyCompletions(new List<Id>{ second });
+        System.assertEquals(1, EventNotificationService.completionsSent, 'Zero pending left → notify the AM once');
         Test.stopTest();
     }
 
     /** Mass approval arrives as one invocable call with every id — one email, not forty. */
     @IsTest
     static void completionNotificationAggregatesABulkDecision() {
+        configureChain();
         User alex = findUser('amalex');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
 
@@ -460,7 +774,7 @@ private class EventWorkflowTest {
         }
         Test.startTest();
         // Decided directly rather than through the approval process: this test is about
-        // the invocable's aggregation, and driving 2+ work items adds nothing to that.
+        // the invocable's aggregation, and driving six work items adds nothing to that.
         List<Id> ids = new List<Id>();
         List<Event_Invitee__c> all = [SELECT Id, Status__c FROM Event_Invitee__c];
         for (Event_Invitee__c inv : all) {
@@ -469,16 +783,20 @@ private class EventWorkflowTest {
         }
         update all;
 
-        EventNotificationService.emailsSent = 0;
+        EventNotificationService.completionsSent = 0;
         EventNotificationService.notifyCompletions(ids);
-        System.assertEquals(1, EventNotificationService.emailsSent, 'Two rows, one AM, one event → exactly one email');
+        System.assertEquals(
+            1,
+            EventNotificationService.completionsSent,
+            'Two rows, one AM, one event → exactly one email'
+        );
         Test.stopTest();
     }
 
     @IsTest
     static void rejectedAttendeeCanBeReAdded() {
+        configureChain();
         User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id emily = attendeeId('Carter');
 
@@ -489,9 +807,7 @@ private class EventWorkflowTest {
         Event_Invitee__c inv = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily];
 
         Test.startTest();
-        System.runAs(dana) {
-            decide(inv.Id, false);
-        }
+        decideOneLevel(inv.Id, false);
         Test.stopTest();
 
         System.runAs(alex) {
@@ -502,23 +818,55 @@ private class EventWorkflowTest {
             );
         }
         inv = [
-            SELECT Status__c, Submitted_At__c, Decided_At__c, Approver__c
+            SELECT
+                Status__c,
+                Submitted_At__c,
+                Decided_At__c,
+                Current_Level__c,
+                Approval_Levels__c,
+                Approver_1__c,
+                Approver_2__c,
+                Approver_3__c
             FROM Event_Invitee__c
             WHERE Id = :inv.Id
         ];
         System.assertEquals('Draft', inv.Status__c);
         System.assertEquals(null, inv.Submitted_At__c);
         System.assertEquals(null, inv.Decided_At__c);
-        System.assertEquals(
-            null,
-            inv.Approver__c,
-            'A stale approver would let the next submit skip resolution and reuse whoever decided last time'
-        );
+        // ★R9 The whole chain goes, not just its first level: a stale approver anywhere
+        // would let the next submit reuse somebody who decided last time.
+        System.assertEquals(null, inv.Approver_1__c);
+        System.assertEquals(null, inv.Approver_2__c);
+        System.assertEquals(null, inv.Approver_3__c);
+        System.assertEquals(null, inv.Approval_Levels__c);
+        System.assertEquals(null, inv.Current_Level__c);
         System.assertEquals(
             1,
             [SELECT COUNT() FROM Event_Invitee__c WHERE Event_Attendee__c = :emily],
             'Never a second row per event+attendee'
         );
+    }
+
+    /** A rejected invitee reappears in the picker; that is what makes re-adding possible at all. */
+    @IsTest
+    static void aRejectedAttendeeReappearsInTheSelector() {
+        configureChain();
+        User alex = findUser('amalex');
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Id emily = attendeeId('Carter');
+
+        System.runAs(alex) {
+            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
+            InviteeSelectorController.submitMyInvitees(evt.Id);
+        }
+        Test.startTest();
+        decideOneLevel([SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily].Id, false);
+        Test.stopTest();
+
+        System.runAs(alex) {
+            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            System.assertEquals(4, sel.attendees.size(), 'A rejected invitee is selectable again');
+        }
     }
 
     /**
@@ -549,40 +897,20 @@ private class EventWorkflowTest {
             System.assertEquals(true, all[0].mine);
             System.assertEquals('Draft', all[0].status);
             System.assertEquals('Emily Carter', all[0].attendeeName);
-            System.assertEquals('Acme Corp', all[0].company, 'Read from the Invitee_Org__c snapshot, not the lookup');
-        }
-    }
-
-    /** A rejected invitee reappears in the picker; that is what makes re-adding possible at all. */
-    @IsTest
-    static void aRejectedAttendeeReappearsInTheSelector() {
-        User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
-        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
-        Id emily = attendeeId('Carter');
-
-        System.runAs(alex) {
-            InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
-            InviteeSelectorController.submitMyInvitees(evt.Id);
-        }
-        Test.startTest();
-        System.runAs(dana) {
-            decide([SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily].Id, false);
-        }
-        Test.stopTest();
-
-        System.runAs(alex) {
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
-            System.assertEquals(4, sel.attendees.size(), 'A rejected invitee is selectable again');
+            System.assertEquals(
+                'Acme Corporation',
+                all[0].company,
+                'Read from the Invitee_Org__c snapshot, not the lookup'
+            );
         }
     }
 
     // ================= ★R6 attendance =================
 
-    /** Drives one attendee all the way to Approved, so attendance can be recorded on it. */
+    /** Drives one attendee all the way to Approved, through every level of its chain. */
     private static Id approvedInvitee(String lastName) {
+        configureChain();
         User alex = findUser('amalex');
-        User dana = findUser('mgrdana');
         Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
         Id att = attendeeId(lastName);
         System.runAs(alex) {
@@ -590,9 +918,7 @@ private class EventWorkflowTest {
             InviteeSelectorController.submitMyInvitees(evt.Id);
         }
         Id invId = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :att].Id;
-        System.runAs(dana) {
-            decide(invId, true);
-        }
+        approveEveryLevel(invId);
         return invId;
     }
 
@@ -782,5 +1108,19 @@ private class EventWorkflowTest {
 
         System.assertEquals(0, InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ ghostId }));
         System.assertEquals(0, [SELECT COUNT() FROM Event_Invitee__c]);
+    }
+
+    @IsTest
+    static void submittingNothingIsRefused() {
+        Marketing_Event__c evt = [SELECT Id FROM Marketing_Event__c LIMIT 1];
+        Boolean threw = false;
+        System.runAs(findUser('amalex')) {
+            try {
+                InviteeSelectorController.submitMyInvitees(evt.Id);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+        System.assert(threw, 'Nothing in Draft is a client bug, not a silent no-op');
     }
 }

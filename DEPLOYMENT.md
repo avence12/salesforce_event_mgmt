@@ -34,9 +34,15 @@ this project does not own:
 - It **deletes nothing**, so there are no destructive manifests to run. See
   [Part 4](#part-4--deleting-metadata-a-deploy-is-an-upsert) for why that is a deliberate
   absence rather than an omission.
+- It adds one **Custom Metadata Type**, `Approval_Chain_Setting__mdt`, with a single `Default`
+  record holding the regional-head title markers and the level cap. Configuration, editable in
+  Setup without a deploy, and it names nobody.
 - Everything the feature needs from outside its own objects — activating a record page,
-  assigning permission sets, a Manager on each AM user — is a **manual post-deploy step**, so
-  an admin decides rather than a deploy imposing it.
+  assigning permission sets, ★R9 the reporting line and Account ownership the approval chain
+  walks — is a **manual post-deploy step**, so an admin decides rather than a deploy imposing
+  it. ★R9 That list grew with the multi-level chain: the chain reads `User.ManagerId`,
+  `User.Title` and `Account.OwnerId`, and **writes to none of them**. Reading the org chart is
+  what routing is; changing it is the org's business.
 
 A failed deploy rolls back whole, so the worst case is an org exactly as it was.
 
@@ -156,7 +162,23 @@ rather than inherit from a `git push`.
 
 1. **Activate the record page**: Setup → Object Manager → Marketing Event → Lightning Record Pages → *Marketing Event Record Page* → Activate → **Org Default** (Desktop and Phone).
 2. **Assign permission sets**: `Event AM` to the AM users, `Event Approver` to their managers.
-3. **Set a Manager on each AM user** (Setup → Users). This is the whole of the approver routing — an AM without one cannot submit anything, loudly and by design.
+3. **★R9 Build the approval chain out of the org's own data.** Routing no longer looks at the
+   submitting AM's Manager at all. It starts at the **Account Owner** of the customer each guest
+   belongs to and climbs `User.ManagerId`, stopping at the first **Regional Head**. So:
+   - every Account whose Contacts will be invited needs an **owner**;
+   - that owner needs a `ManagerId`, and so on up as far as you want the chain to reach;
+   - whoever ends the chain needs the marker in their **`User.Title`** — shipped as
+     `Regional Head`, matched case-insensitively as a substring, so "Regional Head, EMEA" works.
+   Both the marker list and the level cap live in **Setup → Custom Metadata Types → Approval
+   Chain Setting → Manage Records → Default**: `Regional Head Titles` and `Max Levels Above
+   Account Owner` (shipped as 2, giving a three-level chain). Raising the cap to 3 or 4 adds
+   levels with no deploy; five is the ceiling the metadata provides.
+   **None of this degrades quietly.** A guest with no Account Owner, an inactive approver or a
+   chain that reaches only the submitter each refuse the whole batch with a named error and
+   leave every row in Draft.
+   *If this org does not record a Regional Head in `User.Title`*, leave `Regional Head Titles`
+   blank and the chain simply climbs the full cap — or change
+   `ApprovalChainService.isRegionalHead`, which is the one method that reads it.
 4. **Turn off per-request approval emails** for approver users (Setup → Users → *Receive Approval Request Emails* → **Never**), or they get one email per invitee instead of one per submission. See README's post-deploy step 4 for the alternative.
 5. **Share the report folder**: Reports → *Event Management* → share with the AM and approver users.
 6. **Seed demo data**:
@@ -185,7 +207,32 @@ rather than inherit from a `git push`.
     table. If that is unwanted, add a component visibility filter on the page or assign a
     second record page by profile. Both change how your org's pages are laid out, so neither is
     deployed from here.
-11. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+11. **★R9 Decide where non-customer guests belong** — required before any such guest can be
+    submitted, and a decision only the business can make. Professors, journalists and anyone
+    else who is nobody's customer reach no Account Owner and therefore have no approval chain;
+    the submit refuses them by design rather than routing them to somebody's manager, because a
+    fallback would turn a data gap into a weaker approval.
+    The agreed remedy is an **Account kept for exactly those guests**, whose owner is chosen
+    when it is created and becomes their level 1; the reconciliation run then links those
+    attendees to Contacts under it and approval follows the ordinary path with no special case
+    in the code.
+    **This project will not create that Account for you.** No code in this repo creates,
+    updates or deletes an Account, Contact or Lead — that invariant is what makes the deploy
+    safe against a populated org and it is asserted in the test suite, so the record is an
+    admin's to create. Two things worth settling while you do: what to call it so no
+    customer-count report or downstream integration mistakes it for a real customer, and
+    whether one such account serves everybody or the business wants several.
+12. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
+    be verified from the repo:
+    - **A short chain must finish where it ends.** Submit an invitee whose chain has two levels
+      and confirm that approving both marks it Approved — the third step is skipped because
+      `Approver_3__c` is blank. If instead it final-approves after level 1, the step's
+      *else* behaviour is not what this design assumes and steps 2–5 need `Go to Next Step`.
+    - **Level 2 must be told.** Approve level 1 and watch for the level-2 approver's email and
+      bell. That notification comes from a step approval action updating `Current_Level__c`,
+      which fires the `Invitee_Level_Advanced` flow. If the chain of events does not hold, the
+      symptom is silence: the item sits in their Approvals list unannounced.
+13. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 

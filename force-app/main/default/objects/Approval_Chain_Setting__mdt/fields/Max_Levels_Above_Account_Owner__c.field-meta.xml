@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Max_Levels_Above_Account_Owner__c</fullName>
+    <label>Max Levels Above Account Owner</label>
+    <description>★R9 How many managers above the Account Owner the chain may climb. requirement.md says two, which makes a three-level chain: Account Owner, their manager, that manager&apos;s manager.
+
+Raising it is how the business buys another level without a deploy — up to four, because Event_Invitee__c pre-provisions five Approver_N__c fields and the approval process five steps. Above that it costs metadata: another field, another step, another permission set entry.
+
+0 means the Account Owner is the only approver, which is a legitimate configuration and not a broken one.</description>
+    <type>Number</type>
+    <precision>2</precision>
+    <scale>0</scale>
+    <required>false</required>
+    <unique>false</unique>
+    <fieldManageability>SubscriberControlled</fieldManageability>
+</CustomField>

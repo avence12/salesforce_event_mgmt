@@ -9,7 +9,7 @@
     <fieldUpdates>
         <fullName>Set_Status_Pending_Approval</fullName>
         <name>Set Status Pending Approval</name>
-        <description>Initial submission action. Apex resolves Approver__c and stamps Submitted_At__c before calling Approval.process(); the status itself is written here so the picklist follows the approval, not the other way round.</description>
+        <description>Initial submission action. ★R9 Apex resolves the whole approval chain into Approver_1__c..Approver_5__c and stamps Submitted_At__c before calling Approval.process(); the status itself is written here so the picklist follows the approval, not the other way round.</description>
         <field>Status__c</field>
         <literalValue>Pending Approval</literalValue>
         <notifyAssignee>false</notifyAssignee>
@@ -32,6 +32,68 @@
         <name>Set Status Rejected</name>
         <field>Status__c</field>
         <literalValue>Rejected</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <!--
+      ★R9 The chain's progress marker. Set_Current_Level_1 is an initial submission action;
+      each of the others is the *approval* action of the step below it, which is what a step
+      entry action looks like in an approval process — there is no separate entry hook, and
+      "step N was approved" and "step N+1 has begun" are the same moment.
+
+      Two things they buy, and the second is the load-bearing one. Pending_Count__c stopped
+      meaning "waiting on one named person" the day the chain arrived, and Current_Level__c
+      gives that answer back. And the update itself is what fires Invitee_Level_Advanced, so
+      the approver at the new level hears about work that would otherwise appear in their
+      Approvals list unannounced.
+    -->
+    <fieldUpdates>
+        <fullName>Set_Current_Level_1</fullName>
+        <name>Set Current Level 1</name>
+        <field>Current_Level__c</field>
+        <literalValue>1</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Current_Level_2</fullName>
+        <name>Set Current Level 2</name>
+        <field>Current_Level__c</field>
+        <literalValue>2</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Current_Level_3</fullName>
+        <name>Set Current Level 3</name>
+        <field>Current_Level__c</field>
+        <literalValue>3</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Current_Level_4</fullName>
+        <name>Set Current Level 4</name>
+        <field>Current_Level__c</field>
+        <literalValue>4</literalValue>
+        <notifyAssignee>false</notifyAssignee>
+        <operation>Literal</operation>
+        <protected>false</protected>
+        <reevaluateOnChange>false</reevaluateOnChange>
+    </fieldUpdates>
+    <fieldUpdates>
+        <fullName>Set_Current_Level_5</fullName>
+        <name>Set Current Level 5</name>
+        <field>Current_Level__c</field>
+        <literalValue>5</literalValue>
         <notifyAssignee>false</notifyAssignee>
         <operation>Literal</operation>
         <protected>false</protected>

@@ -30,7 +30,13 @@
         <columns><field>Invitee_Email__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Status__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Attended__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
-        <columns><field>Approver__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Approver_1__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
+        <columns><field>Approver_2__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Approver_3__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Approver_4__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Approver_5__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Current_Level__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
+        <columns><field>Approval_Levels__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>
         <columns><field>Decided_At__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Added_By__c</field><table>Event_Invitees__r</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Submitted_At__c</field><table>Event_Invitees__r</table><checkedByDefault>false</checkedByDefault></columns>

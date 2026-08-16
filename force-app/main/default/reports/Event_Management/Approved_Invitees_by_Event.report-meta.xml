@@ -16,7 +16,8 @@
     <columns><field>Event_Invitees__r$Invitee_Title__c</field></columns>
     <columns><field>Event_Invitees__r$Invitee_Org__c</field></columns>
     <columns><field>Event_Invitees__r$Invitee_Email__c</field></columns>
-    <columns><field>Event_Invitees__r$Approver__c</field></columns>
+    <columns><field>Event_Invitees__r$Approver_1__c</field></columns>
+    <columns><field>Event_Invitees__r$Approval_Levels__c</field></columns>
     <columns><field>Event_Invitees__r$Decided_At__c</field></columns>
     <columns><field>Event_Invitees__r$Added_By__c</field></columns>
     <columns><field>Marketing_Event__c$Event_Date__c</field></columns>

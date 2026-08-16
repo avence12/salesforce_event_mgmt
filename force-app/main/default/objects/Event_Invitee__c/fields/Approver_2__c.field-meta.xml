@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_2__c</fullName>
+    <label>Approver 2</label>
+    <description>★R9 Level 2 of the approval chain: the Level 1 approver&apos;s manager, read from User.ManagerId at submit time and frozen there.
+
+Blank means the chain ended at level 1 — either the level 1 approver is a Regional Head (the chain stops at the first one it reaches) or they have no Manager. Blank is not an error state: the approval process&apos;s step 2 is gated on this field being populated and is skipped when it is not.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve (Level 2)</relationshipLabel>
+    <relationshipName>Invitees_Awaiting_Approval_L2</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>
