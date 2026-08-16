@@ -80,6 +80,20 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Payments Innovation Sy
     );
 }
 
+// ---- ★R9 What this script deliberately cannot do for you ----
+// The approval chain starts at the Account Owner of the customer a guest belongs to, reached
+// through Event_Attendee__c.Contact__c. This script creates no Account and no Contact — that
+// invariant is what makes it safe to run in an org full of real ones — so the attendees above
+// arrive with no customer behind them and cannot be submitted for approval yet.
+//
+// Before demonstrating the chain, link a few of them by hand to Contacts under Accounts whose
+// owners have a reporting line above them:
+//
+//   update new Event_Attendee__c(Id = '<attendee id>', Contact__c = '<contact id>');
+//
+// Nothing here should create those Accounts either. Which customers the demo uses, and which
+// account holds guests who are nobody's customer, are decisions for whoever owns the org's data.
 System.debug('Seed complete. Attendees now in the org: ' + [SELECT COUNT() FROM Event_Attendee__c]);
-System.debug('Reminder: every AM user needs a Manager set — it is the only approver the R5 ladder has.');
+System.debug('★R9 Approval routes: Account Owner -> their manager -> theirs, stopping at a Regional Head.');
+System.debug('★R9 An attendee with no Contact link has no Account Owner and cannot be submitted at all.');
 System.debug('★R6 Topic__c values are placeholders. Replace them with the real taxonomy before trusting a recommendation.');

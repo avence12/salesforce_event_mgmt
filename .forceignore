@@ -4,6 +4,10 @@ package-lock.json
 node_modules
 scripts
 **/*.md
+# ★R9 …but not Custom Metadata *records*, whose files end in .md-meta.xml. The glob above
+# should not match them, and this negation makes sure a future tooling version cannot decide
+# otherwise and silently leave Approval_Chain_Setting.Default out of the deploy.
+!force-app/main/default/customMetadata/**
 .gstack
 coverage
 

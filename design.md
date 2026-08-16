@@ -192,6 +192,41 @@ and customer snapshots on the invitee, and the company-grouped approval screen �
 23, 24 and 25 are answered above and in place. Nothing routes to `Account_Manager__c` yet: R7's
 chain is still unbuilt, and R8 only gives it the key it needs.
 
+**Revised 2026-08-16 (R9) — the multi-level chain is built, and it is not the one R7 designed.**
+The requirement is the one R7 was written for — *AM approves, then it goes up to the regional
+head, and more levels are expected later* — but the mechanism comes from `requirement.md`, which
+the business rewrote on 2026-08-15, **after** R7 and R8 were written. That document defines the
+chain explicitly, and in a way R7 had already considered and rejected:
+
+> **Approval Chain**: The ordered sequence of Approvers for an Event's Contacts, starting at the
+> Account Owner and walking up `User.ManagerId` for at most 2 additional levels, terminating
+> early if a Regional Head is reached.
+
+**The conflict is worth naming rather than smoothing over, because both documents are in this
+repo and they disagree.** R7 designed a `cust_cd`-keyed `Approval_Route__c` table and rejected
+the `ManagerId` walk in as many words: *"Elegant, zero maintenance, and wrong whenever the
+approval chain is not the HR reporting line — which is most orgs. Also needs a stop condition,
+which is another field on User, an object this project does not own."* Both halves of that
+objection are answered by the newer document rather than by argument:
+
+- **The chain is the reporting line here.** That was a claim about orgs in general and the
+  business has now said what is true of theirs. A design cannot out-argue a requirement about
+  the org it is being built for.
+- **The stop condition is a field the org already has.** `User.Title` holds it; nothing is added
+  to User, nothing is written to it, and `Approval_Chain_Setting__mdt` holds the marker strings
+  so the rule is configuration rather than code.
+
+**`Approval_Route__c` is therefore not built.** What that costs is real and is not recovered
+elsewhere: the business can no longer edit an approval chain as data. Changing who signs means
+changing the org chart or a title on it — a Setup change by an administrator, not a row an
+operations team can add on a Tuesday. R7's tall-table reasoning about "more levels later" was
+sound and is only half-preserved: raising a level costs a **setting** (up to five levels), which
+is cheaper than R7's deploy but coarser than R7's rows, because every customer moves at once.
+
+R9 items are marked ★R9. **All of it is built** — the chain service, five pre-provisioned
+approval steps, the level notifications, the approver's level indicator, and the tests. The two
+things it rests on that this repo cannot verify are named in *What still needs an org*.
+
 ## Problem Statement
 
 Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV) from conferences and other systems. Today there is no structured way to: (1) get those people into Salesforce at all, (2) assemble an event invitee list that several AMs contribute to, (3) get per-person sign-off from a manager, and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox.
@@ -272,7 +307,7 @@ diagram; the full field lists are in the blocks below it.
 erDiagram
     Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
     Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
-    User               ||--o{ Event_Invitee__c : "Added_By__c and Approver__c"
+    User               ||--o{ Event_Invitee__c : "Added_By__c and R9 Approver_1..5__c"
     Contact            ||--o{ Event_Attendee__c : "R8 Contact__c, optional, SetNull"
     Account            ||--o{ Event_Invitee__c : "R8 Account__c, snapshot via the Contact"
 
@@ -300,7 +335,9 @@ erDiagram
         MasterDetail Marketing_Event__c FK "reparenting disabled"
         Lookup       Event_Attendee__c FK "Restrict, cannot vanish mid-approval"
         Picklist     Status__c "Draft, Pending Approval, Approved, Rejected"
-        Lookup       Approver__c FK "the submitter's manager, frozen at submit"
+        Lookup       Approver_1__c FK "R9 the Account Owner, level 1 of the chain"
+        Lookup       Approver_2__c FK "R9 their manager, blank if the chain ended"
+        Number       Current_Level__c "R9 which level has it now"
         Lookup       Added_By__c FK "which AM added this row"
         Checkbox     Attended__c "R6, actually turned up, only if Approved"
         Text         Unique_Key__c UK "EventId plus AttendeeId"
@@ -438,7 +475,20 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
                                                       the approval page. Not approval comments,
                                                       which belong to a decision instead
   Added_By__c                Lookup -> User, SetNull  which AM added the row
-  Approver__c                Lookup -> User, SetNull  submitter's manager, frozen at submit
+  Approver_1__c           ★R9 Lookup -> User, SetNull  LEVEL 1: the Account Owner, copied from
+                                                      Account_Manager__c. Was Approver__c
+  Approver_2__c           ★R9 Lookup -> User, SetNull  LEVEL 2: their manager
+  Approver_3__c           ★R9 Lookup -> User, SetNull  LEVEL 3: that manager's manager
+  Approver_4__c           ★R9 Lookup -> User, SetNull  LEVEL 4: unused at the shipped setting
+  Approver_5__c           ★R9 Lookup -> User, SetNull  LEVEL 5: unused. Five steps exist so a
+                                                      new level costs a setting, not a deploy
+                                                      (blank levels are skipped by their step;
+                                                       the chain is compacted, so blanks are
+                                                       only ever at the tail)
+  Approval_Levels__c      ★R9 Number(2,0)               how many levels this row's chain has
+  Current_Level__c        ★R9 Number(2,0)               which level has it now. Set to 1 on
+                                                      submission, advanced by each step's
+                                                      approval action
   Submitted_At__c            DateTime
   Decided_At__c              DateTime                 stamped on approve and reject alike
   Unique_Key__c              Text(40), unique, ExtId  EventId + AttendeeId
@@ -477,10 +527,30 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
                                                        to the running user; a formula can)
 
   Validation rules
-    Approver_Required_When_Pending  Status = Pending Approval AND ISBLANK(Approver__c)
+    Approver_Required_When_Pending  Status = Pending Approval AND ISBLANK(Approver_1__c)
+                                    ★R9 level 1 only — levels 2+ are legitimately blank when
+                                    the chain ended earlier
     Attended_Requires_Approved      Attended__c AND Status <> Approved
     (Event_Attendee__c is required at the field level, so no rule is needed for it)
 ```
+
+```
+★R9 Approval_Chain_Setting__mdt        (Custom Metadata Type; one record, "Default")
+  Regional_Head_Titles__c    Text(255)     comma-separated markers matched against User.Title,
+                                           case-insensitively, as substrings. Blank disables
+                                           early termination. Ships as "Regional Head"
+  Max_Levels_Above_Account_Owner__c  Number how far above level 1 the chain may climb. Ships
+                                           as 2, per requirement.md. Clamped to the five
+                                           levels the metadata provides
+```
+
+★R9 **Custom Metadata rather than a custom object, and the distinction is the one R7 drew for
+its route table.** R7 chose a custom object because the route table *named people*, and people
+leave and move region — operational data with a maintenance cadence. This holds no people at
+all: the org chart is the data and this is only how far to follow it and what marks the top.
+That is configuration, and configuration is what a Custom Metadata Type is for. It also means an
+admin can add a level in Setup without a deploy, which is R7's "more levels on a Tuesday"
+property, bought a coarser way.
 
 **The three objects as one sentence:** a *Marketing Event* is a thing with a date and a
 subject; an *Event Attendee* is a person on an imported list; an *Event Invitee* is the fact
@@ -564,7 +634,13 @@ editing them.
 
 ~~**Snapshot rationale:** `Account_Owner__c` is copied at submit time so an ownership change mid-approval doesn't silently reroute pending items.~~ ★R5 **The field is deleted; the principle it protected is not.** `Approver__c` is still resolved once at submit time and frozen, so an org-chart change mid-approval cannot reroute an item somebody is already looking at. Same guarantee, one field instead of two, because there is only one thing left to freeze.
 
-### ★R5 Approval routing — one rung
+### ~~★R5 Approval routing — one rung~~ (superseded by R9)
+
+> **★R9 Superseded.** The single rung is gone: routing starts at the Account Owner and climbs.
+> Kept because the paragraph it ends on — *"the recovery is a second approval step keyed off
+> something other than the attendee"* — is what R8 and R9 between them delivered, and because
+> the failure mode it names is still the shape of R9's, only with four causes instead of one.
+
 
 R3 built a three-rung ladder because a Lead has no Account. R5 removes both of the
 things the ladder climbed past:
@@ -601,7 +677,17 @@ this revision removed the only person who could answer, and the recovery is a se
 approval step keyed off something other than the attendee — because the attendee no longer
 knows whose customer they are. **Open Question 15.**
 
-### ★R7 Approval routing — a chain, not a rung
+### ~~★R7 Approval routing — a chain, not a rung~~ (superseded by R9)
+
+> **★R9 Superseded, and kept in full.** The requirement this section was written for is the one
+> that shipped; the *mechanism* is not. `requirement.md`, rewritten after this section, routes on
+> the org chart rather than on a `cust_cd` table — see *★R9 Approval routing — the chain that was
+> built* below. Nothing in `Approval_Route__c` exists in the repo. This section stays because
+> three of its conclusions survived the change of mechanism intact and the built design inherits
+> them: **resolution happens once at submit time and is frozen**, **failure is refused rather
+> than routed around**, and **the approval process pre-provisions more steps than the business
+> currently uses, each gated on its own field**. The last of those is R7's, not
+> `requirement.md`'s, and it is what makes "more levels later" cheap in what was actually built.
 
 **This answers Open Question 15, and it answers it with the key R5 said would be needed.**
 The paragraph above ends "the recovery is a second approval step keyed off something other
@@ -753,6 +839,112 @@ it sits on was drawn in the right place.
 | **Flow Orchestration** | Purpose-built for multi-user sequential work, and genuinely the modern answer for complex chains. Rejected here on licensing and on proportion: this chain is linear and unanimous, which is the case standard approvals already handle |
 | **Fall back to the submitter's manager when `cust_cd` has no route** | Turns a data gap into a quieter approval. See *Failure is refused* above |
 
+### ★R9 Approval routing — the chain that was built
+
+The rule, in the order the code applies it:
+
+| # | Level | Where it comes from |
+|---|---|---|
+| 1 | **Account Owner** | `Event_Invitee__c.Account_Manager__c`, the snapshot R8 already stamps from `Account.OwnerId` when the invitee is added |
+| 2 | that person's manager | `User.ManagerId` |
+| 3 | their manager in turn | `User.ManagerId` |
+| … | for at most `Max_Levels_Above_Account_Owner__c` levels above level 1 | `Approval_Chain_Setting__mdt`, shipped as 2 |
+| — | **stop early at the first Regional Head** | `User.Title` contains a marker from `Approval_Chain_Setting__mdt.Regional_Head_Titles__c`, shipped as `Regional Head` |
+
+`ApprovalChainService` is the whole of it. Everything below is a decision the requirement did
+not make for us, recorded here because each one is visible in behaviour.
+
+**The submitter is dropped wherever they appear, and the chain does not backfill.** An AM who
+owns the customer they are inviting would otherwise be their own level 1. R3 had this bug in
+another form — "the Lead Owner approves" degenerating into "the AM approves themselves" — and it
+is worth not reintroducing. What is deliberate is the *second* half: dropping a level shortens
+the chain rather than sliding the window up, because `requirement.md` caps the chain at two
+levels above the Account Owner and skipping a level must not buy another one at the top.
+
+**A Regional Head is a terminator, not a rung.** Reaching one ends the chain at their approval
+even when the level cap would allow more. That is `requirement.md`'s wording — *"it does not
+continue further up, and does not require filling out the remaining levels"* — and it means two
+invitees on one event routinely have different chain lengths: an account owned by a Regional
+Head needs one signature, one owned two rungs below them needs three.
+
+**Title matching is a substring, case-insensitively, against a configurable list.** Equality
+would match nobody, because real titles carry a region ("Regional Head, EMEA"). The cost is that
+"Assistant to the Regional Head" would match too; the mitigation is that the marker is a setting
+an admin can narrow rather than a string in the code. **This is the one org-shaped assumption in
+the whole feature and it is unverified from this repo** — nothing here knows whether this org
+populates `User.Title` at all. If it records the fact elsewhere, `ApprovalChainService.isRegionalHead`
+is the one method to change.
+
+**Failure is refused, not routed around** — inherited from R7 unchanged, and now with four ways
+to fail rather than one. A batch is refused, entirely, with a named error and nothing written,
+when any invitee has no Account Owner, when the chain reaches an inactive user, when a user in
+the chain is not visible to the submitter, or when the only person the chain reaches is the
+submitter. The rejected alternative in each case is the same one: quietly fall back to the
+submitter's manager, which turns a data-quality problem into a weaker approval than the business
+asked for.
+
+#### The approval process: five steps, each gated on its own field
+
+R7's shape, built as designed:
+
+```
+Step N:  assignedApprover  = relatedUserField Approver_N__c
+         entryCriteria     = NOT(ISBLANK(Approver_N__c))
+         ifCriteriaNotMet  = ApproveRecord      ← the chain ended below; finish
+         rejectBehavior    = RejectRequest      ← any level's rejection ends it
+```
+
+`ifCriteriaNotMet = ApproveRecord` is safe here for a reason worth stating explicitly, because
+it would be dangerous if it were not true: **the chain is compacted, so populated levels are
+always 1..k with no holes.** The only steps the criteria can fail on are past the end of the
+chain, so "criteria not met" always means "this chain is finished" and never "skip somebody".
+Step 1 is the exception and fails *closed* (`RejectRecord`): a blank `Approver_1__c` cannot
+happen — `Approver_Required_When_Pending` forbids it at the database — but if it somehow did,
+approving would be the wrong direction to fail in.
+
+Five steps for a chain that uses three is R7's answer to "more levels later", and it is the half
+of R7 that survived: raising the setting to 3 or 4 starts populating `Approver_4__c` and
+`Approver_5__c` with no deploy at all. Only a sixth level costs metadata. **Salesforce caps steps
+per process and that cap has not been read against a real org — Open Question 22 is still open.**
+
+#### Notifications: the cost R7 predicted, paid the way R7 recommended
+
+R7 called this out before the build: *"levels 2..N are not involved at submit time and would
+therefore never be told anything"*. That is exactly what would have happened, and the fix is the
+one it recommended — fire the aggregate when a step is entered:
+
+- Each step's **approval action** advances `Current_Level__c`. In an approval process, "step N
+  was approved" and "step N+1 has begun" are the same moment; there is no separate entry hook.
+- The record-triggered flow **`Invitee_Level_Advanced`** (Pending, `Current_Level__c` > 1) calls
+  `ApprovalLevelNotifier`, which calls `EventNotificationService.notifyLevelApprovers`.
+- That method groups by (event, approver) exactly as the submit-time notification does, so a
+  mass approval of forty rows tells the level above **once**, not forty times.
+
+Level 1 is still told by `submitMyInvitees`, on the path that predates the chain. The completion
+notification needed no change at all: `Status__c` becomes Approved only on *final* approval, so
+`Invitee_Decision_Completion` fires when the whole chain is done and not before — which is a fair
+sign the boundary it sits on was drawn in the right place.
+
+#### What it costs, beyond the table above
+
+| Cost | Detail |
+|---|---|
+| **A guest with no customer cannot be submitted at all** | Routing starts at the Account Owner, and an attendee with no Contact link has none. This is Open Question 21 arriving in production form. The answer chosen by the business is a *data* one — an account kept for non-customer guests, whose owner is named when it is created — and it is a manual step in DEPLOYMENT.md, because **no code in this repo may create an Account**. Until an admin does that, professors and journalists can be added to an event and not submitted |
+| **Time in flight multiplies** | Three people must act before one guest is confirmed, and the AM's completion notice is gated on the slowest chain in their batch. Nothing in the design fixes that; it is what "everyone must agree" costs |
+| **`Pending_Count__c` means "somewhere in a chain"** | Restored, not repaired: `Current_Level__c` and `Approval_Levels__c` give "level 2 of 3" back to the record, the report and the approval screen |
+| **The chain is only as good as the org chart** | A manager on leave, a vacant post, a reporting line that does not match how approvals really work — each becomes an approval that stalls or routes oddly. `Approval_Route__c` was the design that would have insulated the business from that, and it was not built |
+| **"Waiting on me" is no longer a field comparison** | `InviteeApprovalController` reads `ProcessInstanceWorkitem` instead. `Approver_2__c` names its approver from the moment of submission, so a field test would have shown — and let them act on — work that level 1 has not released. Two bounded queries instead of one, in exchange for a screen that cannot jump the queue |
+
+#### Rejected alternatives (R9)
+
+| Alternative | Why not |
+|---|---|
+| **Build `Approval_Route__c` anyway** (R7 as designed) | It is the better answer for an org whose approval chain is not its reporting line, and this org's own requirements document says theirs is. Building both would mean two routing paths, two sets of tests, and no way for a user to tell which one decided their batch |
+| **Fall back to the submitter's manager when there is no Account Owner** | The failure that the whole feature exists to prevent, one level quieter. See *Failure is refused* |
+| **A public group or a custom permission for "Regional Head"** | More precise than a title match and genuinely better if titles turn out to be unreliable. Rejected for now because `requirement.md` says *title*, and because a group is org data an admin has to populate before anything works at all — a title is already there |
+| **Re-resolve the chain at each level instead of freezing it** | Would follow a reorganisation mid-approval, which sounds like an improvement and is not: an approver who has already looked at a batch would silently stop being its approver |
+| **`Current_Level__c` as the authority for who may act** | It is a workflow field update, and a field update that did not fire would hand the decision to the wrong person. The work item is the authority; the field is for reporting |
+
 ### Screen 1 — Import External Attendee List (LWC wizard, App page)
 
 1. **Upload**: `lightning-input type="file"` (accepting `.csv`) + `FileReader` — NOT
@@ -831,11 +1023,13 @@ Standard object create form (Lightning record page with a curated layout is suff
 - **Rejected invitees reappear** in the list; re-adding one resets the *existing* row (Rejected
   → Draft, timestamps and approver cleared, `Added_By__c` updated). A second row is impossible:
   `Unique_Key__c` is unique per Event+Attendee.
-- **Submit My Invitees for Approval** acts on *only the current AM's Draft rows*. It stamps
-  `Approver__c` (the submitter's manager) and `Submitted_At__c`, then calls the standard
-  `Approval.process()`. `Status__c = 'Pending Approval'` is written by the Approval Process's
-  Initial Submission Action, not by our code. A submitter with no manager is refused up front
-  with a named error and nothing moves.
+- **Submit My Invitees for Approval** acts on *only the current AM's Draft rows*. ★R9 It resolves
+  the whole approval chain through `ApprovalChainService`, stamps `Approver_1__c … Approver_5__c`,
+  `Approval_Levels__c` and `Submitted_At__c`, then calls the standard `Approval.process()`.
+  `Status__c = 'Pending Approval'` is written by the Approval Process's Initial Submission
+  Action, not by our code. A batch containing any row that cannot be routed is refused up front
+  with a named error and nothing moves — including the rows that *could* have been routed.
+  The toast reports how many level-1 approvers were notified and how deep the longest chain is.
 - **All Invitees** tab: read-only table of everyone's invitees with Status and Added By, read
   through the `Invitee_*__c` formulas. ★R5 The **Type** column is gone — every invitee is an
   attendee, so a column that always says the same word is noise.
@@ -862,6 +1056,8 @@ The custom console was a hand-built reimplementation of a platform feature. R3 d
 **Approver assignment.** The step uses *Automatically assign to approver(s) → Related User →
 `Approver__c`*. This is the whole reason `Approver__c` exists as a stored User lookup rather
 than a formula: Approval Processes can only route to a User lookup field on the record.
+★R9 There are five such steps now, addressed to `Approver_1__c … Approver_5__c`; the reasoning
+below is unchanged and simply applies five times over.
 The Lead work therefore did not just *coexist* with the standardisation pass — it is what
 made the standard feature applicable at all, because "the Account Owner" was never expressible
 as a field on the invitee for a Lead.
@@ -875,10 +1071,12 @@ routes to a **stored** lookup, and freezing the approver at submit time is what 
 org-chart change mid-approval from silently rerouting an item somebody is already looking at.
 The field was justified twice over; only the second justification survives.
 
-**Entry criteria** none (submission is always explicit, from Screen 3).
+**Entry criteria** none at the process level (submission is always explicit, from Screen 3);
+★R9 each *step* has its own, which is how a chain shorter than five levels skips the rest.
 **Record editability while pending:** locked — an improvement; today an AM can edit a submitted row.
-**Rejection is final** (single step, no reassignment): a rejected invitee returns to the pool
-and can be re-added on Screen 3, which resets it to Draft — the existing rule, unchanged.
+**Rejection is final**: a rejected invitee returns to the pool and can be re-added on Screen 3,
+which resets it to Draft — the existing rule, unchanged. ★R9 With a chain, "final" means a
+rejection at *any* level ends the whole request and no level above is asked.
 
 #### ★R3 Notification volume — the one real regression, and the setting that fixes it
 
@@ -1252,6 +1450,66 @@ irreversible metadata deletions happen last.
 29. `Topic__c` with the **real** taxonomy, then tag the events → verify: the Approved
     Invitees report can filter on a topic and return the events you expect.
 
+### ★R9 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| `classes/ApprovalChainService` (+ test) | The whole routing rule, and the only class that knows the `Approver_N__c` fields exist. `stamp()` is public for that reason — a sixth level should be one file and some metadata, not a hunt through the controllers |
+| `Approval_Chain_Setting__mdt` + 2 fields + the `Default` record | Regional-head markers and the level cap. Configuration, not people |
+| `Event_Invitee__c.Approver_1__c … Approver_5__c` | `Approver__c` renamed to `Approver_1__c` and four siblings added. A rename, not a migration: no record of ours exists anywhere |
+| `Event_Invitee__c.Current_Level__c`, `Approval_Levels__c` | "Level 2 of 3", for the record, the report and the approval screen. Restores what `Pending_Count__c` stopped meaning |
+| Four more approval steps, each gated on its own `Approver_N__c` | R7's design, built |
+| `Set_Current_Level_1 … 5` field updates | One initial-submission action and four step-approval actions |
+| Flow `Invitee_Level_Advanced` + `classes/ApprovalLevelNotifier` | Tells level *n* when level *n−1* finishes. A separate class only because Apex allows one `@InvocableMethod` per class and `EventNotificationService` has spent its one |
+| `EventNotificationService.notifyLevelApprovers` | Aggregated per approver per event, same as the submit-time notice |
+| Layout section *Approval Chain* on the invitee | Five lookups and two numbers read as noise among the timestamps and as an answer in their own section |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `InviteeSelectorController.submitMyInvitees` | Resolves a chain instead of a manager; refuses the whole batch on any unroutable row; notifies the distinct level-1 approvers, which is no longer always one person. `resetToDraft` clears the chain through `stamp(inv, null)` |
+| `InviteeApprovalController` | Both methods read `ProcessInstanceWorkitem` instead of comparing `Approver__c` to the running user — with a chain, only the work item knows whose turn it is. Rows carry their level and chain length |
+| `Approver_Required_When_Pending` | Guards `Approver_1__c` only; levels 2+ are legitimately blank |
+| `approvalsByCompany` | A quiet "Level 2 of 3" badge, shown only when the chain has more than one level |
+| `attendeeSelector` | The submit toast says how many level-1 approvers were told and how deep the longest chain is |
+| Both permission sets, the invitee layout, the event layout's related list, the report type, both reports | The renamed field and the six new ones |
+| `EventWorkflowTest`, `InviteeApprovalControllerTest` | Fixtures become an org chart plus customers with owners, because that is what a chain is made of. Both classes now assert against a world that *has* Accounts, so the "nothing was written to them" assertions compare before and after rather than counting to zero |
+
+**Not shipped, deliberately**
+
+- **`Approval_Route__c`.** See the R7 supersession note; the cost of not having it is in the R9
+  cost table.
+- **No Account, Contact or Lead is created anywhere, still.** The bucket account for
+  non-customer guests is an administrator's record in DEPLOYMENT.md, not a line of Apex. That
+  invariant did not bend for this feature and is asserted in both test classes.
+- **No re-resolution of a chain in flight.** A reorganisation does not reroute work somebody is
+  already looking at.
+
+### ★R9 Build order
+
+Sequenced so that the thing most likely to be wrong — the approval process metadata — is the
+last thing built and the first thing verified in an org.
+
+30. `Approver_1__c … Approver_5__c`, `Current_Level__c`, `Approval_Levels__c`, and the CMDT with
+    its `Default` record → verify: deploys; the renamed field breaks nothing that referenced it.
+31. `ApprovalChainService` + its tests, written against the org chart alone and with no approval
+    process involved → verify: every branch of the walk — cap, early stop, submitter exclusion,
+    no-backfill, inactive, unroutable — before anything can route to it.
+32. `submitMyInvitees` and `Approver_Required_When_Pending` → verify: an unroutable batch moves
+    nothing, and the database refuses a pending row with no level 1 independently of the Apex.
+33. The five approval steps and the `Set_Current_Level_N` field updates → verify **in an org**:
+    a three-level chain needs three approvals, a two-level chain finishes at two, and a
+    rejection at level 2 ends the request.
+34. `Invitee_Level_Advanced` + `ApprovalLevelNotifier` → verify: approving level 1 of forty rows
+    sends the level-2 approver one notification.
+35. `InviteeApprovalController` on work items, and the level badge → verify: a level-2 approver
+    sees nothing and can decide nothing until level 1 has signed.
+36. Permission sets, layouts, reports, DEPLOYMENT.md → verify: full gauntlet, then the demo
+    script end to end with a real three-level chain.
+
 ### ★R3 What still needs an org
 
 Two things in this revision cannot be verified from the repo, and both were flagged before
@@ -1291,6 +1549,36 @@ revisions, because more of the change is metadata:
 Carried over from R3 and still unverified: mass approve/reject at ~40 rows in the Lightning
 Approval Requests list, and the exact label of the user-level approval-email setting. Item 1's
 volume argument (see *Screen 4*) makes the first of those matter more than it did.
+
+### ★R9 What still needs an org
+
+The Apex is tested and the LWC suite is green, and neither of those facts reaches the two things
+this revision actually rests on. Both are declarative, and declarative metadata is exactly what
+has never been deployed from this repo.
+
+1. **That a skipped step skips rather than approves.** Every chain shorter than five levels
+   relies on `ifCriteriaNotMet = ApproveRecord` meaning "this chain is finished" at a step past
+   its end. The design argues it is safe because the chain is compacted so blanks are only ever
+   at the tail — **read that argument again against the org's actual behaviour before trusting a
+   two-level chain to finish at two.** If it turns out to behave differently, the fix is
+   `GoToNextStep` on steps 2–5, which the metadata can express.
+2. **That a step's approval action fires, and that the resulting field update triggers a
+   record-triggered flow.** `Current_Level__c` and the entire level-2..N notification hang off
+   that chain of events. If it does not hold, the visible symptom is quiet: the upper levels are
+   never told, their items sit in the Approvals list unannounced, and the batch stalls looking
+   healthy. **Test it by approving level 1 and watching for the level-2 email**, not by reading
+   the record. `EventWorkflowTest.theNextLevelIsNotifiedWhenTheLevelBelowApproves` will tell you
+   about the field update; only a real inbox tells you about the flow.
+3. **That `User.Title` is where this org records a Regional Head.** Nothing here knows. If it is
+   blank or worded differently, every chain silently climbs to the level cap instead of stopping
+   — which is a *longer* approval than intended, not a shorter one, so it will show up as delay
+   rather than as an error.
+4. **The platform's cap on steps per approval process** (Open Question 22), and whether five is
+   under it.
+
+Carried over and still unverified: mass approve/reject at ~40 rows in the Lightning Approval
+Requests list, the exact label of the user-level approval-email setting, and PMD (see
+QUALITY.md).
 
 ## ★R3 Rejected alternatives for the no-Account invitee
 
@@ -1355,17 +1643,21 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 12. ★R4 ~~Is a name-first match acceptable given it can tag the wrong person?~~ **Moot as of R5 — nothing is matched.** Left below as written, because the condition it names ("if a name-only match is ever used for something that acts on people") is the reason R5 could delete the cascade without regret: it never got there. The successor risk is Open Question 16. Original text: **Settled: accepted.** A single Contact matching a name that belongs to somebody else is tagged wrongly with no signal, and that is understood. What makes it survivable is that a tag is append-only history: it destroys nothing, changes no Contact field, and has no effect on invitation or approval. `Match_Basis__c` records how each tag was reached so a wrong one can at least be explained afterwards. **If a name-only match is ever used for something that acts on people — a mailing, an invitation, a report someone bills from — this decision needs revisiting first.**
 13. ★R4 ~~Should the event history be visible on the Contact at all in this PoC?~~ **Resolved by R5 removing the problem.** The blocker was that showing it meant editing the org's own Contact and Lead layouts — damage outside this project. Attendees are on an object this project owns, so its layout ships with the Event Invitees related list and nothing outside the project has to change. This is the clearest single sign the R4 shape was fighting the platform.
 14. ★R4 ~~Does a `SetNull` delete constraint re-fire the XOR validation rule when a Contact or Lead is deleted?~~ **No longer reachable.** The dilemma was that every delete constraint pointing at a *standard* object was bad in a different way. `Event_Invitee__c.Event_Attendee__c` uses `Restrict`, which was the unacceptable option in R4 precisely because it would have blocked deleting a Contact — and is the right option now because the only thing it blocks is deleting an attendee this project created. `EventWorkflowTest.anInvitedAttendeeCannotBeDeleted` asserts it.
-15. ★R5 ~~**Is a manager the right approver, now that the Account Owner cannot be one?**~~ **Answered by R7, with the key this entry said was missing.** The recovery it names — "a second approval step keyed off something the attendee does not currently carry" — is exactly what arrived: every row carries a customer code `cust_cd`, and a table maps it to the owning AM and onward to the regional head. The control R5 lost is restored without reaching an Account, so premise 7 never comes under pressure. Original text: **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
+15. ★R5 ~~**Is a manager the right approver, now that the Account Owner cannot be one?**~~ **Answered by R7 and closed by R9, which built it.** The Account Owner is level 1 of the chain and the control R5 gave up is back — reached through the Contact link and the Account behind it, so premise 7 never comes under pressure. Only the *mechanism* changed between the answer and the build: `requirement.md` routes up the org chart rather than through a `cust_cd` table. Original R7 answer follows. **Answered by R7, with the key this entry said was missing.** The recovery it names — "a second approval step keyed off something the attendee does not currently carry" — is exactly what arrived: every row carries a customer code `cust_cd`, and a table maps it to the owning AM and onward to the regional head. The control R5 lost is restored without reaching an Account, so premise 7 never comes under pressure. Original text: **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
 19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
 20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
-21. ★R7 **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
+21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 6). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
 23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
 24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
 25. ★R8 ~~**How does an approver approve a whole company's invitees at once?**~~ **Answered: a custom LWC on the event page — see *Screen 4b* below.** The business chose the component over the list-view button after seeing both wireframed, and the deciding argument was the phone: a standard list view's checkboxes are the wrong target size on a handset, and requirement.md asks for approval on iOS. The cost is accepted rather than avoided — ~300 lines where 40 would have done, and a partial walk-back of R3. Original text: **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.
-22. ★R7 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. Five is the suggested starting point for a two-level chain. Worth checking the org's actual cap and the business's honest ceiling in the same conversation.
+22. ★R7 **How many levels should the approval process pre-provision?** Steps beyond the ones in use cost nothing at runtime — each is skipped by its own `ISBLANK(Approver_N__c)` gate — but the total is capped per process by the platform. ★R9 **Five are built**, for a chain that uses three, so the business can reach five by editing one setting. What is still open is the half this question could never answer from the repo: **the platform's actual cap, and the business's honest ceiling.** Ask both in the same conversation — if the ceiling is genuinely four or five, nothing needs to change; if somebody says seven, that is two more fields, two more steps and two more permission set entries, and it is better to know before an admin discovers the setting clamps.
+
+26. ★R9 **Does this org record a Regional Head in `User.Title`, and with what words?** The whole early-termination rule reads that field. Nothing in this repo knows whether the org populates it, whether it is maintained when people move, or whether "Regional Head" is the phrase used. The failure is quiet in a specific way worth planning for: an unmatched title does not error, it makes every chain climb to the level cap, so the symptom is approvals taking one signature longer than expected rather than anything visibly breaking. If titles turn out to be unreliable, a public group or a custom permission is the better mechanism and `ApprovalChainService.isRegionalHead` is the one method that changes.
+
+27. ★R9 **What should happen when somebody in the chain is on leave?** The design refuses an *inactive* user outright, which is right for somebody who has left. It says nothing about somebody who is simply away for three weeks, and a frozen chain will wait for them indefinitely. Salesforce's delegated approver is the standard answer and the process allows delegation, but it has to be set up per user before it is needed — worth deciding whether that is part of the rollout or something the business will discover the first time a batch stalls.
 
 ## Success Criteria
 
@@ -1386,11 +1678,20 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
    preview row says the address was not stored. One bad cell must not fail the other 48 rows.
    1d. ★R5 The two rows with no last name are **Skipped**, write nothing, and appear in the
    manual-review download.
-2. AM creates an event; two different AMs each add their own attendees and submit; both
-   submitters' managers are notified.
-3. One manager opens the **Approvals list** on desktop, the other in the Salesforce Mobile
-   App; both select all pending items and Approve. ★R3 The Approval History related list on a
-   decided invitee shows the approver, timestamp and comments.
+2. AM creates an event; two different AMs each add their own attendees and submit; ★R9 the
+   **Account Owners** of the customers those invitees belong to are notified — one notification
+   each, however many invitees they were sent.
+3. One approver opens the **Approvals list** on desktop, the other **Approvals by Company** in
+   the Salesforce Mobile App; both select all pending items and Approve. ★R3 The Approval
+   History related list on a decided invitee shows the approver, timestamp and comments.
+   3a. ★R9 **The invitees are not approved yet.** They move to level 2, the level-2 approver is
+   notified, and the record reads *level 2 of 3*. Only after the last level — a Regional Head,
+   or the top of the configured cap — does `Status__c` become Approved and the AM hear anything.
+   3b. ★R9 An invitee whose Account Owner *is* a Regional Head needs **one** approval, on the
+   same event as one that needs three. Different chain lengths on one event is the case worth
+   demonstrating, because it is the one a single-approver design could not produce at all.
+   3c. ★R9 A rejection at level 2 ends the request outright — level 3 is never asked, and the
+   invitee returns to the pool exactly as a level-1 rejection would leave it.
 4. Both AMs receive completion emails; the event shows correct roll-up counts; the **Approved
    Invitees report** lists exactly the approved invitees and exports without mojibake.
    ★R5 Specifically: the Name and Organisation columns are **populated**, which is what proves
@@ -1401,9 +1702,12 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
    `SELECT COUNT() FROM Account`, `FROM Contact` and `FROM Lead` are exactly what they were
    before it started. Asserted in `EventWorkflowTest.inviteeReadsThroughToTheAttendee`, and
    worth re-checking by hand in the org, because it is the entire point of the revision.
-7. ★R5 **The un-routable case is refused, not swallowed:** a submitter whose user record has
-   no Manager gets a named error and the rows stay in Draft. With one rung on the ladder this
-   is the only way routing can fail, so it carries more weight than it did in R3.
+7. ★R5 **The un-routable case is refused, not swallowed:** a named error, and the rows stay in
+   Draft. ★R9 There are four ways to be un-routable now rather than one, and the demo-visible
+   one is a guest with no customer behind them: add Hélène Dubois, submit, and read the error —
+   it names her, says why, and says nothing was submitted. Adding a routable invitee to the same
+   batch does not rescue it: **one bad row refuses the whole batch**, which is the same
+   all-or-nothing rule the submit has always had.
 8. ★R5 **An invited attendee cannot be deleted.** The `Restrict` constraint is what stops an
    invitee pointing at nothing mid-approval.
 9. ★R3 Narrowing the report's `Decided_At__c` filter to the day the approvals happened returns
@@ -1412,7 +1716,9 @@ Demo script runs end-to-end in the Sandbox without manual data fixes:
 ## Dependencies
 
 - Sandbox access with permission to deploy metadata (SFDX / Salesforce CLI, API access enabled).
-- ★R5 Three test users for the multi-user demo: two AMs and one manager, with the manager set on both AMs' user records. (R3 needed two AMs and two Account Owners; with routing down to one rung, the second approver has nothing to approve.)
+- ★R5 ~~Three test users for the multi-user demo: two AMs and one manager, with the manager set on both AMs' user records.~~ ★R9 **Five, and a reporting line between them**, because the chain is the demo: two AMs, an Account Owner, that owner's manager, and a Regional Head above them whose `User.Title` contains the marker. Set `ManagerId` up the line. The AMs' own managers no longer matter to routing at all — a detail worth stating, because it is the habit R5 left behind and the first thing an admin will set instead.
+- ★R9 **At least two Accounts with different owners, and Contacts under them linked to the demo attendees** (`Event_Attendee__c.Contact__c`). Without the Contact link nothing can be submitted, so this is not demo polish — it is the precondition for the workflow running at all. One of those owners should be the Regional Head, so the demo can show a one-signature chain beside a three-signature one.
+- ★R9 **An account for non-customer guests**, if the demo includes any (Open Question 21). Its owner is chosen when it is created and becomes their level 1.
 - One real anonymized .csv sample from the source system (nice-to-have; seed script otherwise).
 
 ## Next Steps

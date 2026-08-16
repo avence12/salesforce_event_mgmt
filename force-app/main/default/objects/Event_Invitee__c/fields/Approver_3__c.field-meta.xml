@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_3__c</fullName>
+    <label>Approver 3</label>
+    <description>★R9 Level 3 of the approval chain: the Level 2 approver&apos;s manager, frozen at submit time.
+
+With requirement.md&apos;s default of two levels above the Account Owner, this is the last level the chain can reach — and the level a Regional Head is most often found at. Blank means the chain ended earlier.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve (Level 3)</relationshipLabel>
+    <relationshipName>Invitees_Awaiting_Approval_L3</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

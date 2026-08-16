@@ -175,9 +175,15 @@ export default class AttendeeSelector extends LightningElement {
         this.loading = true;
         try {
             const res = await submitMyInvitees({ eventId: this.recordId });
+            // A one-level chain says nothing about levels: the extra sentence would be noise
+            // on the common case and is the whole news on the uncommon one.
+            const chain =
+                res.levels > 1
+                    ? ` The longest chain is ${res.levels} levels — each level decides in turn, and you hear once every one of them has.`
+                    : '';
             this.toast(
                 'Submitted',
-                `${res.submitted} invitee(s) sent for approval — ${res.approversNotified} approver(s) notified.`,
+                `${res.submitted} invitee(s) sent for approval — ${res.approversNotified} approver(s) notified at level 1.${chain}`,
                 'success'
             );
             await refreshApex(this.wiredInvitees);

@@ -2,7 +2,11 @@
 <ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Approver_Required_When_Pending</fullName>
     <active>true</active>
-    <description>A pending row with no approver is invisible to everyone and can never be decided — it just sits there looking submitted. This rule matters more in R5, not less: with the ladder down to a single rung, a submitter whose user record has no Manager has nothing to fall back on at all, so what used to be an edge case is now the only way the resolution can fail. Refusing the state is what keeps the submit honest.</description>
-    <errorConditionFormula>AND(ISPICKVAL(Status__c, &quot;Pending Approval&quot;), ISBLANK(Approver__c))</errorConditionFormula>
-    <errorMessage>This invitee cannot be submitted: no approver could be determined. Set a Manager on the submitting user.</errorMessage>
+    <description>A pending row with no approver is invisible to everyone and can never be decided — it just sits there looking submitted.
+
+★R9 The rule guards Approver_1__c, and only that one, on purpose. Levels 2 and above are legitimately blank: a chain that ends at the Account Owner because they are a Regional Head is a complete chain, not a broken one, and requiring the upper levels would forbid exactly the case requirement.md asks for. Level 1 is different — it is the level the approval process enters at, and a Pending row without it would be approved by the step&apos;s fail-closed branch or sit for ever, depending on which way that branch is set.
+
+The rule also has a second job now. ApprovalChainService refuses to resolve an unroutable batch, so in practice this state is unreachable through the UI; keeping the constraint at the database is what makes that a guarantee rather than a habit of one Apex class.</description>
+    <errorConditionFormula>AND(ISPICKVAL(Status__c, &quot;Pending Approval&quot;), ISBLANK(Approver_1__c))</errorConditionFormula>
+    <errorMessage>This invitee cannot be submitted: no approval chain could be determined. It needs an Account Owner — which comes from the attendee&apos;s Contact link — and that owner needs a Manager if the chain is to go any higher.</errorMessage>
 </ValidationRule>

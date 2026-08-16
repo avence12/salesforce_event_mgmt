@@ -16,6 +16,16 @@ public with sharing class EventNotificationService {
     private static Integer emailsSent = 0;
     @TestVisible
     private static Integer bellsSent = 0;
+    /**
+     * ★R9 Counted separately because the chain made the total ambiguous. Approving level 1
+     * of three now sends a level notification in the same transaction that a completion test
+     * is watching, and a test asserting "one email" would be asserting which of two features
+     * fired. Each notification counts itself.
+     */
+    @TestVisible
+    private static Integer completionsSent = 0;
+    @TestVisible
+    private static Integer levelNotificationsSent = 0;
 
     /**
      * Entry point for the Invitee_Decision_Completion record-triggered Flow.
@@ -105,6 +115,10 @@ public with sharing class EventNotificationService {
      * Approval Process sends no assignment email of its own, so if this stops firing
      * an approver hears nothing at all — the pending items simply appear in their
      * Approvals list unannounced.
+     *
+     * ★R9 This now covers level 1 only, and the map genuinely has several entries: one
+     * batch spanning three customers starts on three different Account Owners. Every level
+     * above it is told by notifyLevelApprovers when the level below finishes.
      */
     public static void notifyApproversOfSubmission(
         Marketing_Event__c evt,
@@ -131,6 +145,109 @@ public with sharing class EventNotificationService {
         sendEmails(emails);
     }
 
+    /**
+     * ★R9 Tells the level a batch has just advanced to that it now has work.
+     *
+     * A chain broke the notification design in a way that is easy to miss: with one approver,
+     * everybody who mattered was involved at submit time and one email at submit time was the
+     * whole of it. Levels 2..N are not involved at submit time, so under the old design their
+     * items would appear in an Approvals list unannounced and the batch would sit there. This
+     * is the repair, and it is deliberately the same shape as the submit-time notification —
+     * one email per distinct approver per event, not one per invitee.
+     *
+     * Called by the Invitee_Level_Advanced flow through ApprovalLevelNotifier, on the update
+     * that each approval step's field update makes to Current_Level__c.
+     *
+     * Rows that are no longer pending, and levels with no approver (a skipped tail step),
+     * are dropped rather than notified: both are states the chain reaches normally.
+     */
+    public static void notifyLevelApprovers(List<Id> inviteeIds) {
+        if (inviteeIds == null || inviteeIds.isEmpty()) {
+            return;
+        }
+
+        // event -> approver -> how many invitees have just landed on them
+        Map<Id, Map<Id, Integer>> byEventThenApprover = new Map<Id, Map<Id, Integer>>();
+        for (Event_Invitee__c inv : [
+            SELECT
+                Id,
+                Marketing_Event__c,
+                Status__c,
+                Current_Level__c,
+                Approver_1__c,
+                Approver_2__c,
+                Approver_3__c,
+                Approver_4__c,
+                Approver_5__c
+            FROM Event_Invitee__c
+            WHERE Id IN :inviteeIds AND Status__c = 'Pending Approval' AND Current_Level__c > 1
+        ]) {
+            Id approver = approverAt(inv, inv.Current_Level__c.intValue());
+            if (approver == null) {
+                continue;
+            }
+            Map<Id, Integer> forEvent = byEventThenApprover.get(inv.Marketing_Event__c);
+            if (forEvent == null) {
+                forEvent = new Map<Id, Integer>();
+                byEventThenApprover.put(inv.Marketing_Event__c, forEvent);
+            }
+            Integer soFar = forEvent.containsKey(approver) ? forEvent.get(approver) : 0;
+            forEvent.put(approver, soFar + 1);
+        }
+        if (byEventThenApprover.isEmpty()) {
+            return;
+        }
+
+        Map<Id, Marketing_Event__c> events = new Map<Id, Marketing_Event__c>(
+            [SELECT Id, Name FROM Marketing_Event__c WHERE Id IN :byEventThenApprover.keySet()]
+        );
+        List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
+        for (Id eventId : byEventThenApprover.keySet()) {
+            Marketing_Event__c evt = events.get(eventId);
+            if (evt == null) {
+                continue;
+            }
+            Map<Id, Integer> forEvent = byEventThenApprover.get(eventId);
+            for (Id approverId : forEvent.keySet()) {
+                String title = 'Approval requested: ' + evt.Name;
+                String body =
+                    forEvent.get(approverId) +
+                    ' invitee(s) for "' +
+                    evt.Name +
+                    '" have been approved at the level below yours and are now waiting on you. ' +
+                    'Open the event, or your Approvals list, to approve or reject.';
+                emails.add(buildEmail(approverId, title, body, evt.Id));
+                sendBell(approverId, title, body, evt.Id);
+                levelNotificationsSent++;
+            }
+        }
+        sendEmails(emails);
+    }
+
+    /** The Approver_N__c field for a level, without five branches at every call site. */
+    private static Id approverAt(Event_Invitee__c inv, Integer level) {
+        switch on level {
+            when 1 {
+                return inv.Approver_1__c;
+            }
+            when 2 {
+                return inv.Approver_2__c;
+            }
+            when 3 {
+                return inv.Approver_3__c;
+            }
+            when 4 {
+                return inv.Approver_4__c;
+            }
+            when 5 {
+                return inv.Approver_5__c;
+            }
+            when else {
+                return null;
+            }
+        }
+    }
+
     /** Sent when an AM's submitted batch for an event has zero remaining Pending rows. */
     public static void notifyAmOfCompletion(Marketing_Event__c evt, Id amId, Integer approved, Integer rejected) {
         String title = 'Review complete: ' + evt.Name;
@@ -145,6 +262,7 @@ public with sharing class EventNotificationService {
             'The approved list is in the "Approved Invitees" reports, under the Event Management report folder.';
         sendEmails(new List<Messaging.SingleEmailMessage>{ buildEmail(amId, title, body, evt.Id) });
         sendBell(amId, title, body, evt.Id);
+        completionsSent++;
     }
 
     // ---------- internals ----------

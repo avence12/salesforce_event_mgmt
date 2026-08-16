@@ -33,6 +33,14 @@
     letter-spacing: 0.04em;
 }
 
+/* ★R9 Quieter than the VIP badge on purpose. VIP is a claim about the guest that should
+   catch the eye; the chain level is context about the decision, which the approver should
+   be able to find without it competing for attention on every row. */
+.level {
+    font-weight: 400;
+    color: var(--slds-g-color-neutral-base-30, #444);
+}
+
 .col-select {
     width: 2.5rem;
 }

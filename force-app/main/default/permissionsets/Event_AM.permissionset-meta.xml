@@ -131,8 +131,44 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R9 The whole chain is readable and none of it is editable, which is the same rule
+      Approver__c had before it became five fields. An AM watching a submission travel up
+      three levels is exactly who needs to see it; an AM who could edit level 3 would be
+      choosing their own approver.
+    -->
     <fieldPermissions>
-        <field>Event_Invitee__c.Approver__c</field>
+        <field>Event_Invitee__c.Approver_1__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_2__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_3__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_4__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approver_5__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Current_Level__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <field>Event_Invitee__c.Approval_Levels__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

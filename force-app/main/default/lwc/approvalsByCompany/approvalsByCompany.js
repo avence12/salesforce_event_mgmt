@@ -50,7 +50,14 @@ export default class ApprovalsByCompany extends LightningElement {
                 ...i,
                 selected: this.selectedIds.has(i.inviteeId),
                 hasRemark: !!i.remark,
-                nameLabel: i.salutation ? `${i.salutation} ${i.name}` : i.name
+                nameLabel: i.salutation ? `${i.salutation} ${i.name}` : i.name,
+                // ★R9 "Level 2 of 3". Whether an approver is the last signature or one of
+                // several changes what their decision means, and it is not something the
+                // standard Approvals list can tell them either. Shown only when there is
+                // more than one level: on a single-level chain it would be a badge that
+                // always reads the same thing.
+                levelLabel: i.level && i.levels ? `Level ${i.level} of ${i.levels}` : null,
+                showLevel: !!(i.level && i.levels && i.levels > 1)
             }));
             const selectedCount = rows.filter((r) => r.selected).length;
             return {

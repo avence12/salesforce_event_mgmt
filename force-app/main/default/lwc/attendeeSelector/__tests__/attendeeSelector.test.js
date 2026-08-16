@@ -152,7 +152,7 @@ describe('c-attendee-selector', () => {
 
     beforeEach(() => {
         addAttendees.mockResolvedValue(2);
-        submitMyInvitees.mockResolvedValue({ submitted: 1, approversNotified: 1 });
+        submitMyInvitees.mockResolvedValue({ submitted: 1, approversNotified: 1, levels: 1 });
         saveAttendance.mockResolvedValue({ marked: 1, cleared: 0, skippedNotApproved: 0 });
         refreshApex.mockResolvedValue(undefined);
         element = mount();
@@ -442,11 +442,27 @@ describe('c-attendee-selector', () => {
         });
 
         it('reports the submitted count and notified approvers', async () => {
-            submitMyInvitees.mockResolvedValue({ submitted: 3, approversNotified: 1 });
+            submitMyInvitees.mockResolvedValue({ submitted: 3, approversNotified: 1, levels: 1 });
             await clickSubmit();
             expect(toasts.at(-1).message).toBe(
-                '3 invitee(s) sent for approval — 1 approver(s) notified.'
+                '3 invitee(s) sent for approval — 1 approver(s) notified at level 1.'
             );
+        });
+
+        it('says how deep the chain is when there is more than one level', async () => {
+            submitMyInvitees.mockResolvedValue({ submitted: 3, approversNotified: 2, levels: 3 });
+            await clickSubmit();
+            const message = toasts.at(-1).message;
+            expect(message).toContain('2 approver(s) notified at level 1');
+            expect(message).toContain('The longest chain is 3 levels');
+        });
+
+        // A one-level chain is the ordinary case, and a sentence explaining that there is
+        // only one level is a sentence nobody needs to read.
+        it('says nothing about chains when there is only one level', async () => {
+            submitMyInvitees.mockResolvedValue({ submitted: 1, approversNotified: 1, levels: 1 });
+            await clickSubmit();
+            expect(toasts.at(-1).message).not.toContain('chain');
         });
 
         it('refreshes the invitee list afterwards', async () => {

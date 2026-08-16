@@ -20,9 +20,15 @@
  * ★R8 The second of those is no longer permanent. Adding an invitee now snapshots the
  * customer behind them — Account, customer code and account manager, reached through
  * Event_Attendee__c.Contact__c — so the Account Owner rung has something to stand on
- * again. Nothing routes to it yet: submitMyInvitees still resolves the submitter's
- * manager and only that. The field is there so the R7 chain has a key to look up, and
- * so a guest who belongs to no customer is visibly blank rather than quietly guessed.
+ * again. Nothing routed to it in R8: the field was put there first so the chain would
+ * have something to start from.
+ *
+ * ★R9 It routes to it now, and the rung is a chain: Account Owner, their manager, that
+ * manager's manager, ending early at the first Regional Head. ApprovalChainService owns
+ * the rule; submitMyInvitees owns the transaction. The consequence for this screen is
+ * that Account_Manager__c stopped being decoration — an invitee with no Account behind
+ * them can no longer be submitted at all, which is why the error it raises names the
+ * remedy rather than the field.
  *
  * Already-invited people are hidden; Rejected ones reappear and re-adding resets
  * the existing row to Draft. Submission hands off to the standard Approval Process
@@ -87,8 +93,12 @@ public with sharing class InviteeSelectorController {
     public class SubmitResult {
         @AuraEnabled
         public Integer submitted { get; set; }
+        /** ★R9 Distinct level-1 approvers told about this batch — no longer always one. */
         @AuraEnabled
         public Integer approversNotified { get; set; }
+        /** ★R9 The longest chain in the batch, so the AM learns how many signatures they are waiting on. */
+        @AuraEnabled
+        public Integer levels { get; set; }
     }
 
     /** Most attendees the selector will hand back in one call. */
@@ -218,13 +228,20 @@ public with sharing class InviteeSelectorController {
      * The status is deliberately NOT written here — the approval process's initial
      * submission action owns it. What this method owns is the one thing an approval
      * process cannot work out for itself: who approves. That is resolved once,
-     * frozen into Approver__c, and never recomputed, so a later org-chart change
+     * frozen onto the row, and never recomputed, so a later org-chart change
      * cannot reroute an item somebody is already looking at.
+     *
+     * ★R9 What is resolved is now a chain rather than a person — Account Owner, their
+     * manager, that manager's manager, stopping at the first Regional Head. The rule lives
+     * in ApprovalChainService; what stays here is the transaction shape, which is unchanged:
+     * resolve first, refuse the whole batch if any row cannot be routed, and only then write
+     * anything. A half-submitted batch is worse than a refused one, and with a chain there
+     * are more ways to be half-submitted.
      */
     @AuraEnabled
     public static SubmitResult submitMyInvitees(Id eventId) {
         List<Event_Invitee__c> mine = [
-            SELECT Id, Event_Attendee__c
+            SELECT Id, Event_Attendee__c, Account_Manager__c, Invitee_Name__c
             FROM Event_Invitee__c
             WHERE Marketing_Event__c = :eventId AND Added_By__c = :UserInfo.getUserId() AND Status__c = 'Draft'
         ];
@@ -233,24 +250,31 @@ public with sharing class InviteeSelectorController {
         }
 
         Id submitterId = UserInfo.getUserId();
-        Id managerId = [SELECT ManagerId FROM User WHERE Id = :submitterId].ManagerId;
-
-        // The whole ladder, now that neither an Account Owner nor a Lead Owner
-        // exists to climb past. A submitter with no manager resolves to nobody, and
-        // that is refused below rather than written as a row no approver can see.
-        if (managerId == null) {
-            throw new AuraHandledException(
-                'No approver could be determined for your ' +
-                    mine.size() +
-                    ' invitee(s): your user record has no Manager, and an attendee has no account owner to fall back on. ' +
-                    'Ask an administrator to set a Manager on your user. Nothing was submitted.'
-            );
+        Map<Id, List<Id>> chains;
+        try {
+            chains = ApprovalChainService.resolve(mine, submitterId);
+        } catch (ApprovalChainService.UnroutableException e) {
+            // Re-thrown rather than handled: the service's message already names the row, the
+            // cause and the remedy, and nothing has been written at this point.
+            throw new AuraHandledException(e.getMessage());
         }
 
         Datetime now = Datetime.now();
+        // Level 1 is where a batch fans out: two invitees from two customers start with two
+        // different Account Owners, which is exactly what the single-rung rule could not do.
+        Map<Id, Integer> firstLevelCounts = new Map<Id, Integer>();
+        Integer deepestChain = 0;
         for (Event_Invitee__c inv : mine) {
+            List<Id> chain = chains.get(inv.Id);
             inv.Submitted_At__c = now;
-            inv.Approver__c = managerId;
+            ApprovalChainService.stamp(inv, chain);
+
+            Id firstApprover = chain[0];
+            Integer soFar = firstLevelCounts.containsKey(firstApprover) ? firstLevelCounts.get(firstApprover) : 0;
+            firstLevelCounts.put(firstApprover, soFar + 1);
+            if (chain.size() > deepestChain) {
+                deepestChain = chain.size();
+            }
         }
         update mine;
 
@@ -267,18 +291,15 @@ public with sharing class InviteeSelectorController {
         Approval.process(requests, true);
 
         Marketing_Event__c evt = [SELECT Id, Name FROM Marketing_Event__c WHERE Id = :eventId];
-        EventNotificationService.notifyApproversOfSubmission(
-            evt,
-            new Map<Id, Integer>{ managerId => mine.size() },
-            submitterId
-        );
+        // ★R9 Level 1 only. Levels 2..N are not involved yet and telling them now would ask
+        // people to look at something they cannot act on; each level hears when the level
+        // below it finishes, from the Invitee_Level_Advanced flow.
+        EventNotificationService.notifyApproversOfSubmission(evt, firstLevelCounts, submitterId);
 
         SubmitResult res = new SubmitResult();
         res.submitted = mine.size();
-        // One manager per submitter, so this is always 1. Kept as a count rather than
-        // hard-coded because it is what the toast says, and a future routing rule that
-        // fans out again should not have to re-thread the return type.
-        res.approversNotified = 1;
+        res.approversNotified = firstLevelCounts.size();
+        res.levels = deepestChain;
         return res;
     }
 
@@ -438,14 +459,19 @@ public with sharing class InviteeSelectorController {
     }
 
     /**
-     * Clears every trace of the previous approval round. Approver__c must go with the
-     * rest: leaving a stale approver on a Draft row would let the next submit silently
-     * skip resolution and reuse whoever decided last time.
+     * Clears every trace of the previous approval round. The approver fields must go with
+     * the rest: leaving a stale chain on a Draft row would let the next submit silently
+     * reuse whoever decided last time.
+     *
+     * ★R9 There are seven fields to clear now instead of three, which is the kind of thing
+     * that rots. ApprovalChainService.stamp(inv, null) blanks the whole chain in one call, so
+     * a sixth level added later cannot be forgotten here.
      */
     private static void resetToDraft(Event_Invitee__c inv) {
         inv.Status__c = 'Draft';
         inv.Added_By__c = UserInfo.getUserId();
-        inv.Approver__c = null;
+        ApprovalChainService.stamp(inv, null);
+        inv.Current_Level__c = null;
         inv.Submitted_At__c = null;
         inv.Decided_At__c = null;
     }

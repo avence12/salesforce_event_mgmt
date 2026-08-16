@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_5__c</fullName>
+    <label>Approver 5</label>
+    <description>★R9 Level 5 of the approval chain, and the last one this metadata pre-provisions. Unused at the shipped configuration — see Approver_4__c for why it exists anyway.
+
+Five is a starting point, not a platform limit that was measured: Salesforce caps the number of steps per approval process, and that cap has never been checked against a real org from this repo. Confirm it before anyone plans a chain longer than this.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve (Level 5)</relationshipLabel>
+    <relationshipName>Invitees_Awaiting_Approval_L5</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_1__c</fullName>
+    <label>Approver 1</label>
+    <description>★R9 Level 1 of the approval chain: the Account Owner of the customer this invitee belongs to, copied from Account_Manager__c at submit time. This is what requirement.md means by &quot;Account Owner (Level 1 Approver)&quot;.
+
+Was Approver__c up to R8, when the chain was one rung and that rung was the submitter&apos;s manager. The rename is not cosmetic — a field called &quot;Approver&quot; on a record with five of them reads as &quot;the approver&quot;, which is exactly what it is no longer.
+
+Resolved once at submit time and frozen, like every level: a reorganisation halfway up a three-level chain must not reroute an item somebody is already looking at. The whole chain that was in force when the batch was submitted is the chain that decides it.
+
+Never the submitter. An AM who owns the customer they are inviting would otherwise approve their own submission at level 1; ApprovalChainService drops the submitter wherever they appear in the chain and the levels compact upwards.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve (Level 1)</relationshipLabel>
+    <relationshipName>Invitees_Awaiting_Approval_L1</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>true</trackHistory>
+</CustomField>

@@ -3,11 +3,11 @@
     <fullName>Invitee_Approval</fullName>
     <label>Invitee Approval</label>
     <active>true</active>
-    <description>Screen 4. Replaces the approvalConsole LWC and ApprovalConsoleController. Routing is the Approver__c Related User Field, resolved by InviteeSelectorController at submit time — an approval process can only address a stored User lookup on the record, which is why &quot;the Account Owner&quot; had to become a field before this was buildable.</description>
+    <description>Screen 4. Replaces the approvalConsole LWC and ApprovalConsoleController. ★R9 Routing is a chain rather than a person: five pre-provisioned steps, each addressed to its own Approver_N__c Related User Field and gated on that field being populated, so a chain shorter than five simply skips the steps it does not use. ApprovalChainService resolves the chain at submit time — Account Owner, their manager, that manager&apos;s manager, ending at the first Regional Head — and freezes it onto the record, because an approval process can only address a stored User lookup and because a reorganisation mid-approval must not reroute an item somebody is already looking at.</description>
 
     <!--
       No entryCriteria: submission is always explicit, from Screen 3, and the submitting
-      Apex has already checked ownership, resolved the approver and stamped Submitted_At__c.
+      Apex has already checked ownership, resolved the chain and stamped Submitted_At__c.
       A duplicate entry test here would only be able to repeat that less precisely.
     -->
 
@@ -24,6 +24,11 @@
       aggregated email + bell from EventNotificationService, instead of once per invitee.
       Restoring per-request emails means adding a template here AND flipping that user
       setting back — the two must move together or approvers hear nothing at all.
+
+      ★R9 With a chain, that aggregate is sent at two moments rather than one: at submit
+      time for level 1, and by the Invitee_Level_Advanced flow for every level above it as
+      the level below finishes. A chain whose upper levels are never told is a chain that
+      stalls silently, which is the failure this arrangement exists to avoid.
     -->
 
     <!--
@@ -47,21 +52,152 @@
             <name>Set_Status_Pending_Approval</name>
             <type>FieldUpdate</type>
         </action>
+        <action>
+            <name>Set_Current_Level_1</name>
+            <type>FieldUpdate</type>
+        </action>
     </initialSubmissionActions>
 
+    <!--
+      ★R9 One step per level, and three lines in each of them do the work:
+
+        entryCriteria     NOT(ISBLANK(Approver_N__c))  - is there a level N on this row?
+        ifCriteriaNotMet  ApproveRecord                - no: the chain ended below, finish
+        rejectBehavior    RejectRequest                - any level's rejection ends the whole
+
+      ApprovalChainService compacts the chain so the populated levels are always 1..k with
+      no holes. That is what makes ifCriteriaNotMet safe here: the only steps it can reach
+      are the ones past the end of the chain, never a gap in the middle, so "criteria not
+      met" always means "this chain is finished" and never "skip somebody".
+
+      Step 1 is the exception and fails closed instead. A blank Approver_1__c cannot happen —
+      Approver_Required_When_Pending forbids the state at the database — but if it somehow
+      did, ApproveRecord would approve an invitee nobody had looked at.
+    -->
     <approvalStep>
-        <fullName>Approver_Decision</fullName>
-        <label>Approver Decision</label>
-        <name>Approver_Decision</name>
-        <description>Single step. The approver is whoever Approver__c names, which as of R5 is always the submitter&apos;s manager — an attendee has no account owner and no lead owner to route to instead.</description>
+        <fullName>Level_1_Account_Owner</fullName>
         <allowDelegate>true</allowDelegate>
+        <approvalActions>
+            <action>
+                <name>Set_Current_Level_2</name>
+                <type>FieldUpdate</type>
+            </action>
+        </approvalActions>
         <assignedApprover>
             <approver>
-                <name>Approver__c</name>
+                <name>Approver_1__c</name>
                 <type>relatedUserField</type>
             </approver>
         </assignedApprover>
+        <description>Level 1: the Account Owner of the customer this invitee belongs to. requirement.md&apos;s first approver, and the control R5 gave up when it had no Account to ask.</description>
+        <entryCriteria>
+            <formula>NOT(ISBLANK(Approver_1__c))</formula>
+        </entryCriteria>
+        <ifCriteriaNotMet>RejectRecord</ifCriteriaNotMet>
+        <label>Level 1 - Account Owner</label>
+        <name>Level_1_Account_Owner</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+
+    <approvalStep>
+        <fullName>Level_2_Manager</fullName>
+        <allowDelegate>true</allowDelegate>
+        <approvalActions>
+            <action>
+                <name>Set_Current_Level_3</name>
+                <type>FieldUpdate</type>
+            </action>
+        </approvalActions>
+        <assignedApprover>
+            <approver>
+                <name>Approver_2__c</name>
+                <type>relatedUserField</type>
+            </approver>
+        </assignedApprover>
+        <description>Level 2: the Account Owner&apos;s manager. Blank when the chain ended at level 1 — because level 1 is a Regional Head, or has no manager — and this step is then skipped.</description>
+        <entryCriteria>
+            <formula>NOT(ISBLANK(Approver_2__c))</formula>
+        </entryCriteria>
         <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <label>Level 2 - Manager</label>
+        <name>Level_2_Manager</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+
+    <approvalStep>
+        <fullName>Level_3_Manager</fullName>
+        <allowDelegate>true</allowDelegate>
+        <approvalActions>
+            <action>
+                <name>Set_Current_Level_4</name>
+                <type>FieldUpdate</type>
+            </action>
+        </approvalActions>
+        <assignedApprover>
+            <approver>
+                <name>Approver_3__c</name>
+                <type>relatedUserField</type>
+            </approver>
+        </assignedApprover>
+        <description>Level 3: the last level requirement.md&apos;s default reaches, and the one a Regional Head is most often found at.</description>
+        <entryCriteria>
+            <formula>NOT(ISBLANK(Approver_3__c))</formula>
+        </entryCriteria>
+        <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <label>Level 3 - Senior Manager</label>
+        <name>Level_3_Manager</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+
+    <approvalStep>
+        <fullName>Level_4_Reserved</fullName>
+        <allowDelegate>true</allowDelegate>
+        <approvalActions>
+            <action>
+                <name>Set_Current_Level_5</name>
+                <type>FieldUpdate</type>
+            </action>
+        </approvalActions>
+        <assignedApprover>
+            <approver>
+                <name>Approver_4__c</name>
+                <type>relatedUserField</type>
+            </approver>
+        </assignedApprover>
+        <description>Level 4: unused at the shipped configuration and skipped. It is here so that raising Approval_Chain_Setting__mdt.Max_Levels_Above_Account_Owner__c buys a level with a setting rather than a deploy — which is what &quot;more levels are expected later&quot; costs when it is planned for in advance.</description>
+        <entryCriteria>
+            <formula>NOT(ISBLANK(Approver_4__c))</formula>
+        </entryCriteria>
+        <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <label>Level 4 - Reserved</label>
+        <name>Level_4_Reserved</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+
+    <approvalStep>
+        <fullName>Level_5_Reserved</fullName>
+        <allowDelegate>true</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>Approver_5__c</name>
+                <type>relatedUserField</type>
+            </approver>
+        </assignedApprover>
+        <description>Level 5: unused, skipped, and the ceiling this metadata provides. No approval action — there is no level 6 to advance to. A chain longer than this costs a field, a step and a permission set entry; verify the platform&apos;s cap on steps per process before promising one.</description>
+        <entryCriteria>
+            <formula>NOT(ISBLANK(Approver_5__c))</formula>
+        </entryCriteria>
+        <ifCriteriaNotMet>ApproveRecord</ifCriteriaNotMet>
+        <label>Level 5 - Reserved</label>
+        <name>Level_5_Reserved</name>
         <rejectBehavior>
             <type>RejectRequest</type>
         </rejectBehavior>

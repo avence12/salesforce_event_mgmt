@@ -159,6 +159,44 @@ assumed. A second test, `anExistingContactIsImportedAsAnAttendeeAnyway`, pins th
 that looks like a bug and is the design: it exists so that reintroducing Contact matching
 breaks a test instead of passing quietly.
 
+Re-run after the ★R9 revision (the multi-level approval chain):
+
+```
+LWC tests      203 passing   (5 more — the submit toast's chain sentence, and the
+                              approver's "Level 2 of 3" badge with its single-level case)
+ESLint         clean
+Prettier       clean
+PMD            not run — PMD is not installed in this environment
+Mutation       13/13 as expected
+Apex tests     not run — needs an org
+```
+
+**★R9 update — the Apex tests grew a class and both existing ones grew a fixture.**
+`ApprovalChainServiceTest` tests the routing rule away from the workflow that uses it, against
+two deliberately different org charts: one ending in a Regional Head with somebody above them,
+which is the only way to prove the chain *stops* rather than merely running out, and one of four
+plain untitled managers, which is the only way to prove the level cap and the submitter exclusion
+without a Regional Head quietly ending the walk first. Every test sets the configuration
+explicitly rather than reading the shipped `Default` record — otherwise they would be asserting
+what an administrator last typed into Setup.
+
+`EventWorkflowTest` and `InviteeApprovalControllerTest` now build an org chart and customers with
+owners, because that is what a chain is made of. Two consequences worth knowing before reading
+them:
+
+- **The "nothing was written to the org's data" assertions changed shape, not strength.** They
+  used to count Accounts and Contacts to zero; a fixture that *has* both means they now compare
+  `LastModifiedDate` and row counts before and after. That is the stronger form — counting to
+  zero cannot catch a modification, only a creation.
+- **Approvals are driven through whoever the platform says holds the work item**, never through a
+  named user the test picked. A test that names its own approver would pass even if the routing
+  sent the item somewhere else entirely, which is precisely the defect a chain makes easy.
+
+The two things these tests cannot reach are in design.md's *★R9 What still needs an org*: whether
+a step past the end of a chain is skipped rather than final-approving, and whether a step's
+approval action fires the flow that notifies the next level. Both are approval-process behaviour
+and neither exists outside an org.
+
 Two mutants in `scripts/quality/mutate.sh` were repointed rather than deleted. The Event
 component of the de-dup key no longer exists, so the mutant that removed it was replaced by
 one that removes **company** — the same class of defect against the key R5 actually relies

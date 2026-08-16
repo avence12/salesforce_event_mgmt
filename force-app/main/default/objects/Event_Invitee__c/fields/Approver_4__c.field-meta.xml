@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approver_4__c</fullName>
+    <label>Approver 4</label>
+    <description>★R9 Level 4 of the approval chain. Unused at the shipped configuration and deliberately so.
+
+requirement.md caps the chain at two levels above the Account Owner, so levels 4 and 5 stay blank and their approval steps are skipped. They exist because &quot;more levels later&quot; was stated as a requirement up front: raising Approval_Chain_Setting__mdt.Max_Levels_Above_Account_Owner__c to 3 or 4 starts populating them with no deploy and no code change. Only a chain longer than five levels costs metadata.</description>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Invitees To Approve (Level 4)</relationshipLabel>
+    <relationshipName>Invitees_Awaiting_Approval_L4</relationshipName>
+    <required>false</required>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <trackHistory>false</trackHistory>
+</CustomField>
