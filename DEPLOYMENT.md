@@ -207,21 +207,45 @@ rather than inherit from a `git push`.
     table. If that is unwanted, add a component visibility filter on the page or assign a
     second record page by profile. Both change how your org's pages are laid out, so neither is
     deployed from here.
-11. **★R9 Decide where non-customer guests belong** — required before any such guest can be
-    submitted, and a decision only the business can make. Professors, journalists and anyone
-    else who is nobody's customer reach no Account Owner and therefore have no approval chain;
-    the submit refuses them by design rather than routing them to somebody's manager, because a
-    fallback would turn a data gap into a weaker approval.
-    The agreed remedy is an **Account kept for exactly those guests**, whose owner is chosen
-    when it is created and becomes their level 1; the reconciliation run then links those
-    attendees to Contacts under it and approval follows the ordinary path with no special case
-    in the code.
-    **This project will not create that Account for you.** No code in this repo creates,
-    updates or deletes an Account, Contact or Lead — that invariant is what makes the deploy
-    safe against a populated org and it is asserted in the test suite, so the record is an
-    admin's to create. Two things worth settling while you do: what to call it so no
-    customer-count report or downstream integration mistakes it for a real customer, and
-    whether one such account serves everybody or the business wants several.
+11. **★R9 Create the non-customer-guest Account, and reconcile the guests behind it** —
+    required before any such guest can be submitted, and a decision only the business can make.
+    Professors, journalists and anyone else who is nobody's customer reach no Account Owner and
+    therefore have no approval chain; the submit refuses them by design rather than routing them
+    to somebody's manager, because a fallback would turn a data gap into a weaker approval.
+
+    **This project will not do any of the steps below for you.** No code in this repo creates,
+    updates or deletes an Account, Contact or Lead — that invariant is what makes the deploy safe
+    against a populated org, and it is asserted in the test suite
+    (`importNeverTouchesContactsLeadsOrAccounts`). Everything from here is manual, admin-run data
+    entry in Setup, not a deploy step.
+
+    a. **Decide the shape.** One Account for every non-customer guest, or several — e.g. one per
+       region, so a different Regional Head can own each. Either fits the design; more Accounts
+       means more level-1 owners and therefore more independent approval chains to watch.
+    b. **Create the Account(s).** App Launcher → Accounts → New. Name it so no customer-count
+       report or downstream integration ever mistakes it for a real customer — e.g.
+       `ZZ Non-Customer Guests — <region>`. Set **Owner** to whoever should be level 1 for these
+       guests; that owner's manager becomes level 2, exactly as for a real customer.
+    c. **Create a Contact under that Account for each non-customer guest** who needs to be
+       invited. App Launcher → Contacts → New, `Account Name` = the Account from step b. This is
+       ordinary Salesforce data entry — nothing in this repo does it, and nothing here needs to.
+    d. **Link each guest's `Event_Attendee__c.Contact__c`** to the Contact created in step c —
+       this is the "reconciliation run" the design refers to (Open Question 17), and it is
+       deliberately outside this repo's scope. For the PoC, a one-off manual edit on each
+       `Event_Attendee__c` record is enough; a scheduled matching job is a production concern,
+       not something this deploy provides.
+    e. **For the demo specifically, leave at least one guest unlinked.** Success Criterion 7
+       depends on a guest with no Account Owner being refused by name — the seed data's
+       `Hélène Dubois` is written to be that guest. Reconciling her along with everyone else
+       would silently remove the one scenario that demonstrates the refusal path.
+    f. **Verify, read-only, before demoing:**
+       ```sql
+       -- attendees still missing a Contact link (each one will refuse to submit)
+       SELECT Id, Name, Company__c FROM Event_Attendee__c WHERE Contact__c = null
+
+       -- confirms the bucket Account resolves to a level-1 owner
+       SELECT Id, Name, OwnerId FROM Account WHERE Name LIKE 'ZZ Non-Customer Guests%'
+       ```
 12. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
     be verified from the repo:
     - **A short chain must finish where it ends.** Submit an invitee whose chain has two levels
