@@ -162,10 +162,6 @@ public with sharing class AttendeeImportController {
                 Imported_On__c = now,
                 Unique_Key__c = key
             );
-            if (Test.isRunningTest() && sabotageRequiredFieldForLastNames.contains(pr.row.lastName)) {
-                // Test-only fault injection — see the field's doc comment.
-                rec.Last_Name__c = null;
-            }
             // Same person twice in one file: one record, last occurrence winning. The
             // key is the map key precisely so this cannot become two rows.
             if (indexByKey.containsKey(key)) {
@@ -281,19 +277,6 @@ public with sharing class AttendeeImportController {
     }
 
     // ---------- internals ----------
-
-    /**
-     * R10 test-only fault injection. Event_Attendee__c has no validation rule for
-     * Database.upsert to genuinely fail against, so a partial-failure test can't
-     * observe applyChanges's per-row bookkeeping without forcing a real platform
-     * rejection. Naming a last name here blanks that one record's required
-     * Last_Name__c right before DML — the platform then genuinely refuses it, so the
-     * test exercises a real Database.UpsertResult failure rather than a fabricated
-     * one. Always empty outside a test that opts in; Test.isRunningTest() also gates
-     * it so production code never pays for the check.
-     */
-    @TestVisible
-    private static Set<String> sabotageRequiredFieldForLastNames = new Set<String>();
 
     private static void guard(List<ImportRow> rows, String verb) {
         if (rows == null || rows.isEmpty()) {

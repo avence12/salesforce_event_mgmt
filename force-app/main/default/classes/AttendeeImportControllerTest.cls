@@ -365,34 +365,32 @@ private class AttendeeImportControllerTest {
      * losing the rows that were fine, and the failure names the person and carries
      * the platform's own error message rather than swallowing it.
      *
-     * Event_Attendee__c has no validation rule for Database.upsert to genuinely fail
-     * against, so this uses the test-only seam on AttendeeImportController to blank
-     * a real required field (Last_Name__c) right before DML for one named row — a
-     * real platform rejection, not a simulated result.
+     * The failing row is refused by a real validation rule, Last_Name_Is_Not_Numeric,
+     * and nothing here simulates that refusal. It is worth saying why such a row
+     * reaches the DML at all rather than being filtered earlier: classify() judges
+     * identity — is this person already an attendee — not whether the platform will
+     * accept the record. A mis-mapped CSV column that puts a phone number in Last Name
+     * therefore previews as importable, is attempted, and is refused by the database.
+     * That is exactly the gap the per-row failure reporting exists to make visible.
      */
     @IsTest
     static void applyToleratesAPartialFailureAndReportsIt() {
-        AttendeeImportController.sabotageRequiredFieldForLastNames = new Set<String>{ 'Faily' };
-        AttendeeImportController.ApplyResult res;
-        try {
-            Test.startTest();
-            res = AttendeeImportController.applyChanges(
-                new List<AttendeeImportController.ImportRow>{
-                    row('Good', 'Faily', 'faily@x.example', 'Acme Corp'),
-                    row('Solid', 'Succeeds', 'succeeds@x.example', 'Acme Corp')
-                },
-                'attendees.csv'
-            );
-            Test.stopTest();
-        } finally {
-            AttendeeImportController.sabotageRequiredFieldForLastNames = new Set<String>();
-        }
+        Test.startTest();
+        AttendeeImportController.ApplyResult res = AttendeeImportController.applyChanges(
+            new List<AttendeeImportController.ImportRow>{
+                // A shifted column: the mobile number landed in Last Name.
+                row('Good', '0912345678', 'faily@x.example', 'Acme Corp'),
+                row('Solid', 'Succeeds', 'succeeds@x.example', 'Acme Corp')
+            },
+            'attendees.csv'
+        );
+        Test.stopTest();
 
         System.assertEquals(1, res.attendeesCreated, 'The healthy row in the batch must still be written');
         System.assertEquals(0, res.attendeesUpdated);
         System.assertEquals(1, res.attendeesFailed);
         System.assertEquals(1, res.failures.size());
-        System.assertEquals('Faily', res.failures[0].row.lastName, 'The failure names which person it was');
+        System.assertEquals('0912345678', res.failures[0].row.lastName, 'The failure names which person it was');
         System.assert(String.isNotBlank(res.failures[0].message), 'The platform error message is kept, not swallowed');
 
         System.assertEquals(
@@ -400,7 +398,31 @@ private class AttendeeImportControllerTest {
             [SELECT COUNT() FROM Event_Attendee__c WHERE Last_Name__c = 'Succeeds'],
             'One bad row does not discard the rest of the batch'
         );
-        System.assertEquals(0, [SELECT COUNT() FROM Event_Attendee__c WHERE Name = 'Good Faily']);
+        System.assertEquals(0, [SELECT COUNT() FROM Event_Attendee__c WHERE Last_Name__c = '0912345678']);
+    }
+
+    /**
+     * The rule guards the identity field against mis-mapped columns and nothing more.
+     * A surname in its own script, or carrying the punctuation real surnames carry,
+     * is not a number and must survive untouched — the rule would be worse than
+     * useless if it rejected the names this object exists to hold.
+     */
+    @IsTest
+    static void nonLatinAndPunctuatedSurnamesAreNotRejected() {
+        Test.startTest();
+        AttendeeImportController.ApplyResult res = AttendeeImportController.applyChanges(
+            new List<AttendeeImportController.ImportRow>{
+                row('Wei', '陳', 'wei@x.example', 'Acme Corp'),
+                row('Sinead', 'O\'Brien', 'sinead@x.example', 'Acme Corp'),
+                row('Jean', 'Dupont-Martin', 'jean@x.example', 'Acme Corp'),
+                row('Ana', 'de la Cruz', 'ana@x.example', 'Acme Corp')
+            },
+            'attendees.csv'
+        );
+        Test.stopTest();
+
+        System.assertEquals(4, res.attendeesCreated, 'Every one of these is a real surname');
+        System.assertEquals(0, res.attendeesFailed, 'The rule must reject numbers, not punctuation or script');
     }
 
     /** A batch with nothing wrong in it reports zero failures, not an empty-but-present list. */

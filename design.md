@@ -290,6 +290,37 @@ modified LWC, a direct Apex REST or Tooling API call — still cannot hand a sin
 whole heap/CPU risk chunking exists to avoid. `MAX_ROWS` (8000) stays in the class only so it can
 be asserted against the LWC's copy; it is not read by `guard()` at all any more.
 
+#### ★R10 The rule that makes partial failure testable, and the tension in it
+
+Tolerating a partial failure is only worth building if the failure branch is exercised, and that
+turned out to need something this object did not have: **a way for a well-formed row to be refused
+by the platform**. Every field the import writes is sanitised before DML — lengths clipped, an
+unusable email dropped to null, blank surnames classified Skipped, duplicate keys collapsed by the
+map — so no row that survives `classify()` could fail. `Database.UpsertResult` cannot be
+constructed in Apex either, so the result could not be fabricated.
+
+The first build answered that with a test-only fault-injection seam in the controller, gated on
+`Test.isRunningTest()`. It worked and it could not fire in production, but it put a line in
+production code whose only reason to exist was a test. **`Last_Name_Is_Not_Numeric` replaces it
+with a rule that earns its place independently**: a shifted CSV column putting a phone number in
+Last Name is the classic import failure, and here it lands in the identity field, so the record is
+both unrecognisable to an AM and useless to de-duplication. The seam is deleted.
+
+**The tension worth naming: the preview does not know about this rule, so it will show such a row
+as importable and the row will then be refused.** That is deliberate, and the alternative is worse
+in a specific way. Teaching `classify()` the rule would make the preview honest about this one
+case — and would immediately remove the only way a row can reach the DML and fail, putting the
+partial-failure branch back to being untestable without a seam. So the division is: the preview
+predicts *identity* outcomes, the rule is the *database's* floor, and R10's per-row failure
+reporting is what makes the gap between them visible rather than silent. It is the same argument
+`Approver_Required_When_Pending` already rests on — a constraint at the database is a guarantee
+where a check inside one Apex class is a habit — but it is being used here to justify a preview
+that is knowingly incomplete, which is a weaker use of it and should be read as such.
+
+If the business ever wants the preview to predict platform refusals too, that is a real feature
+(a fourth preview outcome, "will be refused, and why"), and it should be built with the Part 3
+preview work rather than bolted on — at which point the Apex test needs a different fault source.
+
 ### ★R10 What still needs an org
 
 Nothing above ran against a real org, and three numbers in it are stated as unmeasured rather than
@@ -545,6 +576,13 @@ Event_Attendee__c                                     OWD: Public Read/Write
   Imported_On__c             DateTime                 refreshed on re-import
   Unique_Key__c              Text(255), unique, ExtId normalised last|first|company|email
                                                       <- the whole of de-duplication
+
+  Validation rules
+    Last_Name_Is_Not_Numeric     ★R10 ISNUMBER(Last_Name__c). A wholly numeric surname is a
+                                 mis-mapped CSV column, not a person — and it lands in the
+                                 identity field, so it also de-duplicates against nothing.
+                                 ISNUMBER is false for every non-Latin script and for any
+                                 punctuation, so it rejects numbers only
 ```
 
 ```
