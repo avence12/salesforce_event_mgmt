@@ -13,17 +13,20 @@ const MAX_ROWS = 8000;
 // BATCH_SIZE-row chunk of the parsed file, sequentially, so neither the request
 // payload nor a single Apex transaction has to hold the whole file at once.
 //
-// 100 is derived, not guessed: AttendeeImportController.classify()'s
-// `WHERE Unique_Key__c IN :keys` query puts one ~54-character quoted key per row
-// into the query text (measured from the demo CSV), against a SOQL statement length
-// that Salesforce caps at roughly 20,000 characters. 100 rows use ~5,500 of that —
-// about 27%, so a real file's names and companies would need to average more than
-// double the demo file's before the query risked the wall. See design.md → ★R10,
-// "Why 100, and not the first number picked", for the full arithmetic and what parts
-// of it (the 20,000 figure itself, real files' average key length, heap and CPU) are
-// still unverified against an actual org. Must stay comfortably under
-// AttendeeImportController.MAX_BATCH_ROWS, the server-side per-call guard.
-const BATCH_SIZE = 100;
+// AttendeeImportController.classify()'s `WHERE Unique_Key__c IN :keys` query puts one
+// ~54-character quoted key per row into the query text (measured from the demo CSV),
+// against a SOQL statement length that Salesforce caps at roughly 20,000 characters —
+// that arithmetic derived a safe size of 100 (~27% of the estimated ceiling).
+//
+// 200 ships instead, by business decision — not a correction to the arithmetic. At
+// 200 the query uses ~54% of the estimated ceiling, versus ~27% at 100: a real margin,
+// roughly half the size of what 100 carried. See design.md → ★R10, "Why 100, and not
+// the first number picked" and "Reverted to 200, for reasons outside this document",
+// for the full arithmetic and what parts of it (the 20,000 figure itself, real files'
+// average key length, heap and CPU) are still unverified against an actual org. Must
+// stay comfortably under AttendeeImportController.MAX_BATCH_ROWS, the server-side
+// per-call guard.
+const BATCH_SIZE = 200;
 
 // Header detection: normalized header cell → canonical field.
 // `event` is gone with R5: an import records people, not attendance, so a file's

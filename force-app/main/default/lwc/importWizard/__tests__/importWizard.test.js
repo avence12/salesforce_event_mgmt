@@ -346,7 +346,7 @@ describe('c-import-wizard', () => {
         // Mirrors importWizard.js's BATCH_SIZE. Not the same constant — the module
         // doesn't export it — so a change to one has to be made to the other by hand,
         // same as AttendeeImportController.BATCH_SIZE on the Apex side (design.md → ★R10).
-        const BATCH_SIZE = 100;
+        const BATCH_SIZE = 200;
 
         const bigFile = (n) =>
             `${HEADER}\n` +

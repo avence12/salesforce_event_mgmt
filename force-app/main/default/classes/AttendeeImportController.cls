@@ -35,7 +35,7 @@
  *
  * R10 raised the row cap from 500 to 8000 and, with it, changed how a whole upload
  * reaches this class. An 8000-row file is chunked client-side (see BATCH_SIZE
- * below) into sequential calls of 100 rows each; this class never sees the whole
+ * below) into sequential calls of 200 rows each; this class never sees the whole
  * file at once. Two consequences follow. First, `applyChanges` moved
  * from an all-or-nothing `upsert` to `Database.upsert(..., false)`: with several
  * independent batches in flight, one bad row failing the whole batch it happens to
@@ -58,17 +58,22 @@ public with sharing class AttendeeImportController {
      * Rows per Apex call. The LWC chunks a parsed file into batches of this size and
      * calls previewMatches / applyChanges once per batch, sequentially.
      *
-     * 100 is derived from classify()'s own query, not guessed. Each row's key
+     * classify()'s own query gives this a computable safe ceiling: each row's key
      * (attendeeKey()) becomes a quoted literal in `WHERE Unique_Key__c IN :keys`, and
      * Salesforce caps a SOQL statement at roughly 20,000 characters — a hard parse-time
-     * wall, not a slope. The demo CSV averages ~54 characters per key once quoted; 100
-     * of them use ~5,500 characters, about 27% of that estimated ceiling, so a real
-     * file's names and companies would need to average more than double the demo
-     * file's before the query risked the wall. Full derivation, including why the
-     * 20,000 figure and the demo file's key length are both unverified against a real
-     * org, is in design.md → ★R10 "Why 100, and not the first number picked".
+     * wall, not a slope. The demo CSV averages ~54 characters per key once quoted, which
+     * put the derived safe size at 100 (~27% of that estimated ceiling).
+     *
+     * 200 ships instead, by business decision for reasons outside this code — not a
+     * correction to that arithmetic. At 200 the query uses ~54% of the estimated
+     * ceiling, leaving real files' average key length about 85% of headroom over the
+     * demo file's before risking the wall, versus the ~270% 100 would have carried.
+     * Full derivation and the reversion, including why the 20,000 figure and the demo
+     * file's key length are both unverified against a real org, is in design.md → ★R10
+     * "Why 100, and not the first number picked" and "Reverted to 200, for reasons
+     * outside this document".
      */
-    public static final Integer BATCH_SIZE = 100;
+    public static final Integer BATCH_SIZE = 200;
 
     /**
      * The real per-call guard. The client is not the security boundary: chunking is
