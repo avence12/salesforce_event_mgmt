@@ -346,7 +346,7 @@ describe('c-import-wizard', () => {
         // Mirrors importWizard.js's BATCH_SIZE. Not the same constant — the module
         // doesn't export it — so a change to one has to be made to the other by hand,
         // same as AttendeeImportController.BATCH_SIZE on the Apex side (design.md → ★R10).
-        const BATCH_SIZE = 200;
+        const BATCH_SIZE = 100;
 
         const bigFile = (n) =>
             `${HEADER}\n` +
@@ -467,18 +467,18 @@ describe('c-import-wizard', () => {
                     failures: [
                         {
                             row: {
-                                firstName: 'First210',
-                                lastName: 'Last210',
-                                email: 'u210@x.com',
+                                firstName: `First${BATCH_SIZE + 10}`,
+                                lastName: `Last${BATCH_SIZE + 10}`,
+                                email: `u${BATCH_SIZE + 10}@x.com`,
                                 company: 'Acme'
                             },
                             message: 'DUPLICATE_VALUE'
                         },
                         {
                             row: {
-                                firstName: 'First220',
-                                lastName: 'Last220',
-                                email: 'u220@x.com',
+                                firstName: `First${BATCH_SIZE + 20}`,
+                                lastName: `Last${BATCH_SIZE + 20}`,
+                                email: `u${BATCH_SIZE + 20}@x.com`,
                                 company: 'Acme'
                             },
                             message: 'FIELD_CUSTOM_VALIDATION_EXCEPTION'
@@ -503,8 +503,8 @@ describe('c-import-wizard', () => {
             expect(csv.split('\r\n')).toEqual([
                 'Name,Email,Company,Why it failed',
                 'First5 Last5,u5@x.com,Acme,REQUIRED_FIELD_MISSING',
-                'First210 Last210,u210@x.com,Acme,DUPLICATE_VALUE',
-                'First220 Last220,u220@x.com,Acme,FIELD_CUSTOM_VALIDATION_EXCEPTION'
+                `First${BATCH_SIZE + 10} Last${BATCH_SIZE + 10},u${BATCH_SIZE + 10}@x.com,Acme,DUPLICATE_VALUE`,
+                `First${BATCH_SIZE + 20} Last${BATCH_SIZE + 20},u${BATCH_SIZE + 20}@x.com,Acme,FIELD_CUSTOM_VALIDATION_EXCEPTION`
             ]);
         });
 

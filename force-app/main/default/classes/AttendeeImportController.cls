@@ -35,8 +35,8 @@
  *
  * R10 raised the row cap from 500 to 8000 and, with it, changed how a whole upload
  * reaches this class. An 8000-row file is chunked client-side (see BATCH_SIZE
- * below) into sequential calls of at most a few hundred rows each; this class never
- * sees the whole file at once. Two consequences follow. First, `applyChanges` moved
+ * below) into sequential calls of 100 rows each; this class never sees the whole
+ * file at once. Two consequences follow. First, `applyChanges` moved
  * from an all-or-nothing `upsert` to `Database.upsert(..., false)`: with several
  * independent batches in flight, one bad row failing the whole batch it happens to
  * be in — while nine batches before it already committed — would be a confusing
@@ -56,12 +56,19 @@ public with sharing class AttendeeImportController {
 
     /**
      * Rows per Apex call. The LWC chunks a parsed file into batches of this size and
-     * calls previewMatches / applyChanges once per batch, sequentially. 200 is a
-     * deliberately conservative starting point — the safe ceiling has not been
-     * measured against a real org's heap and CPU limits, so this errs low rather
-     * than finding that ceiling in production.
+     * calls previewMatches / applyChanges once per batch, sequentially.
+     *
+     * 100 is derived from classify()'s own query, not guessed. Each row's key
+     * (attendeeKey()) becomes a quoted literal in `WHERE Unique_Key__c IN :keys`, and
+     * Salesforce caps a SOQL statement at roughly 20,000 characters — a hard parse-time
+     * wall, not a slope. The demo CSV averages ~54 characters per key once quoted; 100
+     * of them use ~5,500 characters, about 27% of that estimated ceiling, so a real
+     * file's names and companies would need to average more than double the demo
+     * file's before the query risked the wall. Full derivation, including why the
+     * 20,000 figure and the demo file's key length are both unverified against a real
+     * org, is in design.md → ★R10 "Why 100, and not the first number picked".
      */
-    public static final Integer BATCH_SIZE = 200;
+    public static final Integer BATCH_SIZE = 100;
 
     /**
      * The real per-call guard. The client is not the security boundary: chunking is
@@ -69,8 +76,13 @@ public with sharing class AttendeeImportController {
      * has to hold even against a caller that skips it entirely (a modified client, or
      * a direct Apex REST / Tooling API call). Set well above BATCH_SIZE so retuning
      * the LWC's chunk size doesn't need a server redeploy, and well below MAX_ROWS so
-     * one call can't reproduce the heap/CPU risk chunking exists to avoid. Also
-     * unmeasured against a real org — see BATCH_SIZE.
+     * one call can't reproduce the heap/CPU risk chunking exists to avoid.
+     *
+     * Unlike BATCH_SIZE, this is NOT sized against the query-length wall above — 1000
+     * rows at the demo file's key length would need ~54,000 characters, several times
+     * the estimated ceiling, and would fail with a raw QueryException rather than this
+     * guard's own named error. That gap is left open rather than closed quietly here;
+     * see design.md → ★R10, "What this does not fix".
      */
     public static final Integer MAX_BATCH_ROWS = 1000;
 

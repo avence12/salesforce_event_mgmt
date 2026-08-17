@@ -238,7 +238,7 @@ make 8000 rows survivable:
 1. **The LWC chunks.** `mapRows()` still de-duplicates across the *whole* file before anything is
    sent anywhere — that ordering is load-bearing, not incidental: chunk the raw rows first and the
    same person could land in two batches and race. Only after de-duplication is the row list split
-   into 200-row batches and sent to `previewMatches` / `applyChanges` one batch at a time,
+   into 100-row batches and sent to `previewMatches` / `applyChanges` one batch at a time,
    sequentially rather than with `Promise.all` — parallel calls would multiply concurrent-Apex-
    request pressure and make the accumulated preview order non-deterministic.
 2. **`applyChanges` stopped being all-or-nothing.** The single `upsert byKey.values()
@@ -248,7 +248,7 @@ make 8000 rows survivable:
 
 **What this costs, stated rather than hidden.** All-or-nothing transactional safety is gone: a
 batch can now partially apply, and — because batches are independent Apex calls — a failure in
-batch 12 of 40 leaves batches 1–11 already committed with no way to roll them back. What makes
+batch 12 of 80 leaves batches 1–11 already committed with no way to roll them back. What makes
 that tolerable rather than alarming is a property this design already had: `Unique_Key__c` makes
 the upsert idempotent, so the remedy is "fix the file, re-upload it" rather than "undo and start
 over" — a re-run only touches the rows that still need it. The result screen says this plainly
@@ -265,19 +265,20 @@ solved, and is why the phrase "8000 rows" appears in this revision without "the 
 at that size" anywhere near it.
 
 ★R10 items are marked ★R10. **Parts 1 and 2 above are built.** Part 3 — the preview UX for 8000
-rows — is not, and is explicitly out of scope pending business input. The three numbers this
-revision picked (`BATCH_SIZE = 200`, the LWC's `MAX_ROWS = 8000`, and the Apex per-call guard
-`MAX_BATCH_ROWS = 1000`) are documented as unmeasured, not as findings — see *What R10 still needs
-an org*, immediately after ★R9's.
+rows — is not, and is explicitly out of scope pending business input. Of the three numbers this
+revision introduced, `MAX_ROWS = 8000` comes directly from the business's stated need and
+`BATCH_SIZE = 100` is derived from a computed query-length budget (see *Why 100, and not the first
+number picked*, below) — but the derivation itself rests on figures this repo cannot confirm, and
+the third number, `MAX_BATCH_ROWS = 1000`, is still a judgment call rather than a derived one. None
+of the three has run against a real org; see *What R10 still needs an org*, immediately after
+★R9's.
 
 ### ★R10 8000-row import: chunking and partial failure
 
 `AttendeeImportController.BATCH_SIZE` and `importWizard.js`'s own `BATCH_SIZE` constant both read
-200, and a comment on each says why: this is a starting point picked without a real org to measure
-heap, CPU or LWC-to-Apex payload consumption against, not a number derived from a load test. The
-two constants have to stay in step by hand — there is no single source of truth that generates
-both sides of an Apex/LWC boundary here — so a future change to one is a change to both, same as
-`MAX_ROWS` already was.
+**100**. The two constants have to stay in step by hand — there is no single source of truth that
+generates both sides of an Apex/LWC boundary here — so a future change to one is a change to both,
+same as `MAX_ROWS` already was.
 
 The Apex-side guard changed shape, not just value. `guard()` used to reject a call over
 `MAX_ROWS` (500, then the whole file); after chunking, a single Apex call never carries anywhere
@@ -285,10 +286,62 @@ near a whole 8000-row file, so checking against `MAX_ROWS` there would have quie
 meaning anything — any well-behaved batch would always pass, and the check would only ever fire
 on a client bug rather than on the abuse it exists to catch. `MAX_BATCH_ROWS` (1000) is the
 constant that actually guards the call: a real per-request ceiling, high enough that the LWC's own
-200-row batches never come close to it, low enough that a caller ignoring the client entirely — a
+100-row batches never come close to it, low enough that a caller ignoring the client entirely — a
 modified LWC, a direct Apex REST or Tooling API call — still cannot hand a single transaction the
 whole heap/CPU risk chunking exists to avoid. `MAX_ROWS` (8000) stays in the class only so it can
 be asserted against the LWC's copy; it is not read by `guard()` at all any more.
+
+#### ★R10 Why 100, and not the first number picked
+
+The first build of this revision set `BATCH_SIZE` to 200 as a starting point — "conservative,
+unmeasured" — picked without deriving it from anything. That was good enough to get chunking built,
+but "conservative" was a feeling, not a number, and it does not hold up: `classify()`'s
+`WHERE Unique_Key__c IN :keys` query has a cost that can actually be computed in advance, without an
+org, from the code alone.
+
+**The mechanism.** `attendeeKey()` builds a pipe-joined key — last name (≤80 chars) + first name
+(≤40) + company (≤60) + email (≤70), so up to 253 raw characters — and `classify()` puts one such
+key per row into a bind variable that becomes a quoted, comma-separated literal inside the query
+text: `'key1','key2',…`. Salesforce imposes a ceiling on the total length of a SOQL statement,
+reported at **around 20,000 characters** (found by search, not confirmed against a primary
+Salesforce doc from this environment — network egress here is proxied and `developer.salesforce.com`
+is blocked; **treat 20,000 as the best available estimate and confirm it against the org before
+trusting a number derived from it**). This is a hard wall, not a slope: a query at 19,999 characters
+runs, one at 20,001 fails to parse, and no amount of testing at smaller sizes tells you where that
+line actually is short of hitting it.
+
+**The budget, worked from real numbers.** The demo file, `FinTech_Summit_2026_Attendees.csv`,
+averages **48 characters** across last name + first name + company + email combined — measured, not
+guessed (`awk` over the file). Add the three pipe separators and the quote/comma overhead the SOQL
+literal adds, and each key costs roughly **54 characters** in the query text. Two hundred of them:
+`200 × 54 ≈ 10,800` characters — about 54% of the estimated 20,000-character ceiling on demo data.
+That is not the same as safe: it assumes real uploaded files read like the demo file's clean,
+short placeholder names, and there is no reason a real conference list would be that well-behaved —
+longer legal company names and longer corporate email domains are the norm, not the exception, for
+exactly the audience (EU/US enterprise contacts) this feature targets.
+
+**The number chosen.** Budgeting only half of the estimated ceiling for the whole query — leaving
+room for the ~100-character `SELECT … FROM … WHERE …` skeleton and, more importantly, for the
+20,000-character figure itself being wrong in either direction — gives roughly 9,900 characters for
+the `IN (…)` literal. At the demo file's measured 54 characters per key that is **≈ 183 rows**; this
+revision does not use that number directly, because it is only as good as the demo file's key
+length being representative of real uploads, which is exactly the assumption being hedged against.
+**`BATCH_SIZE = 100`** keeps demo-data usage of the query text down to roughly 5,500 characters —
+about 27% of the estimated ceiling — so a real file's company names and email addresses would have
+to average **more than double** the demo file's before the query risked the wall. That headroom is
+the actual reason 100 is called safe rather than merely smaller; it is not a rounder or more
+cautious-sounding version of 200.
+
+**What this does not fix.** `MAX_BATCH_ROWS` (1000) is unchanged, and it is worth being honest about
+what that leaves open: it was set as a ceiling against heap/CPU abuse from a caller that bypasses the
+LWC's chunking entirely, not against this query-length wall. A direct call carrying 1000 rows at the
+demo file's average key length would need `1000 × 54 ≈ 54,000` characters — several times the
+estimated ceiling — and would fail with a raw `QueryException` rather than the guard's own named
+error. That failure is not unsafe (no bad data is written; the call simply errors), but it is an
+ungraceful one, and it is a real gap between what `MAX_BATCH_ROWS` is documented to guard against and
+what it actually catches. Left open rather than quietly widened in scope beyond what this revision
+was asked to change; worth a follow-up pass that ties `MAX_BATCH_ROWS` to the same character budget
+`BATCH_SIZE` now uses.
 
 #### ★R10 The rule that makes partial failure testable, and the tension in it
 
@@ -323,23 +376,31 @@ preview work rather than bolted on — at which point the Apex test needs a diff
 
 ### ★R10 What still needs an org
 
-Nothing above ran against a real org, and three numbers in it are stated as unmeasured rather than
-tested:
+Nothing above ran against a real org. `BATCH_SIZE = 100` is derived, not measured — it follows from
+the query-length arithmetic above, which itself rests on numbers this repo cannot confirm:
 
-1. **The true safe batch size.** 200 is conservative by construction, not by measurement.
-   `normalise()`'s regex over four fields and `classify()` running twice in `applyChanges` are the
-   two things most likely to make a larger batch expensive; neither has been profiled here.
-2. **The real LWC→Apex payload ceiling**, for both the request (200 `ImportRow`s serialised to
-   JSON) and the response (200 `PreviewResult`s, or 200 `ApplyFailure`s in the worst case where a
-   whole batch fails). Salesforce imposes a response-size limit on Aura/LWC Apex calls; whether 200
+1. **The ~20,000-character SOQL statement ceiling itself.** Found by search; this environment's
+   network egress is proxied and blocked `developer.salesforce.com`, so the figure the whole
+   derivation is budgeted against has never been checked against a primary Salesforce source. If the
+   real ceiling is materially lower, 100 may not carry the margin it is credited with; if higher, 100
+   is more conservative than it needed to be.
+2. **Real uploaded files' average key length.** The 54-characters-per-key figure comes from one demo
+   CSV of clean, short placeholder names — the only data available here. A real conference list's
+   company names and email domains are unmeasured, which is exactly the gap `BATCH_SIZE`'s margin is
+   meant to absorb rather than a thing it proves safe.
+3. **The real LWC→Apex payload ceiling**, for both the request (100 `ImportRow`s serialised to
+   JSON) and the response (100 `PreviewResult`s, or 100 `ApplyFailure`s in the worst case where a
+   whole batch fails). Salesforce imposes a response-size limit on Aura/LWC Apex calls; whether 100
    rows of this shape approaches it is unverified.
-3. **Actual heap consumption per row**, which is what would tell whether 200 has real headroom
+4. **Actual heap consumption per row**, which is what would tell whether 100 has real headroom
    under it or is already closer to the 6 MB synchronous limit than it looks from reading the code.
-4. **Whether `Database.upsert(..., false)` on `Unique_Key__c` behaves as assumed under real
+5. **Whether `Database.upsert(..., false)` on `Unique_Key__c` behaves as assumed under real
    contention** — two AMs re-uploading overlapping files at the same moment was already a
    theoretical race before R10; partial application does not create that race, but it does mean a
    batch that partially fails under contention is now a visible, reportable outcome rather than an
    all-or-nothing one.
+6. **The `MAX_BATCH_ROWS` gap named above** — that a caller bypassing the LWC's chunking can still
+   drive `classify()`'s query past the character ceiling before hitting any row-count guard.
 
 Carried over and still unverified: everything under ★R9's *What still needs an org*, unaffected by
 this revision.
@@ -1117,7 +1178,7 @@ sign the boundary it sits on was drawn in the right place.
    its input is still an untrusted uploaded file.
 
 3. **Apply**: `Database.upsert(..., Unique_Key__c, false)` against `Event_Attendee__c`, one call
-   per 200-row batch, and nothing else. No Contact, Lead or Account is created, read, updated or
+   per 100-row batch, and nothing else. No Contact, Lead or Account is created, read, updated or
    deleted. Re-running a file refreshes the attendees it names rather than duplicating them. ★R10
    `false` (not `upsert`'s implicit all-or-nothing) is what lets one row a batch cannot store fail
    without discarding the rest of that batch — see ★R10 below.
