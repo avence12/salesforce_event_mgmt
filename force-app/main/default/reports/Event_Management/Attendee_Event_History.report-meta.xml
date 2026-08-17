@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Report xmlns="http://soap.sforce.com/2006/04/metadata">
     <name>Attendee Event History</name>
-    <description>★R6 Which events each person actually attended — the basis for recommending a similar one. Filtered to Attended = true, so approved no-shows are excluded: approval is permission to come, attendance is having come, and only the second is evidence of interest. Grouped by attendee, so the record count per group is that person&apos;s number of events. To go the other way — &quot;who attended anything tagged Payments&quot; — use the Approved Invitees report type instead, whose base object is the event and which therefore carries Topic__c.</description>
+    <description>★R6 Which events each person actually attended — the basis for recommending a similar one. Filtered to Attended = true, so approved no-shows are excluded: approval is permission to come, attendance is having come, and only the second is evidence of interest. Grouped by attendee, so the record count per group is that person&apos;s number of events. To go the other way — &quot;who attended anything tagged Payments&quot; — ★R11 use the Marketing Events with Event Topics report type instead, whose base object is the event and which joins to Event_Topic__c.</description>
     <reportType>Event_Attendees_with_History</reportType>
     <format>Summary</format>
     <scope>organization</scope>

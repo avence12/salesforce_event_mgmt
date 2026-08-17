@@ -74,7 +74,7 @@ flowchart TD
     subgraph IMPORT["1 · Import the attendee list — BMD · LWC importWizard"]
         direction TB
         I0(["BMD holds a list collected<br/>outside Salesforce"]):::bmd
-        I1["Upload .csv — strict UTF-8<br/>delimiter sniffed · max 500 rows"]:::bmd
+        I1["Upload .csv — strict UTF-8<br/>delimiter sniffed · max 8000 rows"]:::bmd
         I2["Parse in the browser<br/>de-dup within the file"]:::system
         I3{"Row has a last name?"}:::system
         SKIP["Skipped — someone with no name<br/>is unrecognisable later<br/>nothing written"]:::stop

@@ -4,7 +4,29 @@ import previewMatches from '@salesforce/apex/AttendeeImportController.previewMat
 import applyChanges from '@salesforce/apex/AttendeeImportController.applyChanges';
 import { downloadCsv, csvRow } from 'c/csvDownload';
 
-const MAX_ROWS = 500;
+// R10: the LWC-enforced total for one uploaded file. A file this large is never
+// sent to Apex in one call — see BATCH_SIZE — so this is purely a client-side
+// guardrail on how much the browser parses and holds in memory at once.
+const MAX_ROWS = 8000;
+
+// R10: rows per Apex call. previewMatches and applyChanges are each called once per
+// BATCH_SIZE-row chunk of the parsed file, sequentially, so neither the request
+// payload nor a single Apex transaction has to hold the whole file at once.
+//
+// AttendeeImportController.classify()'s `WHERE Unique_Key__c IN :keys` query puts one
+// ~54-character quoted key per row into the query text (measured from the demo CSV),
+// against a SOQL statement length that Salesforce caps at roughly 20,000 characters —
+// that arithmetic derived a safe size of 100 (~27% of the estimated ceiling).
+//
+// 200 ships instead, by business decision — not a correction to the arithmetic. At
+// 200 the query uses ~54% of the estimated ceiling, versus ~27% at 100: a real margin,
+// roughly half the size of what 100 carried. See design.md → ★R10, "Why 100, and not
+// the first number picked" and "Reverted to 200, for reasons outside this document",
+// for the full arithmetic and what parts of it (the 20,000 figure itself, real files'
+// average key length, heap and CPU) are still unverified against an actual org. Must
+// stay comfortably under AttendeeImportController.MAX_BATCH_ROWS, the server-side
+// per-call guard.
+const BATCH_SIZE = 200;
 
 // Header detection: normalized header cell → canonical field.
 // `event` is gone with R5: an import records people, not attendance, so a file's
@@ -37,12 +59,21 @@ const HEADER_MAP = {
 const APPLYABLE = new Set(['NEW_ATTENDEE', 'EXISTING_ATTENDEE']);
 
 // Preview order: rows the user may want to fix first, then what will be applied.
-// With a 500-row file the ones that matter would otherwise be buried mid-wall.
+// With a large file the ones that matter would otherwise be buried mid-wall.
 const SORT_RANK = {
     SKIPPED: 0, // invalid input the user may want to fix and re-upload
     NEW_ATTENDEE: 1,
     EXISTING_ATTENDEE: 2
 };
+
+/** Splits `rows` into BATCH_SIZE-sized slices, preserving order. */
+function chunkRows(rows, size) {
+    const batches = [];
+    for (let i = 0; i < rows.length; i += size) {
+        batches.push(rows.slice(i, i + size));
+    }
+    return batches;
+}
 
 export default class ImportWizard extends LightningElement {
     @track step = 1;
@@ -57,6 +88,9 @@ export default class ImportWizard extends LightningElement {
     @track applyResult = null;
     @track loading = false;
     @track error = '';
+    // R10: "batch 3 of 40" so an 8000-row import chunked into sequential Apex calls
+    // does not look hung. Blank whenever there is nothing batched to report.
+    @track progressLabel = '';
 
     get isStep1() {
         return this.step === 1;
@@ -95,6 +129,9 @@ export default class ImportWizard extends LightningElement {
     get hasSkipped() {
         return this.stats.skippedCount > 0;
     }
+    get hasApplyFailures() {
+        return !!(this.applyResult && this.applyResult.attendeesFailed > 0);
+    }
 
     async handleFileChange(event) {
         const file = event.target.files && event.target.files[0];
@@ -114,15 +151,33 @@ export default class ImportWizard extends LightningElement {
                 );
             this.rowCount = rows.length;
 
-            const results = await previewMatches({ rows });
+            // R10: rows are already de-duplicated across the whole file by mapRows()
+            // above, so it is safe to chunk here — no person can land in two
+            // batches. Batches are called one at a time, not with Promise.all: parallel
+            // calls would multiply concurrent-Apex-request pressure and make the
+            // accumulated order non-deterministic.
+            const batches = chunkRows(rows, BATCH_SIZE);
+            const results = [];
+            for (let i = 0; i < batches.length; i++) {
+                this.progressLabel = this.batchLabel('Checking', i, batches.length);
+                // eslint-disable-next-line no-await-in-loop -- sequential by design, see above
+                const batchResults = await previewMatches({ rows: batches[i] });
+                results.push(...batchResults);
+            }
             this.buildPreview(results);
             this.step = 2;
         } catch (e) {
             this.error = this.messageOf(e);
         } finally {
             this.loading = false;
+            this.progressLabel = '';
             event.target.value = null; // allow re-selecting the same file
         }
+    }
+
+    /** "Checking batch 3 of 40" — blank when there is only one batch, so a small file says nothing extra. */
+    batchLabel(verb, index, total) {
+        return total > 1 ? `${verb} batch ${index + 1} of ${total}…` : '';
     }
 
     parseFile(file) {
@@ -325,14 +380,47 @@ export default class ImportWizard extends LightningElement {
     async handleApply() {
         this.loading = true;
         this.error = '';
+        const rows = this.previewRows.filter((r) => r.selected).map((r) => r.row);
+        const batches = chunkRows(rows, BATCH_SIZE);
+        const combined = {
+            attendeesCreated: 0,
+            attendeesUpdated: 0,
+            attendeesFailed: 0,
+            failures: []
+        };
+        let batchesApplied = 0;
         try {
-            const rows = this.previewRows.filter((r) => r.selected).map((r) => r.row);
-            this.applyResult = await applyChanges({ rows, sourceFile: this.fileName });
+            // R10: one applyChanges call per batch, sequentially — same reasoning as
+            // preview. Apply tolerates a bad row within a batch (Database.upsert with
+            // allOrNone=false, server-side), but batches themselves are independent:
+            // if a whole call throws partway through the file, the batches before it
+            // already committed and cannot be rolled back. The catch below says so.
+            for (let i = 0; i < batches.length; i++) {
+                this.progressLabel = this.batchLabel('Importing', i, batches.length);
+                // eslint-disable-next-line no-await-in-loop -- sequential by design, see above
+                const batchResult = await applyChanges({
+                    rows: batches[i],
+                    sourceFile: this.fileName
+                });
+                combined.attendeesCreated += batchResult.attendeesCreated || 0;
+                combined.attendeesUpdated += batchResult.attendeesUpdated || 0;
+                combined.attendeesFailed += batchResult.attendeesFailed || 0;
+                combined.failures.push(...(batchResult.failures || []));
+                batchesApplied += 1;
+            }
+            this.applyResult = combined;
             this.step = 3;
         } catch (e) {
-            this.error = this.messageOf(e);
+            this.error =
+                batchesApplied > 0
+                    ? `${this.messageOf(e)} (this was batch ${batchesApplied + 1} of ${batches.length} — ` +
+                      `the ${batchesApplied} batch${batchesApplied === 1 ? '' : 'es'} before it were already ` +
+                      `applied and were not rolled back; fix the file and re-upload it, which is safe because ` +
+                      `the import refreshes the same attendees rather than duplicating them)`
+                    : this.messageOf(e);
         } finally {
             this.loading = false;
+            this.progressLabel = '';
         }
     }
 
@@ -343,6 +431,18 @@ export default class ImportWizard extends LightningElement {
         const lines = ['Name,Email,Company,Why it was skipped'];
         rows.forEach((r) => lines.push(csvRow([r.name, r.email, r.row.company, r.changeText])));
         downloadCsv(lines.join('\r\n'), 'skipped_rows_manual_review.csv');
+    }
+
+    handleDownloadFailedList() {
+        // Same guard as the skipped-row download and for the same reason: every
+        // value here is an Apex echo of something an uploaded .csv contained.
+        const failures = (this.applyResult && this.applyResult.failures) || [];
+        const lines = ['Name,Email,Company,Why it failed'];
+        failures.forEach((f) => {
+            const name = [f.row.firstName, f.row.lastName].filter(Boolean).join(' ') || '(no name)';
+            lines.push(csvRow([name, f.row.email, f.row.company, f.message]));
+        });
+        downloadCsv(lines.join('\r\n'), 'failed_rows_manual_review.csv');
     }
 
     handleBack() {

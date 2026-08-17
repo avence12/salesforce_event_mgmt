@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Last_Name_Is_Not_Numeric</fullName>
+    <active>true</active>
+    <description>A wholly numeric surname is not a person, it is a mis-mapped column.
+
+This object is fed almost entirely by CSV upload, and the classic failure of a CSV upload is a shifted or mis-named column: a phone number, a member id or a row counter lands in Last Name and the import has no way to know it was not a name. The consequence is worse here than a cosmetic one, because Last_Name__c is the identity field. It is what makes a row importable at all — a blank one is Skipped — and it is the first component of Unique_Key__c. An attendee called &quot;0912345678&quot; is unrecognisable to the AM who has to pick guests from the pool, and it de-duplicates against nothing a later file will ever carry.
+
+The rule deliberately says nothing about which characters a name may contain beyond that. ISNUMBER is false for every non-Latin script, for hyphens, apostrophes and spacing of any kind, so a name in its own script or with any punctuation a real surname carries passes untouched. The only thing rejected is a value that is purely a number, which no surname is.
+
+Where this sits relative to the import: AttendeeImportController does not pre-filter these rows, and that is the point rather than an oversight. The preview classifies on identity — is this person already an attendee — while this rule is the database&apos;s own floor, enforced whoever writes the record and whether or not it arrived through the wizard. ★R10&apos;s per-row failure reporting is what surfaces the difference: such a row is attempted, refused by the platform, and named in the failed-rows download instead of being silently dropped. Same reasoning as Approver_Required_When_Pending — a constraint at the database is a guarantee, where a check inside one Apex class is only a habit.</description>
+    <errorConditionFormula>ISNUMBER(Last_Name__c)</errorConditionFormula>
+    <errorDisplayField>Last_Name__c</errorDisplayField>
+    <errorMessage>Last Name cannot be a number. This usually means the uploaded file&apos;s columns did not line up — check that the Last Name column really holds surnames, then upload it again.</errorMessage>
+</ValidationRule>

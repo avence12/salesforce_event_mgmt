@@ -183,7 +183,7 @@ standard object, which is what
 `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` actually asserts and
 what makes the deploy safe against a populated org. The half that is gone is "needs no
 permission on standard objects": rendering a Contact or Account link requires Read, and that
-grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 8) rather than
+grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 7) rather than
 shipped in `Event_AM`. `CLAUDE.md`'s invariant needs rewording to match: *never writes* stays,
 *never reads* does not.
 
@@ -226,6 +226,300 @@ is cheaper than R7's deploy but coarser than R7's rows, because every customer m
 R9 items are marked ★R9. **All of it is built** — the chain service, five pre-provisioned
 approval steps, the level notifications, the approver's level indicator, and the tests. The two
 things it rests on that this repo cannot verify are named in *What still needs an org*.
+
+**Revised 2026-08-17 (R10) — the import cap is 8000 rows, chunked; apply tolerates partial
+failure.** The business now expects a BD to import roughly 8000 rows at once. Raising `MAX_ROWS`
+alone would not have survived contact with the platform: an 8000-row transaction risks
+synchronous heap (6 MB) first, synchronous CPU (10 s) close behind — `normalise()` runs a regex
+over four fields per row, and `applyChanges` deliberately re-ran `classify()` a second time — and
+the LWC→Apex request/response payload at that size was simply untested. Two changes, not one,
+make 8000 rows survivable:
+
+1. **The LWC chunks.** `mapRows()` still de-duplicates across the *whole* file before anything is
+   sent anywhere — that ordering is load-bearing, not incidental: chunk the raw rows first and the
+   same person could land in two batches and race. Only after de-duplication is the row list split
+   into 200-row batches and sent to `previewMatches` / `applyChanges` one batch at a time,
+   sequentially rather than with `Promise.all` — parallel calls would multiply concurrent-Apex-
+   request pressure and make the accumulated preview order non-deterministic.
+2. **`applyChanges` stopped being all-or-nothing.** The single `upsert byKey.values()
+   Unique_Key__c;` became `Database.upsert(records, Event_Attendee__c.Unique_Key__c, false)`, and
+   `ApplyResult` grew a failure count and a per-row failure list (person + the platform's own error
+   message). One row a batch cannot store no longer discards the rest of that batch.
+
+**What this costs, stated rather than hidden.** All-or-nothing transactional safety is gone: a
+batch can now partially apply, and — because batches are independent Apex calls — a failure in
+batch 12 of 40 leaves batches 1–11 already committed with no way to roll them back. What makes
+that tolerable rather than alarming is a property this design already had: `Unique_Key__c` makes
+the upsert idempotent, so the remedy is "fix the file, re-upload it" rather than "undo and start
+over" — a re-run only touches the rows that still need it. The result screen says this plainly
+and offers a downloadable CSV of exactly the rows that failed, reusing the same formula-injection
+guard (`c/csvDownload`) as the skipped-rows download, because a failure's payload is exactly as
+untrusted as a skipped row's: both came out of the uploaded file.
+
+**What R10 does not touch, on purpose.** The business has not yet said what an 8000-row *preview*
+should look like, and guessing would mean building UI against a requirement that does not exist
+yet. The preview still renders one table row per record with the same per-row checkboxes it had
+at 500 rows — at 8000 rows that is a very tall table, and it is left exactly that tall rather than
+virtualised or collapsed into a summary-plus-exceptions view. That overhaul is deferred, not
+solved, and is why the phrase "8000 rows" appears in this revision without "the preview is fine
+at that size" anywhere near it.
+
+★R10 items are marked ★R10. **Parts 1 and 2 above are built.** Part 3 — the preview UX for 8000
+rows — is not, and is explicitly out of scope pending business input. Of the three numbers this
+revision introduced, `MAX_ROWS = 8000` comes directly from the business's stated need; `BATCH_SIZE`
+was derived from a computed query-length budget to 100 (see *Why 100, and not the first number
+picked*, below), then shipped as **200** at the business's request for reasons outside this
+document (see *Reverted to 200*, immediately after) — a real margin against the same budget, just
+roughly half of what 100 carried; and the third number, `MAX_BATCH_ROWS = 1000`, is still a
+judgment call rather than a derived one. None of the three has run against a real org; see *What
+R10 still needs an org*, immediately after ★R9's.
+
+**Revised 2026-08-17 (R11) — Topic stops being a picklist an admin curates and becomes a free tag
+a BD adds.** A requirements change, confined to how a Marketing Event carries its subject:
+
+> There are too many topics to enumerate. Make it a free tag, and let the BD role add tags
+> themselves.
+
+R6 built `Topic__c` as a restricted multi-select because the business had not yet said the
+taxonomy was open-ended; the post-deploy checklist's step 7 — *replace the placeholder values with
+the real taxonomy before anything can be judged similar to anything* — was written on the
+assumption that a finite, admin-curated list was coming. This revision says it is not: the number
+of topics a real events calendar generates is not a list one admin sits down and defines once, it
+is something that grows the way the events themselves do, and the person who knows what an event
+is about is the BD creating it, not whoever has Setup access.
+
+**What changes.** `Marketing_Event__c.Topic__c` — a field on the event — is deleted outright.
+`Event_Topic__c` — a new child object, Master-Detail to the event, one row per tag — replaces it.
+A BD adds a tag from the event's own record page (a related list, standard "New" button) the
+moment they think of it; nothing in Setup has to exist first. No record of either object has ever
+existed anywhere, so this is a straight replacement, not a migration — the same "our objects hold
+no data" reasoning `CLAUDE.md` states for every other change in this repo.
+
+**What this buys, concretely.** The post-deploy step that used to gate the whole recommendation
+feature — an admin defining and communicating a taxonomy before any BD could tag anything
+meaningfully — disappears. So does the picklist's other cost: a multi-select forces every event
+into values that existed when the field was defined, which is exactly backwards for a business
+that has just said the list of topics does not hold still.
+
+**What this costs, and it is the same cost `Company__c` already pays.** A free-text tag has
+nothing behind it. "AI & Data" and "ai and data" are two tags, not one, and no report rolls them
+up; a BD who tags loosely fragments the very similarity signal this feature exists to produce.
+This is not a new risk this revision invents — `Event_Attendee__c.Company__c` has carried exactly
+this cost since R5, accepted rather than solved with a normalisation layer, and R11 makes the same
+choice for the same reason: building deduplication machinery to prove a point already proven once
+in this codebase is not a good use of the "no aggregate fields by decision" instinct R6 already
+established elsewhere in this object model.
+
+**What this does not change.** The reason `Event_Invitee__c` has no `Topic` formula counterpart —
+`Event_Name__c`, `Event_Date__c` and `Event_Type__c` all read up to the event, but a formula
+cannot traverse a one-to-many relationship — is unaffected by moving Topic off a multi-select and
+onto a child object; a child object is exactly as unreadable from a formula as a multi-select was.
+Filtering by subject still has to go through a report whose base object is the event; that report
+type is now `Marketing_Events_with_Topics`, replacing the `Topic__c` column that used to live on
+`Marketing_Events_with_Invitees`.
+
+★R11 items are marked ★R11. **All of it is built.**
+
+### ★R11 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| Object `Event_Topic__c` + `Marketing_Event__c` Master-Detail field | One row per tag; the standard Text `Name` field is the tag itself, no separate label field |
+| Report type `Marketing_Events_with_Topics` | Replaces the `Topic__c` column dropped from `Marketing_Events_with_Invitees`; base object is the event, joined to `Event_Topics__r` |
+| `Event_AM` — Create/Read/Edit/Delete on `Event_Topic__c` | A BD who mistypes or wants to remove a tag fixes it themselves — the same self-service reasoning that motivated the object in the first place |
+| `Event_Approver` — Read on `Event_Topic__c` | Views, does not maintain |
+| Related list on the Marketing Event layout | `Event_Topic__c.Marketing_Event__c`, one column (`NAME`) |
+
+**Removed**
+
+| Item | Why |
+|---|---|
+| `Marketing_Event__c.Topic__c` | Superseded by `Event_Topic__c`. No record of either has ever existed — a replacement, not a migration |
+| `Topic__c` column on `Marketing_Events_with_Invitees` and both permission sets | The field it read no longer exists |
+| Post-deploy step *"Replace the Topic__c placeholder values with the real taxonomy"* | There is no taxonomy to seed. A BD tags as they go |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `scripts/seed-demo-data.apex` | Inserts `Event_Topic__c` rows instead of setting a semicolon-joined `Topic__c` string; reads each event's existing tags first so a re-run does not duplicate them, matching the idempotency the attendee seed already has |
+| `Event_Attendees_with_History` report type, `Attendee Event History` report | Description text updated to point at `Marketing_Events_with_Topics` rather than a column that no longer exists |
+
+**Not shipped, deliberately**
+
+- **No deduplication or normalisation of tag text.** Named above, under *What this costs* —
+  accepted for the same reason `Company__c`'s equivalent risk was accepted, not solved twice.
+- **No back-fill of past events' tags.** Untagged history still looks equally similar to
+  everything else; this was true under R6's picklist and remains true here. What changed is who
+  can fix it and when — a BD can tag a past event the moment they think to, without asking an
+  admin to add a value first.
+
+### ★R11 What still needs an org
+
+1. **Whether a related list is the right BD-facing surface for adding tags.** A standard "New"
+   button on a related list works, but was not built and compared against a small custom
+   component (a chip-style tag input, for instance) the way *Approvals by Company* was built and
+   compared against a list-view button in R8. If tagging turns out to be a frequent, fast action
+   BDs do many times per event, the standard related list's full-page "New" form may be more
+   friction than the action deserves — unverified without watching a real BD use it.
+2. **Whether `Event_Topics__r` is the correct child relationship name** the new report type's
+   `<join>` depends on — relationship names are assigned by the platform from
+   `relationshipName` at deploy time and have not been confirmed against a real deploy.
+
+### ★R10 8000-row import: chunking and partial failure
+
+`AttendeeImportController.BATCH_SIZE` and `importWizard.js`'s own `BATCH_SIZE` constant both read
+**200**. The two constants have to stay in step by hand — there is no single source of truth that
+generates both sides of an Apex/LWC boundary here — so a future change to one is a change to both,
+same as `MAX_ROWS` already was.
+
+The Apex-side guard changed shape, not just value. `guard()` used to reject a call over
+`MAX_ROWS` (500, then the whole file); after chunking, a single Apex call never carries anywhere
+near a whole 8000-row file, so checking against `MAX_ROWS` there would have quietly stopped
+meaning anything — any well-behaved batch would always pass, and the check would only ever fire
+on a client bug rather than on the abuse it exists to catch. `MAX_BATCH_ROWS` (1000) is the
+constant that actually guards the call: a real per-request ceiling, high enough that the LWC's own
+200-row batches never come close to it, low enough that a caller ignoring the client entirely — a
+modified LWC, a direct Apex REST or Tooling API call — still cannot hand a single transaction the
+whole heap/CPU risk chunking exists to avoid. `MAX_ROWS` (8000) stays in the class only so it can
+be asserted against the LWC's copy; it is not read by `guard()` at all any more.
+
+#### ★R10 Why 100, and not the first number picked
+
+The first build of this revision set `BATCH_SIZE` to 200 as a starting point — "conservative,
+unmeasured" — picked without deriving it from anything. That was good enough to get chunking built,
+but "conservative" was a feeling, not a number, and it does not hold up: `classify()`'s
+`WHERE Unique_Key__c IN :keys` query has a cost that can actually be computed in advance, without an
+org, from the code alone.
+
+**The mechanism.** `attendeeKey()` builds a pipe-joined key — last name (≤80 chars) + first name
+(≤40) + company (≤60) + email (≤70), so up to 253 raw characters — and `classify()` puts one such
+key per row into a bind variable that becomes a quoted, comma-separated literal inside the query
+text: `'key1','key2',…`. Salesforce imposes a ceiling on the total length of a SOQL statement,
+reported at **around 20,000 characters** (found by search, not confirmed against a primary
+Salesforce doc from this environment — network egress here is proxied and `developer.salesforce.com`
+is blocked; **treat 20,000 as the best available estimate and confirm it against the org before
+trusting a number derived from it**). This is a hard wall, not a slope: a query at 19,999 characters
+runs, one at 20,001 fails to parse, and no amount of testing at smaller sizes tells you where that
+line actually is short of hitting it.
+
+**The budget, worked from real numbers.** The demo file, `FinTech_Summit_2026_Attendees.csv`,
+averages **48 characters** across last name + first name + company + email combined — measured, not
+guessed (`awk` over the file). Add the three pipe separators and the quote/comma overhead the SOQL
+literal adds, and each key costs roughly **54 characters** in the query text. Two hundred of them:
+`200 × 54 ≈ 10,800` characters — about 54% of the estimated 20,000-character ceiling on demo data.
+That is not the same as safe: it assumes real uploaded files read like the demo file's clean,
+short placeholder names, and there is no reason a real conference list would be that well-behaved —
+longer legal company names and longer corporate email domains are the norm, not the exception, for
+exactly the audience (EU/US enterprise contacts) this feature targets.
+
+**The number chosen.** Budgeting only half of the estimated ceiling for the whole query — leaving
+room for the ~100-character `SELECT … FROM … WHERE …` skeleton and, more importantly, for the
+20,000-character figure itself being wrong in either direction — gives roughly 9,900 characters for
+the `IN (…)` literal. At the demo file's measured 54 characters per key that is **≈ 183 rows**; this
+revision does not use that number directly, because it is only as good as the demo file's key
+length being representative of real uploads, which is exactly the assumption being hedged against.
+**`BATCH_SIZE = 100`** keeps demo-data usage of the query text down to roughly 5,500 characters —
+about 27% of the estimated ceiling — so a real file's company names and email addresses would have
+to average **more than double** the demo file's before the query risked the wall. That headroom is
+the actual reason 100 is called safe rather than merely smaller; it is not a rounder or more
+cautious-sounding version of 200.
+
+**What this does not fix.** `MAX_BATCH_ROWS` (1000) is unchanged, and it is worth being honest about
+what that leaves open: it was set as a ceiling against heap/CPU abuse from a caller that bypasses the
+LWC's chunking entirely, not against this query-length wall. A direct call carrying 1000 rows at the
+demo file's average key length would need `1000 × 54 ≈ 54,000` characters — several times the
+estimated ceiling — and would fail with a raw `QueryException` rather than the guard's own named
+error. That failure is not unsafe (no bad data is written; the call simply errors), but it is an
+ungraceful one, and it is a real gap between what `MAX_BATCH_ROWS` is documented to guard against and
+what it actually catches. Left open rather than quietly widened in scope beyond what this revision
+was asked to change; worth a follow-up pass that ties `MAX_BATCH_ROWS` to the same character budget
+`BATCH_SIZE` now uses.
+
+#### ★R10 Reverted to 200, for reasons outside this document
+
+The arithmetic above landed on 100. **The shipped value is 200** — the business asked for it back,
+for non-technical reasons this document does not have visibility into and is not the place to
+second-guess. Recorded here rather than silently overwritten, because a future reader comparing the
+derivation above to the constant in the code should find why they disagree, not conclude one of them
+is a mistake.
+
+What changes is exactly the margin the derivation was about, and nothing else: 200 rows put
+`classify()`'s query at the ~10,800 characters computed above — **54%** of the estimated ceiling,
+leaving headroom for a real file's average key length to run about **85% higher** than the demo
+file's before the query risks the wall, versus the roughly **270%** of headroom 100 provided. Both
+are real margins; 200's is roughly half the size of 100's. Every input that margin is computed
+from is still exactly as unverified as it was above — the ~20,000-character ceiling itself, and
+whether real uploaded files' keys average anywhere near the demo file's 54 characters — so "54%
+used" is only as trustworthy as those two unknowns turn out to be. Nothing about `MAX_ROWS`,
+`MAX_BATCH_ROWS`, or the `MAX_BATCH_ROWS` gap noted above changes with this reversion.
+
+#### ★R10 The rule that makes partial failure testable, and the tension in it
+
+Tolerating a partial failure is only worth building if the failure branch is exercised, and that
+turned out to need something this object did not have: **a way for a well-formed row to be refused
+by the platform**. Every field the import writes is sanitised before DML — lengths clipped, an
+unusable email dropped to null, blank surnames classified Skipped, duplicate keys collapsed by the
+map — so no row that survives `classify()` could fail. `Database.UpsertResult` cannot be
+constructed in Apex either, so the result could not be fabricated.
+
+The first build answered that with a test-only fault-injection seam in the controller, gated on
+`Test.isRunningTest()`. It worked and it could not fire in production, but it put a line in
+production code whose only reason to exist was a test. **`Last_Name_Is_Not_Numeric` replaces it
+with a rule that earns its place independently**: a shifted CSV column putting a phone number in
+Last Name is the classic import failure, and here it lands in the identity field, so the record is
+both unrecognisable to an AM and useless to de-duplication. The seam is deleted.
+
+**The tension worth naming: the preview does not know about this rule, so it will show such a row
+as importable and the row will then be refused.** That is deliberate, and the alternative is worse
+in a specific way. Teaching `classify()` the rule would make the preview honest about this one
+case — and would immediately remove the only way a row can reach the DML and fail, putting the
+partial-failure branch back to being untestable without a seam. So the division is: the preview
+predicts *identity* outcomes, the rule is the *database's* floor, and R10's per-row failure
+reporting is what makes the gap between them visible rather than silent. It is the same argument
+`Approver_Required_When_Pending` already rests on — a constraint at the database is a guarantee
+where a check inside one Apex class is a habit — but it is being used here to justify a preview
+that is knowingly incomplete, which is a weaker use of it and should be read as such.
+
+If the business ever wants the preview to predict platform refusals too, that is a real feature
+(a fourth preview outcome, "will be refused, and why"), and it should be built with the Part 3
+preview work rather than bolted on — at which point the Apex test needs a different fault source.
+
+### ★R10 What still needs an org
+
+Nothing above ran against a real org. `BATCH_SIZE = 200` is a business decision on top of a derived
+number, not a measured one — the derivation above (for 100) and the reversion note (for 200) both
+rest on figures this repo cannot confirm:
+
+1. **The ~20,000-character SOQL statement ceiling itself.** Found by search; this environment's
+   network egress is proxied and blocked `developer.salesforce.com`, so the figure the whole
+   derivation is budgeted against has never been checked against a primary Salesforce source. If the
+   real ceiling is materially lower, 200 may not carry the margin it is credited with; if higher, 200
+   is more conservative than it needed to be.
+2. **Real uploaded files' average key length.** The 54-characters-per-key figure comes from one demo
+   CSV of clean, short placeholder names — the only data available here. A real conference list's
+   company names and email domains are unmeasured, which is exactly the gap `BATCH_SIZE`'s margin is
+   meant to absorb rather than a thing it proves safe.
+3. **The real LWC→Apex payload ceiling**, for both the request (200 `ImportRow`s serialised to
+   JSON) and the response (200 `PreviewResult`s, or 200 `ApplyFailure`s in the worst case where a
+   whole batch fails). Salesforce imposes a response-size limit on Aura/LWC Apex calls; whether 200
+   rows of this shape approaches it is unverified.
+4. **Actual heap consumption per row**, which is what would tell whether 200 has real headroom
+   under it or is already closer to the 6 MB synchronous limit than it looks from reading the code —
+   with less margin than 100 would have carried on this dimension too, since heap scales with row
+   count the same way the query text does.
+5. **Whether `Database.upsert(..., false)` on `Unique_Key__c` behaves as assumed under real
+   contention** — two AMs re-uploading overlapping files at the same moment was already a
+   theoretical race before R10; partial application does not create that race, but it does mean a
+   batch that partially fails under contention is now a visible, reportable outcome rather than an
+   all-or-nothing one.
+6. **The `MAX_BATCH_ROWS` gap named above** — that a caller bypassing the LWC's chunking can still
+   drive `classify()`'s query past the character ceiling before hitting any row-count guard.
+
+Carried over and still unverified: everything under ★R9's *What still needs an org*, unaffected by
+this revision.
 
 ## Problem Statement
 
@@ -300,12 +594,14 @@ Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tm
 ### Data model
 
 ★R5 The shape first — three custom objects, and `Event_Invitee__c` is the junction that makes
-event-to-attendee many-to-many. Only the relationship-carrying and key fields are on the
+event-to-attendee many-to-many (★R11 adds a fourth, `Event_Topic__c`, a plain Master-Detail
+child with no join role of its own). Only the relationship-carrying and key fields are on the
 diagram; the full field lists are in the blocks below it.
 
 ```mermaid
 erDiagram
     Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
+    Marketing_Event__c ||--o{ Event_Topic__c : "R11, Master-Detail, cascade delete"
     Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
     User               ||--o{ Event_Invitee__c : "Added_By__c and R9 Approver_1..5__c"
     Contact            ||--o{ Event_Attendee__c : "R8 Contact__c, optional, SetNull"
@@ -315,10 +611,14 @@ erDiagram
         Text        Name
         Date        Event_Date__c "required"
         Picklist    Event_Type__c "R6, Symposium OIP Conference"
-        MultiSelect Topic__c "R6, what similarity is computed from"
         RollUp      Approved_Count__c "counts Status = Approved"
         RollUp      Pending_Count__c "counts Status = Pending Approval"
         RollUp      Rejected_Count__c "counts Status = Rejected"
+    }
+
+    Event_Topic__c {
+        Text         Name "R11, the tag itself, free text, BD-maintained"
+        MasterDetail Marketing_Event__c FK "reparenting disabled"
     }
 
     Event_Attendee__c {
@@ -376,24 +676,31 @@ writing "Attended", which it has no way to know, or an AM writing a status the p
 `Attended_Requires_Approved` keeps the two in the right order — you cannot have attended
 something you were never approved for.
 
-★R6 **`Topic__c` is a multi-select, with everything that costs.** One event genuinely covers
-several subjects, so a single-select would force a false choice. The price is real and shows
-up immediately: a multi-select cannot be rolled up, cannot be referenced by a plain formula
-(only tested with `INCLUDES()`), and filters as "includes" rather than equality. That is why
-`Event_Invitee__c` has formula fields for the event's name, date and type but **not** its
-topic — and therefore why the attendee-side report shows what shape an event was but not what
-it was about. Filtering by subject has to go through the Marketing Events report type, whose
-base object is the event itself. The asymmetry is a consequence of the multi-select, recorded
-rather than papered over.
+~~★R6 **`Topic__c` is a multi-select, with everything that costs.**~~ **Superseded by R11.**
+`Topic__c` is deleted; a subject is now several `Event_Topic__c` rows rather than several
+values in one multi-select field. What survives from this paragraph is the shape of the cost,
+not the field it was about: a child object cannot be referenced by a plain formula any more than
+a multi-select could, so `Event_Invitee__c` still has no `Topic` formula counterpart, and
+filtering by subject still has to go through a report whose base object is the event — now
+`Marketing_Events_with_Topics` rather than a `Topic__c` column. Original text: One event
+genuinely covers several subjects, so a single-select would force a false choice. The price is
+real and shows up immediately: a multi-select cannot be rolled up, cannot be referenced by a
+plain formula (only tested with `INCLUDES()`), and filters as "includes" rather than equality.
+That is why `Event_Invitee__c` has formula fields for the event's name, date and type but
+**not** its topic — and therefore why the attendee-side report shows what shape an event was
+but not what it was about. Filtering by subject has to go through the Marketing Events report
+type, whose base object is the event itself. The asymmetry is a consequence of the multi-select,
+recorded rather than papered over.
 
 ★R6 **The `Event_Type__c` values are simply Symposium / OIP / Conference.** An earlier draft
 of this section treated replacing them as a migration, on the grounds that a restricted
 picklist cannot lose a value that records still hold. That reasoning does not apply here.
 **`Marketing_Event__c` is one of this project's own objects and holds no records** — the
 target org has plenty of Account and Contact data, but none of it is ours (see `CLAUDE.md`).
-The values are set, not migrated to. What does still need an answer is what "OIP" expands to
-and what it means, because this design cannot describe a taxonomy it does not understand —
-**Open Question 20.**
+The values are set, not migrated to. **Open Question 20** asked what "OIP" means and what
+distinguishes it from a Symposium; the business's answer is that it doesn't need to be
+distinguished — OIP stands on its own as a category, and no AM-facing explanation of the
+difference is required.
 
 ★R6 **No aggregate fields on the attendee, by decision.** "How many events has this person
 been to" is not a field — `Event_Invitee__c` is a Lookup child of the attendee, and a roll-up
@@ -407,11 +714,11 @@ be needed.
 **The current specification, in full.** The field lists below are the state of
 `force-app/main/default/objects`, not an accumulation of revision deltas — the revision
 markers elsewhere in this document explain *why* the shape is what it is, but none of these
-three objects has ever been deployed, so there is no earlier state of theirs to reconcile
+four objects has ever been deployed, so there is no earlier state of theirs to reconcile
 against. What is listed is what exists.
 
 Note what is *not* here, and that its absence is the point: no `Account`, no `Contact`, no
-`Lead`. The target org holds real data on all three; this project adds three custom objects
+`Lead`. The target org holds real data on all three; this project adds four custom objects
 beside them and touches none of it. A deploy is purely additive to that org.
 
 ```
@@ -420,17 +727,19 @@ Marketing_Event__c                                    OWD: Public Read/Write
   Event_Date__c              Date, required
   Location__c                Text(255)
   Event_Type__c              Picklist, restricted     Symposium | OIP | Conference
-  Topic__c                ★R6 Multi-select, restricted Digital Banking | Payments |
-                                                      Capital Markets | Insurance |
-                                                      Risk & Compliance | Cybersecurity |
-                                                      AI & Data | Sustainable Finance
-                                                      <- PLACEHOLDER VALUES, see OQ 19
   Expected_Attendees__c      Number
   Description__c             Long Text(32768)
   OwnerId                    standard - creating AM
   Approved_Count__c          Roll-Up  count of invitees where Status = Approved
   Pending_Count__c           Roll-Up  count where Status = Pending Approval
   Rejected_Count__c          Roll-Up  count where Status = Rejected
+```
+
+```
+Event_Topic__c                                     ★R11 OWD: ControlledByParent
+  (one row per tag; free text, added by a BD from the event page, no admin curation)
+  Name                       Text(80), required      the tag itself, e.g. "Payments"
+  Marketing_Event__c         Master-Detail -> Marketing_Event__c, reparenting disabled
 ```
 
 ```
@@ -459,6 +768,13 @@ Event_Attendee__c                                     OWD: Public Read/Write
   Imported_On__c             DateTime                 refreshed on re-import
   Unique_Key__c              Text(255), unique, ExtId normalised last|first|company|email
                                                       <- the whole of de-duplication
+
+  Validation rules
+    Last_Name_Is_Not_Numeric     ★R10 ISNUMBER(Last_Name__c). A wholly numeric surname is a
+                                 mis-mapped CSV column, not a person — and it lands in the
+                                 identity field, so it also de-duplicates against nothing.
+                                 ISNUMBER is false for every non-Latin script and for any
+                                 punctuation, so it rejects numbers only
 ```
 
 ```
@@ -518,8 +834,9 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
   Event_Name__c              Formula, Text            Marketing_Event__r.Name
   Event_Date__c              Formula, Date            Marketing_Event__r.Event_Date__c
   Event_Type__c              Formula, Text            TEXT(Marketing_Event__r.Event_Type__c)
-                                                      (no Topic__c counterpart - a multi-select
-                                                       cannot be read by a formula)
+                                                      (no Topic counterpart - ★R11 it is a child
+                                                       object now, not a field; a formula cannot
+                                                       read through either shape)
 
   -- reads the running user --
   Added_By_Me__c             Formula, Checkbox        Added_By__c = $User.Id
@@ -558,7 +875,10 @@ that this person was put forward for that event, carrying the approval state and
 whether they came. Every question the system answers is one of those three read in some
 direction — and because `Event_Invitee__c` is the only join, both directions of the
 recommendation question ("what has this person attended?" and "who attended things like
-this?") are the same rows read from opposite ends.
+this?") are the same rows read from opposite ends. ★R11 adds a fourth, lighter-weight object,
+`Event_Topic__c`, that answers only one question — what is this event's subject — and does not
+participate in either join above; it exists because a subject is now several free-text tags
+rather than one field's worth of value.
 
 ★R5 **The object above replaces `Event_History__c`, which is deleted.** R4 had just
 built it — a two-headed attendance log hanging off Contact and Lead — and R5 removes it
@@ -992,17 +1312,19 @@ sign the boundary it sits on was drawn in the right place.
    repointed at Skipped rows — with the CSV-formula guard in `c/csvDownload` intact, because
    its input is still an untrusted uploaded file.
 
-3. **Apply**: one `upsert ... Unique_Key__c` against `Event_Attendee__c`, and nothing else.
-   No Contact, Lead or Account is created, read, updated or deleted. Re-running a file
-   refreshes the attendees it names rather than duplicating them.
+3. **Apply**: `Database.upsert(..., Unique_Key__c, false)` against `Event_Attendee__c`, one call
+   per 200-row batch, and nothing else. No Contact, Lead or Account is created, read, updated or
+   deleted. Re-running a file refreshes the attendees it names rather than duplicating them. ★R10
+   `false` (not `upsert`'s implicit all-or-nothing) is what lets one row a batch cannot store fail
+   without discarding the rest of that batch — see ★R10 below.
 
    ★R5 **The one new failure mode, handled rather than discovered.** Routing every row into
    typed fields means a spreadsheet's Email column — which really does contain `n/a`, `-` and
-   trailing notes — now meets a typed `Email__c` field that refuses them. Failing a 500-row
-   upload over one such cell would be the wrong trade, and so would silently binning the
-   address. The row keeps the person, drops the unstorable address, and says so on that row in
-   the preview. Oversized values are clipped to their field lengths for the same reason: a CSV
-   is not obliged to respect our schema.
+   trailing notes — now meets a typed `Email__c` field that refuses them. Failing a large upload
+   over one such cell would be the wrong trade, and so would silently binning the address. The
+   row keeps the person, drops the unstorable address, and says so on that row in the preview.
+   Oversized values are clipped to their field lengths for the same reason: a CSV is not obliged
+   to respect our schema.
 
 ### Screen 2 — Create Marketing Event
 
@@ -1646,10 +1968,10 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 15. ★R5 ~~**Is a manager the right approver, now that the Account Owner cannot be one?**~~ **Answered by R7 and closed by R9, which built it.** The Account Owner is level 1 of the chain and the control R5 gave up is back — reached through the Contact link and the Account behind it, so premise 7 never comes under pressure. Only the *mechanism* changed between the answer and the build: `requirement.md` routes up the org chart rather than through a `cust_cd` table. Original R7 answer follows. **Answered by R7, with the key this entry said was missing.** The recovery it names — "a second approval step keyed off something the attendee does not currently carry" — is exactly what arrived: every row carries a customer code `cust_cd`, and a table maps it to the owning AM and onward to the regional head. The control R5 lost is restored without reaching an Account, so premise 7 never comes under pressure. Original text: **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
-19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
-20. ★R6 **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
+19. ★R6 ~~**What is the real `Topic__c` taxonomy, and who back-fills past events?**~~ **Half-settled by R11.** "What is the real taxonomy" is now the wrong question — R11 deletes the picklist precisely because the business does not want one enumerated. What survives unanswered is the second half: historical events still have no tags until somebody adds them, and an untagged event still looks equally similar to everything else in the meantime. What changed is who can act and when — a BD can tag a past event the moment they think to, without first asking an admin to add a value to a picklist that may not have existed yet — so the blocker this question named is gone even though the work itself is not done. Original text: **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
+20. ★R6 ~~**What does "OIP" expand to, and what distinguishes it from a Symposium?**~~ **Settled: it doesn't need distinguishing.** The business's answer is that OIP is its own independent Marketing Event category, not a variant of Symposium or Conference that needs a documented line between them — so the "AM picks at random" risk this entry raised does not apply: there is nothing to confuse it with. Original text: **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
-21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 6). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
+21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 10). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
 23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
 24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
 25. ★R8 ~~**How does an approver approve a whole company's invitees at once?**~~ **Answered: a custom LWC on the event page — see *Screen 4b* below.** The business chose the component over the list-view button after seeing both wireframed, and the deciding argument was the phone: a standard list view's checkboxes are the wrong target size on a handset, and requirement.md asks for approval on iOS. The cost is accepted rather than avoided — ~300 lines where 40 would have done, and a partial walk-back of R3. Original text: **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.

@@ -58,7 +58,6 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Q3 2026 Customer Appre
         Event_Date__c = Date.newInstance(2026, 9, 18),
         Location__c = 'The Plaza, New York',
         Event_Type__c = 'Conference',
-        Topic__c = 'Digital Banking;Payments',
         Expected_Attendees__c = 150,
         Description__c = 'Annual appreciation event for key financial-sector customers.'
     );
@@ -74,10 +73,45 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Payments Innovation Sy
         Event_Date__c = Date.newInstance(2025, 11, 6),
         Location__c = 'Frankfurt',
         Event_Type__c = 'Symposium',
-        Topic__c = 'Payments;AI & Data',
         Expected_Attendees__c = 80,
         Description__c = 'Past event. Its attendance is what the Attendee Event History report reads.'
     );
+}
+
+// ---- ★R11 Topics — free tags a BD adds from the event page, not a picklist an admin
+// seeds in Setup. Tagged here only so the demo has something to show; re-running this
+// script must not create the same tag twice on the same event, so each event's
+// existing tags are read first and only the missing ones are inserted.
+Map<String, Set<String>> topicsByEvent = new Map<String, Set<String>>{
+    'Q3 2026 Customer Appreciation Gala' => new Set<String>{ 'Digital Banking', 'Payments' },
+    'Payments Innovation Symposium 2025' => new Set<String>{ 'Payments', 'AI & Data' }
+};
+Map<Id, String> eventNameById = new Map<Id, String>();
+for (Marketing_Event__c e : [
+    SELECT Id, Name
+    FROM Marketing_Event__c
+    WHERE Name IN :topicsByEvent.keySet()
+]) {
+    eventNameById.put(e.Id, e.Name);
+}
+Set<String> alreadyTagged = new Set<String>(); // 'eventId|topic name'
+for (Event_Topic__c t : [
+    SELECT Marketing_Event__c, Name
+    FROM Event_Topic__c
+    WHERE Marketing_Event__c IN :eventNameById.keySet()
+]) {
+    alreadyTagged.add(t.Marketing_Event__c + '|' + t.Name);
+}
+List<Event_Topic__c> newTopics = new List<Event_Topic__c>();
+for (Id eventId : eventNameById.keySet()) {
+    for (String topic : topicsByEvent.get(eventNameById.get(eventId))) {
+        if (!alreadyTagged.contains(eventId + '|' + topic)) {
+            newTopics.add(new Event_Topic__c(Marketing_Event__c = eventId, Name = topic));
+        }
+    }
+}
+if (!newTopics.isEmpty()) {
+    insert newTopics;
 }
 
 // ---- ★R9 What this script deliberately cannot do for you ----
@@ -96,4 +130,3 @@ if ([SELECT COUNT() FROM Marketing_Event__c WHERE Name = 'Payments Innovation Sy
 System.debug('Seed complete. Attendees now in the org: ' + [SELECT COUNT() FROM Event_Attendee__c]);
 System.debug('★R9 Approval routes: Account Owner -> their manager -> theirs, stopping at a Regional Head.');
 System.debug('★R9 An attendee with no Contact link has no Account Owner and cannot be submitted at all.');
-System.debug('★R6 Topic__c values are placeholders. Replace them with the real taxonomy before trusting a recommendation.');

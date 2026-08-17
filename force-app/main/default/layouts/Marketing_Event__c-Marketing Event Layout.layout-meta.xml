@@ -10,7 +10,6 @@
             <layoutItems><behavior>Required</behavior><field>Event_Date__c</field></layoutItems>
             <layoutItems><behavior>Edit</behavior><field>Location__c</field></layoutItems>
             <layoutItems><behavior>Edit</behavior><field>Event_Type__c</field></layoutItems>
-            <layoutItems><behavior>Edit</behavior><field>Topic__c</field></layoutItems>
         </layoutColumns>
         <layoutColumns>
             <layoutItems><behavior>Edit</behavior><field>Expected_Attendees__c</field></layoutItems>
@@ -44,5 +43,9 @@
         <fields>Current_Level__c</fields>
         <fields>Approval_Levels__c</fields>
         <relatedList>Event_Invitee__c.Marketing_Event__c</relatedList>
+    </relatedLists>
+    <relatedLists>
+        <fields>NAME</fields>
+        <relatedList>Event_Topic__c.Marketing_Event__c</relatedList>
     </relatedLists>
 </Layout>
