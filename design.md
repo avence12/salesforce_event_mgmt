@@ -227,6 +227,92 @@ R9 items are marked ★R9. **All of it is built** — the chain service, five pr
 approval steps, the level notifications, the approver's level indicator, and the tests. The two
 things it rests on that this repo cannot verify are named in *What still needs an org*.
 
+**Revised 2026-08-17 (R10) — the import cap is 8000 rows, chunked; apply tolerates partial
+failure.** The business now expects a BD to import roughly 8000 rows at once. Raising `MAX_ROWS`
+alone would not have survived contact with the platform: an 8000-row transaction risks
+synchronous heap (6 MB) first, synchronous CPU (10 s) close behind — `normalise()` runs a regex
+over four fields per row, and `applyChanges` deliberately re-ran `classify()` a second time — and
+the LWC→Apex request/response payload at that size was simply untested. Two changes, not one,
+make 8000 rows survivable:
+
+1. **The LWC chunks.** `mapRows()` still de-duplicates across the *whole* file before anything is
+   sent anywhere — that ordering is load-bearing, not incidental: chunk the raw rows first and the
+   same person could land in two batches and race. Only after de-duplication is the row list split
+   into 200-row batches and sent to `previewMatches` / `applyChanges` one batch at a time,
+   sequentially rather than with `Promise.all` — parallel calls would multiply concurrent-Apex-
+   request pressure and make the accumulated preview order non-deterministic.
+2. **`applyChanges` stopped being all-or-nothing.** The single `upsert byKey.values()
+   Unique_Key__c;` became `Database.upsert(records, Event_Attendee__c.Unique_Key__c, false)`, and
+   `ApplyResult` grew a failure count and a per-row failure list (person + the platform's own error
+   message). One row a batch cannot store no longer discards the rest of that batch.
+
+**What this costs, stated rather than hidden.** All-or-nothing transactional safety is gone: a
+batch can now partially apply, and — because batches are independent Apex calls — a failure in
+batch 12 of 40 leaves batches 1–11 already committed with no way to roll them back. What makes
+that tolerable rather than alarming is a property this design already had: `Unique_Key__c` makes
+the upsert idempotent, so the remedy is "fix the file, re-upload it" rather than "undo and start
+over" — a re-run only touches the rows that still need it. The result screen says this plainly
+and offers a downloadable CSV of exactly the rows that failed, reusing the same formula-injection
+guard (`c/csvDownload`) as the skipped-rows download, because a failure's payload is exactly as
+untrusted as a skipped row's: both came out of the uploaded file.
+
+**What R10 does not touch, on purpose.** The business has not yet said what an 8000-row *preview*
+should look like, and guessing would mean building UI against a requirement that does not exist
+yet. The preview still renders one table row per record with the same per-row checkboxes it had
+at 500 rows — at 8000 rows that is a very tall table, and it is left exactly that tall rather than
+virtualised or collapsed into a summary-plus-exceptions view. That overhaul is deferred, not
+solved, and is why the phrase "8000 rows" appears in this revision without "the preview is fine
+at that size" anywhere near it.
+
+★R10 items are marked ★R10. **Parts 1 and 2 above are built.** Part 3 — the preview UX for 8000
+rows — is not, and is explicitly out of scope pending business input. The three numbers this
+revision picked (`BATCH_SIZE = 200`, the LWC's `MAX_ROWS = 8000`, and the Apex per-call guard
+`MAX_BATCH_ROWS = 1000`) are documented as unmeasured, not as findings — see *What R10 still needs
+an org*, immediately after ★R9's.
+
+### ★R10 8000-row import: chunking and partial failure
+
+`AttendeeImportController.BATCH_SIZE` and `importWizard.js`'s own `BATCH_SIZE` constant both read
+200, and a comment on each says why: this is a starting point picked without a real org to measure
+heap, CPU or LWC-to-Apex payload consumption against, not a number derived from a load test. The
+two constants have to stay in step by hand — there is no single source of truth that generates
+both sides of an Apex/LWC boundary here — so a future change to one is a change to both, same as
+`MAX_ROWS` already was.
+
+The Apex-side guard changed shape, not just value. `guard()` used to reject a call over
+`MAX_ROWS` (500, then the whole file); after chunking, a single Apex call never carries anywhere
+near a whole 8000-row file, so checking against `MAX_ROWS` there would have quietly stopped
+meaning anything — any well-behaved batch would always pass, and the check would only ever fire
+on a client bug rather than on the abuse it exists to catch. `MAX_BATCH_ROWS` (1000) is the
+constant that actually guards the call: a real per-request ceiling, high enough that the LWC's own
+200-row batches never come close to it, low enough that a caller ignoring the client entirely — a
+modified LWC, a direct Apex REST or Tooling API call — still cannot hand a single transaction the
+whole heap/CPU risk chunking exists to avoid. `MAX_ROWS` (8000) stays in the class only so it can
+be asserted against the LWC's copy; it is not read by `guard()` at all any more.
+
+### ★R10 What still needs an org
+
+Nothing above ran against a real org, and three numbers in it are stated as unmeasured rather than
+tested:
+
+1. **The true safe batch size.** 200 is conservative by construction, not by measurement.
+   `normalise()`'s regex over four fields and `classify()` running twice in `applyChanges` are the
+   two things most likely to make a larger batch expensive; neither has been profiled here.
+2. **The real LWC→Apex payload ceiling**, for both the request (200 `ImportRow`s serialised to
+   JSON) and the response (200 `PreviewResult`s, or 200 `ApplyFailure`s in the worst case where a
+   whole batch fails). Salesforce imposes a response-size limit on Aura/LWC Apex calls; whether 200
+   rows of this shape approaches it is unverified.
+3. **Actual heap consumption per row**, which is what would tell whether 200 has real headroom
+   under it or is already closer to the 6 MB synchronous limit than it looks from reading the code.
+4. **Whether `Database.upsert(..., false)` on `Unique_Key__c` behaves as assumed under real
+   contention** — two AMs re-uploading overlapping files at the same moment was already a
+   theoretical race before R10; partial application does not create that race, but it does mean a
+   batch that partially fails under contention is now a visible, reportable outcome rather than an
+   all-or-nothing one.
+
+Carried over and still unverified: everything under ★R9's *What still needs an org*, unaffected by
+this revision.
+
 ## Problem Statement
 
 Account Managers (AMs, mostly US/EU-based) collect external attendee lists (CSV) from conferences and other systems. Today there is no structured way to: (1) get those people into Salesforce at all, (2) assemble an event invitee list that several AMs contribute to, (3) get per-person sign-off from a manager, and (4) export the approved list. The PoC demonstrates this complete workflow inside the company's Salesforce Sandbox.
@@ -992,17 +1078,19 @@ sign the boundary it sits on was drawn in the right place.
    repointed at Skipped rows — with the CSV-formula guard in `c/csvDownload` intact, because
    its input is still an untrusted uploaded file.
 
-3. **Apply**: one `upsert ... Unique_Key__c` against `Event_Attendee__c`, and nothing else.
-   No Contact, Lead or Account is created, read, updated or deleted. Re-running a file
-   refreshes the attendees it names rather than duplicating them.
+3. **Apply**: `Database.upsert(..., Unique_Key__c, false)` against `Event_Attendee__c`, one call
+   per 200-row batch, and nothing else. No Contact, Lead or Account is created, read, updated or
+   deleted. Re-running a file refreshes the attendees it names rather than duplicating them. ★R10
+   `false` (not `upsert`'s implicit all-or-nothing) is what lets one row a batch cannot store fail
+   without discarding the rest of that batch — see ★R10 below.
 
    ★R5 **The one new failure mode, handled rather than discovered.** Routing every row into
    typed fields means a spreadsheet's Email column — which really does contain `n/a`, `-` and
-   trailing notes — now meets a typed `Email__c` field that refuses them. Failing a 500-row
-   upload over one such cell would be the wrong trade, and so would silently binning the
-   address. The row keeps the person, drops the unstorable address, and says so on that row in
-   the preview. Oversized values are clipped to their field lengths for the same reason: a CSV
-   is not obliged to respect our schema.
+   trailing notes — now meets a typed `Email__c` field that refuses them. Failing a large upload
+   over one such cell would be the wrong trade, and so would silently binning the address. The
+   row keeps the person, drops the unstorable address, and says so on that row in the preview.
+   Oversized values are clipped to their field lengths for the same reason: a CSV is not obliged
+   to respect our schema.
 
 ### Screen 2 — Create Marketing Event
 

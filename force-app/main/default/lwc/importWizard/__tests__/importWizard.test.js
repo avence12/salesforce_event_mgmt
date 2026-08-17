@@ -308,25 +308,27 @@ describe('c-import-wizard', () => {
             expect(errorText()).toMatch(/No data rows/);
         });
 
-        it('rejects a file over the 500-row PoC cap and says the count', async () => {
+        it('rejects a file over the 8000-row PoC cap and says the count', async () => {
             const rows = Array.from(
-                { length: 501 },
+                { length: 8001 },
                 (_unused, i) => `A${i},B${i},u${i}@x.com,,,`
             ).join('\n');
             await upload(element, `${HEADER}\n${rows}`);
-            expect(errorText()).toMatch(/501 rows/);
+            expect(errorText()).toMatch(/8001 rows/);
             expect(previewMatches).not.toHaveBeenCalled();
         });
 
         it('accepts a file exactly at the cap', async () => {
+            // 8000 rows means 8000 rendered <tr> elements in jsdom, which is
+            // genuinely slow rather than hung — hence the longer timeout.
             const rows = Array.from(
-                { length: 500 },
+                { length: 8000 },
                 (_unused, i) => `A${i},B${i},u${i}@x.com,,,`
             ).join('\n');
             await upload(element, `${HEADER}\n${rows}`);
             expect(previewMatches).toHaveBeenCalled();
             expect(errorText()).toBeNull();
-        });
+        }, 20000);
 
         it('surfaces an Apex failure as the error message', async () => {
             previewMatches.mockRejectedValue({ body: { message: 'apex said no' } });
@@ -337,6 +339,219 @@ describe('c-import-wizard', () => {
         it('stays on step 1 when the file is rejected', async () => {
             await upload(element, 'col1,col2\na,b');
             expect(element.shadowRoot.querySelector('lightning-input')).not.toBeNull();
+        });
+    });
+
+    describe('R10 chunked batches', () => {
+        // Mirrors importWizard.js's BATCH_SIZE. Not the same constant — the module
+        // doesn't export it — so a change to one has to be made to the other by hand,
+        // same as AttendeeImportController.BATCH_SIZE on the Apex side (design.md → ★R10).
+        const BATCH_SIZE = 200;
+
+        const bigFile = (n) =>
+            `${HEADER}\n` +
+            Array.from({ length: n }, (_unused, i) => `First${i},Last${i},u${i}@x.com,,Acme,`).join(
+                '\n'
+            );
+
+        const clickApply = () => {
+            const apply = [...element.shadowRoot.querySelectorAll('lightning-button')].find((b) =>
+                String(b.label).startsWith('Import')
+            );
+            apply.dispatchEvent(new CustomEvent('click'));
+        };
+
+        it('splits a file larger than one batch into multiple sequential preview calls', async () => {
+            await upload(element, bigFile(BATCH_SIZE + 50));
+            expect(previewMatches).toHaveBeenCalledTimes(2);
+            expect(previewMatches.mock.calls[0][0].rows).toHaveLength(BATCH_SIZE);
+            expect(previewMatches.mock.calls[1][0].rows).toHaveLength(50);
+        });
+
+        it('sends a small file — under one batch — as a single preview call', async () => {
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,`);
+            expect(previewMatches).toHaveBeenCalledTimes(1);
+        });
+
+        it('accumulates preview results across batches, keeping file order', async () => {
+            await upload(element, bigFile(BATCH_SIZE + 50));
+            const rows = element.shadowRoot.querySelectorAll('tbody tr');
+            expect(rows).toHaveLength(BATCH_SIZE + 50);
+            expect(rows[0].querySelector('td:nth-child(2)').textContent.trim()).toBe(
+                'First0 Last0'
+            );
+            expect(rows[rows.length - 1].querySelector('td:nth-child(2)').textContent.trim()).toBe(
+                `First${BATCH_SIZE + 49} Last${BATCH_SIZE + 49}`
+            );
+        });
+
+        it('shows which batch is running while a multi-batch preview is in flight', async () => {
+            let resolveFirstBatch;
+            const pendingFirstBatch = new Promise((resolve) => {
+                resolveFirstBatch = resolve;
+            });
+            previewMatches
+                .mockImplementationOnce(() => pendingFirstBatch)
+                .mockImplementation(({ rows }) => Promise.resolve(echoPreview(rows)));
+
+            const file = new File(
+                [new TextEncoder().encode(bigFile(BATCH_SIZE + 50))],
+                'attendees.csv',
+                { type: 'text/csv' }
+            );
+            const input = element.shadowRoot.querySelector('lightning-input');
+            Object.defineProperty(input, 'files', { value: [file], configurable: true });
+            const changeEvent = new CustomEvent('change');
+            Object.defineProperty(changeEvent, 'target', { value: input, configurable: true });
+            input.dispatchEvent(changeEvent);
+            await flush(5);
+
+            expect(element.shadowRoot.textContent).toContain('Checking batch 1 of 2');
+
+            resolveFirstBatch([]);
+            await flush();
+            expect(previewMatches).toHaveBeenCalledTimes(2);
+        });
+
+        it('applies selected rows in batches and accumulates created/updated counts', async () => {
+            await upload(element, bigFile(BATCH_SIZE + 50));
+            applyChanges
+                .mockResolvedValueOnce({
+                    attendeesCreated: 150,
+                    attendeesUpdated: 20,
+                    attendeesFailed: 0,
+                    failures: []
+                })
+                .mockResolvedValueOnce({
+                    attendeesCreated: 40,
+                    attendeesUpdated: 10,
+                    attendeesFailed: 0,
+                    failures: []
+                });
+
+            clickApply();
+            await flush();
+
+            expect(applyChanges).toHaveBeenCalledTimes(2);
+            expect(applyChanges.mock.calls[0][0].rows).toHaveLength(BATCH_SIZE);
+            expect(applyChanges.mock.calls[1][0].rows).toHaveLength(50);
+            expect(applyChanges.mock.calls[0][0].sourceFile).toBe('attendees.csv');
+            expect(applyChanges.mock.calls[1][0].sourceFile).toBe('attendees.csv');
+            expect(element.shadowRoot.textContent).toContain('190'); // 150 + 40 created
+            expect(element.shadowRoot.textContent).toContain('30'); // 20 + 10 refreshed
+        });
+
+        it('aggregates failures from several apply batches and offers them for download', async () => {
+            await upload(element, bigFile(BATCH_SIZE + 50));
+            applyChanges
+                .mockResolvedValueOnce({
+                    attendeesCreated: 199,
+                    attendeesUpdated: 0,
+                    attendeesFailed: 1,
+                    failures: [
+                        {
+                            row: {
+                                firstName: 'First5',
+                                lastName: 'Last5',
+                                email: 'u5@x.com',
+                                company: 'Acme'
+                            },
+                            message: 'REQUIRED_FIELD_MISSING'
+                        }
+                    ]
+                })
+                .mockResolvedValueOnce({
+                    attendeesCreated: 48,
+                    attendeesUpdated: 0,
+                    attendeesFailed: 2,
+                    failures: [
+                        {
+                            row: {
+                                firstName: 'First210',
+                                lastName: 'Last210',
+                                email: 'u210@x.com',
+                                company: 'Acme'
+                            },
+                            message: 'DUPLICATE_VALUE'
+                        },
+                        {
+                            row: {
+                                firstName: 'First220',
+                                lastName: 'Last220',
+                                email: 'u220@x.com',
+                                company: 'Acme'
+                            },
+                            message: 'FIELD_CUSTOM_VALIDATION_EXCEPTION'
+                        }
+                    ]
+                });
+
+            clickApply();
+            await flush();
+
+            expect(element.shadowRoot.textContent).toContain('could not be imported');
+            expect(element.shadowRoot.textContent).toContain('were not rolled back');
+
+            const downloadBtn = [...element.shadowRoot.querySelectorAll('lightning-button')].find(
+                (b) => b.label === 'Download Failed Rows'
+            );
+            expect(downloadBtn).not.toBeUndefined();
+            downloadBtn.dispatchEvent(new CustomEvent('click'));
+
+            const [csv, fileName] = downloadCsv.mock.calls[0];
+            expect(fileName).toBe('failed_rows_manual_review.csv');
+            expect(csv.split('\r\n')).toEqual([
+                'Name,Email,Company,Why it failed',
+                'First5 Last5,u5@x.com,Acme,REQUIRED_FIELD_MISSING',
+                'First210 Last210,u210@x.com,Acme,DUPLICATE_VALUE',
+                'First220 Last220,u220@x.com,Acme,FIELD_CUSTOM_VALIDATION_EXCEPTION'
+            ]);
+        });
+
+        it('neutralises a formula smuggled into a failed row before download', async () => {
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,`);
+            applyChanges.mockResolvedValue({
+                attendeesCreated: 0,
+                attendeesUpdated: 0,
+                attendeesFailed: 1,
+                failures: [
+                    {
+                        row: {
+                            firstName: '=HYPERLINK("http://evil")',
+                            lastName: 'Doe',
+                            email: 'j@x.com',
+                            company: 'Acme'
+                        },
+                        message: 'DUPLICATE_VALUE'
+                    }
+                ]
+            });
+
+            clickApply();
+            await flush();
+
+            [...element.shadowRoot.querySelectorAll('lightning-button')]
+                .find((b) => b.label === 'Download Failed Rows')
+                .dispatchEvent(new CustomEvent('click'));
+            const [csv] = downloadCsv.mock.calls[0];
+            expect(csv).toContain('"\'=HYPERLINK(""http://evil"") Doe"');
+            expect(csv).not.toMatch(/,=HYPERLINK/);
+        });
+
+        it('does not offer a failed-rows download when nothing failed', async () => {
+            applyChanges.mockResolvedValue({
+                attendeesCreated: 1,
+                attendeesUpdated: 0,
+                attendeesFailed: 0,
+                failures: []
+            });
+            await upload(element, `${HEADER}\nJane,Doe,j@x.com,,Acme,`);
+            clickApply();
+            await flush();
+            const labels = [...element.shadowRoot.querySelectorAll('lightning-button')].map(
+                (b) => b.label
+            );
+            expect(labels).not.toContain('Download Failed Rows');
         });
     });
 

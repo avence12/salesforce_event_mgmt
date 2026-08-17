@@ -329,10 +329,16 @@ private class AttendeeImportControllerTest {
         System.assertEquals(0, [SELECT COUNT() FROM Event_Attendee__c]);
     }
 
+    /**
+     * R10: MAX_ROWS (8000) is the LWC-enforced total for a whole file, chunked into
+     * BATCH_SIZE-row calls; a single Apex call is guarded against MAX_BATCH_ROWS
+     * instead, because after chunking a call never sees anywhere near MAX_ROWS. See
+     * the comment on guard().
+     */
     @IsTest
     static void rejectsOversizedAndEmptyInput() {
         List<AttendeeImportController.ImportRow> tooMany = new List<AttendeeImportController.ImportRow>();
-        for (Integer i = 0; i <= AttendeeImportController.MAX_ROWS; i++) {
+        for (Integer i = 0; i <= AttendeeImportController.MAX_BATCH_ROWS; i++) {
             tooMany.add(row('A', 'B' + i, 'a' + i + '@x.example', null));
         }
         Boolean threwOversize = false;
@@ -341,7 +347,7 @@ private class AttendeeImportControllerTest {
         } catch (AuraHandledException e) {
             threwOversize = true;
         }
-        System.assert(threwOversize, 'Should reject > MAX_ROWS');
+        System.assert(threwOversize, 'Should reject > MAX_BATCH_ROWS');
 
         Boolean threwEmpty = false;
         try {
@@ -350,6 +356,65 @@ private class AttendeeImportControllerTest {
             threwEmpty = true;
         }
         System.assert(threwEmpty, 'Should reject empty input');
+    }
+
+    // ================= R10: chunking and partial failure =================
+
+    /**
+     * The path a large import now depends on: one batch can partially fail without
+     * losing the rows that were fine, and the failure names the person and carries
+     * the platform's own error message rather than swallowing it.
+     *
+     * Event_Attendee__c has no validation rule for Database.upsert to genuinely fail
+     * against, so this uses the test-only seam on AttendeeImportController to blank
+     * a real required field (Last_Name__c) right before DML for one named row — a
+     * real platform rejection, not a simulated result.
+     */
+    @IsTest
+    static void applyToleratesAPartialFailureAndReportsIt() {
+        AttendeeImportController.sabotageRequiredFieldForLastNames = new Set<String>{ 'Faily' };
+        AttendeeImportController.ApplyResult res;
+        try {
+            Test.startTest();
+            res = AttendeeImportController.applyChanges(
+                new List<AttendeeImportController.ImportRow>{
+                    row('Good', 'Faily', 'faily@x.example', 'Acme Corp'),
+                    row('Solid', 'Succeeds', 'succeeds@x.example', 'Acme Corp')
+                },
+                'attendees.csv'
+            );
+            Test.stopTest();
+        } finally {
+            AttendeeImportController.sabotageRequiredFieldForLastNames = new Set<String>();
+        }
+
+        System.assertEquals(1, res.attendeesCreated, 'The healthy row in the batch must still be written');
+        System.assertEquals(0, res.attendeesUpdated);
+        System.assertEquals(1, res.attendeesFailed);
+        System.assertEquals(1, res.failures.size());
+        System.assertEquals('Faily', res.failures[0].row.lastName, 'The failure names which person it was');
+        System.assert(String.isNotBlank(res.failures[0].message), 'The platform error message is kept, not swallowed');
+
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Event_Attendee__c WHERE Last_Name__c = 'Succeeds'],
+            'One bad row does not discard the rest of the batch'
+        );
+        System.assertEquals(0, [SELECT COUNT() FROM Event_Attendee__c WHERE Name = 'Good Faily']);
+    }
+
+    /** A batch with nothing wrong in it reports zero failures, not an empty-but-present list. */
+    @IsTest
+    static void applyWithNoFailuresReportsZero() {
+        Test.startTest();
+        AttendeeImportController.ApplyResult res = AttendeeImportController.applyChanges(
+            one(row('Solid', 'Succeeds', 'succeeds@x.example', 'Acme Corp')),
+            'attendees.csv'
+        );
+        Test.stopTest();
+
+        System.assertEquals(0, res.attendeesFailed);
+        System.assertEquals(0, res.failures.size());
     }
 
     /**

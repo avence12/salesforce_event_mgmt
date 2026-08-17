@@ -24,6 +24,9 @@
             </template>
             <template lwc:if={loading}>
                 <lightning-spinner alternative-text="Working…" size="medium"></lightning-spinner>
+                <template lwc:if={progressLabel}>
+                    <p class="slds-text-align_center slds-text-color_weak slds-m-top_x-small">{progressLabel}</p>
+                </template>
             </template>
 
             <!-- STEP 1 -->
@@ -139,11 +142,28 @@
                     <p>
                         <b>{applyResult.attendeesCreated}</b> attendee(s) created,
                         <b>{applyResult.attendeesUpdated}</b> already known and refreshed.<br />
+                        <template lwc:if={hasApplyFailures}>
+                            <b>{applyResult.attendeesFailed}</b> failed to import.<br />
+                        </template>
                         No contact, lead or account was created, changed or deleted.
                     </p>
                     <p class="slds-m-top_small slds-text-color_weak">
                         Invite them from an event: open a Marketing Event and use <b>Add Attendees</b>.
                     </p>
+                    <template lwc:if={hasApplyFailures}>
+                        <p class="slds-m-top_small slds-text-color_error">
+                            <b>{applyResult.attendeesFailed}</b> row(s) could not be imported. Batches apply
+                            independently, so the rows before the failing one were already written and were not rolled
+                            back. Download the list, fix them in the file and upload it again — that is safe, because
+                            the import refreshes the same attendees rather than duplicating them.
+                        </p>
+                        <lightning-button
+                            class="slds-m-top_x-small"
+                            label="Download Failed Rows"
+                            icon-name="utility:download"
+                            onclick={handleDownloadFailedList}
+                        ></lightning-button>
+                    </template>
                     <template lwc:if={hasSkipped}>
                         <p class="slds-m-top_small slds-text-color_weak">
                             <b>{stats.skippedCount}</b> row(s) could not be imported — download the list, fix them in
