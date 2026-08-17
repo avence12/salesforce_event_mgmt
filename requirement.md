@@ -13,13 +13,14 @@ Marketing/sales staff within the company upload a contact list collected from ot
 - **Regional Head**: A user in the reporting hierarchy holding the Regional Head title. If the Approval Chain reaches a Regional Head before exhausting the 2-level cap, the chain ends at that Regional Head's approval — it does not continue further up, and does not require filling out the remaining levels.
 - **Approval Chain**: The ordered sequence of Approvers for an Event's Contacts, starting at the Account Owner and walking up `User.ManagerId` for at most 2 additional levels, terminating early if a Regional Head is reached.
 - **Contact**: A Salesforce standard object.
-- **Marketing Event**: An object to be created, representing a marketing event that holds a set of candidate Contacts.
+- **Event Attendee**: A custom object owned by this project, holding one row per imported person. It is not a Contact, Lead or Account — the import never creates, reads, updates or deletes any of those three standard objects.
+- **Marketing Event**: An object to be created, representing a marketing event that holds a set of candidate Event Attendees.
 
 ## Requirements
 
-1. **Import contact list**
-   The BD uploads a contact list exported from an external system; the system matches the list against existing Salesforce Contacts. If the uploaded record shows a change to an existing Contact's information (e.g., promotion, company change), that Contact is updated.
-   Definition of done: each record in the list results in one of three outcomes — "added as a new Contact," "existing Contact updated with the changed fields," or "no change, skipped."
+1. **Import attendee list**
+   The BD uploads an attendee list exported from an external system; the system matches each row against existing **Event Attendee** records — this project's own object — never against Salesforce Contacts, Leads or Accounts, which the import does not read or write at all. Matching is by a normalised key (last name, first name, company, email). If a row's key matches an existing Event Attendee, that record's title, mobile number and source file are refreshed; nothing on a Contact is ever touched.
+   Definition of done: each record in the list results in one of three outcomes — "added as a new Event Attendee," "existing Event Attendee updated with the changed fields," or "no last name to key on — skipped, nothing written."
 
 2. **Create Event & select contacts**
    The BD can create an Event and select Contacts from the Accounts they own to add to that Event.
