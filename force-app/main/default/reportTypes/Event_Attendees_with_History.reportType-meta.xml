@@ -2,7 +2,7 @@
 <ReportType xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Event_Attendees_with_History</fullName>
     <label>Event Attendees with Event History</label>
-    <description>★R6 The attendee side of the model. The existing Marketing Events report type answers "who is coming to this event"; this one answers "which events has this person been to", which is the question a recommendation starts from. Base object is Event_Attendee__c so the report groups by person rather than by event. The event's own columns come through the Event_Invitee__c formula fields (Event_Name__c, Event_Date__c, Event_Type__c) rather than a second join — Topic__c has no formula counterpart because it is a multi-select, so filtering by subject belongs on the Marketing Events report type instead.</description>
+    <description>★R6 The attendee side of the model. The existing Marketing Events report type answers "who is coming to this event"; this one answers "which events has this person been to", which is the question a recommendation starts from. Base object is Event_Attendee__c so the report groups by person rather than by event. The event's own columns come through the Event_Invitee__c formula fields (Event_Name__c, Event_Date__c, Event_Type__c) rather than a second join — ★R11 Topic has no formula counterpart because it is now a child object (Event_Topic__c) rather than a field on the event at all, and a formula cannot read through a one-to-many relationship any more than it could read a multi-select. Filtering by subject belongs on Marketing_Events_with_Topics instead.</description>
     <baseObject>Event_Attendee__c</baseObject>
     <category>other</category>
     <deployed>true</deployed>

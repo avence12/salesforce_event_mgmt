@@ -183,7 +183,7 @@ standard object, which is what
 `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` actually asserts and
 what makes the deploy safe against a populated org. The half that is gone is "needs no
 permission on standard objects": rendering a Contact or Account link requires Read, and that
-grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 8) rather than
+grant is deliberately left to the org's admin (DEPLOYMENT.md post-deploy step 7) rather than
 shipped in `Event_AM`. `CLAUDE.md`'s invariant needs rewording to match: *never writes* stays,
 *never reads* does not.
 
@@ -273,6 +273,100 @@ document (see *Reverted to 200*, immediately after) — a real margin against th
 roughly half of what 100 carried; and the third number, `MAX_BATCH_ROWS = 1000`, is still a
 judgment call rather than a derived one. None of the three has run against a real org; see *What
 R10 still needs an org*, immediately after ★R9's.
+
+**Revised 2026-08-17 (R11) — Topic stops being a picklist an admin curates and becomes a free tag
+a BD adds.** A requirements change, confined to how a Marketing Event carries its subject:
+
+> There are too many topics to enumerate. Make it a free tag, and let the BD role add tags
+> themselves.
+
+R6 built `Topic__c` as a restricted multi-select because the business had not yet said the
+taxonomy was open-ended; the post-deploy checklist's step 7 — *replace the placeholder values with
+the real taxonomy before anything can be judged similar to anything* — was written on the
+assumption that a finite, admin-curated list was coming. This revision says it is not: the number
+of topics a real events calendar generates is not a list one admin sits down and defines once, it
+is something that grows the way the events themselves do, and the person who knows what an event
+is about is the BD creating it, not whoever has Setup access.
+
+**What changes.** `Marketing_Event__c.Topic__c` — a field on the event — is deleted outright.
+`Event_Topic__c` — a new child object, Master-Detail to the event, one row per tag — replaces it.
+A BD adds a tag from the event's own record page (a related list, standard "New" button) the
+moment they think of it; nothing in Setup has to exist first. No record of either object has ever
+existed anywhere, so this is a straight replacement, not a migration — the same "our objects hold
+no data" reasoning `CLAUDE.md` states for every other change in this repo.
+
+**What this buys, concretely.** The post-deploy step that used to gate the whole recommendation
+feature — an admin defining and communicating a taxonomy before any BD could tag anything
+meaningfully — disappears. So does the picklist's other cost: a multi-select forces every event
+into values that existed when the field was defined, which is exactly backwards for a business
+that has just said the list of topics does not hold still.
+
+**What this costs, and it is the same cost `Company__c` already pays.** A free-text tag has
+nothing behind it. "AI & Data" and "ai and data" are two tags, not one, and no report rolls them
+up; a BD who tags loosely fragments the very similarity signal this feature exists to produce.
+This is not a new risk this revision invents — `Event_Attendee__c.Company__c` has carried exactly
+this cost since R5, accepted rather than solved with a normalisation layer, and R11 makes the same
+choice for the same reason: building deduplication machinery to prove a point already proven once
+in this codebase is not a good use of the "no aggregate fields by decision" instinct R6 already
+established elsewhere in this object model.
+
+**What this does not change.** The reason `Event_Invitee__c` has no `Topic` formula counterpart —
+`Event_Name__c`, `Event_Date__c` and `Event_Type__c` all read up to the event, but a formula
+cannot traverse a one-to-many relationship — is unaffected by moving Topic off a multi-select and
+onto a child object; a child object is exactly as unreadable from a formula as a multi-select was.
+Filtering by subject still has to go through a report whose base object is the event; that report
+type is now `Marketing_Events_with_Topics`, replacing the `Topic__c` column that used to live on
+`Marketing_Events_with_Invitees`.
+
+★R11 items are marked ★R11. **All of it is built.**
+
+### ★R11 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| Object `Event_Topic__c` + `Marketing_Event__c` Master-Detail field | One row per tag; the standard Text `Name` field is the tag itself, no separate label field |
+| Report type `Marketing_Events_with_Topics` | Replaces the `Topic__c` column dropped from `Marketing_Events_with_Invitees`; base object is the event, joined to `Event_Topics__r` |
+| `Event_AM` — Create/Read/Edit/Delete on `Event_Topic__c` | A BD who mistypes or wants to remove a tag fixes it themselves — the same self-service reasoning that motivated the object in the first place |
+| `Event_Approver` — Read on `Event_Topic__c` | Views, does not maintain |
+| Related list on the Marketing Event layout | `Event_Topic__c.Marketing_Event__c`, one column (`NAME`) |
+
+**Removed**
+
+| Item | Why |
+|---|---|
+| `Marketing_Event__c.Topic__c` | Superseded by `Event_Topic__c`. No record of either has ever existed — a replacement, not a migration |
+| `Topic__c` column on `Marketing_Events_with_Invitees` and both permission sets | The field it read no longer exists |
+| Post-deploy step *"Replace the Topic__c placeholder values with the real taxonomy"* | There is no taxonomy to seed. A BD tags as they go |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `scripts/seed-demo-data.apex` | Inserts `Event_Topic__c` rows instead of setting a semicolon-joined `Topic__c` string; reads each event's existing tags first so a re-run does not duplicate them, matching the idempotency the attendee seed already has |
+| `Event_Attendees_with_History` report type, `Attendee Event History` report | Description text updated to point at `Marketing_Events_with_Topics` rather than a column that no longer exists |
+
+**Not shipped, deliberately**
+
+- **No deduplication or normalisation of tag text.** Named above, under *What this costs* —
+  accepted for the same reason `Company__c`'s equivalent risk was accepted, not solved twice.
+- **No back-fill of past events' tags.** Untagged history still looks equally similar to
+  everything else; this was true under R6's picklist and remains true here. What changed is who
+  can fix it and when — a BD can tag a past event the moment they think to, without asking an
+  admin to add a value first.
+
+### ★R11 What still needs an org
+
+1. **Whether a related list is the right BD-facing surface for adding tags.** A standard "New"
+   button on a related list works, but was not built and compared against a small custom
+   component (a chip-style tag input, for instance) the way *Approvals by Company* was built and
+   compared against a list-view button in R8. If tagging turns out to be a frequent, fast action
+   BDs do many times per event, the standard related list's full-page "New" form may be more
+   friction than the action deserves — unverified without watching a real BD use it.
+2. **Whether `Event_Topics__r` is the correct child relationship name** the new report type's
+   `<join>` depends on — relationship names are assigned by the platform from
+   `relationshipName` at deploy time and have not been confirmed against a real deploy.
 
 ### ★R10 8000-row import: chunking and partial failure
 
@@ -500,12 +594,14 @@ Wireframes: `gstack-sketch-event-mgmt.html` (session scratchpad; screenshot `/tm
 ### Data model
 
 ★R5 The shape first — three custom objects, and `Event_Invitee__c` is the junction that makes
-event-to-attendee many-to-many. Only the relationship-carrying and key fields are on the
+event-to-attendee many-to-many (★R11 adds a fourth, `Event_Topic__c`, a plain Master-Detail
+child with no join role of its own). Only the relationship-carrying and key fields are on the
 diagram; the full field lists are in the blocks below it.
 
 ```mermaid
 erDiagram
     Marketing_Event__c ||--o{ Event_Invitee__c : "Master-Detail, cascade delete"
+    Marketing_Event__c ||--o{ Event_Topic__c : "R11, Master-Detail, cascade delete"
     Event_Attendee__c  ||--o{ Event_Invitee__c : "Lookup, Restrict delete"
     User               ||--o{ Event_Invitee__c : "Added_By__c and R9 Approver_1..5__c"
     Contact            ||--o{ Event_Attendee__c : "R8 Contact__c, optional, SetNull"
@@ -515,10 +611,14 @@ erDiagram
         Text        Name
         Date        Event_Date__c "required"
         Picklist    Event_Type__c "R6, Symposium OIP Conference"
-        MultiSelect Topic__c "R6, what similarity is computed from"
         RollUp      Approved_Count__c "counts Status = Approved"
         RollUp      Pending_Count__c "counts Status = Pending Approval"
         RollUp      Rejected_Count__c "counts Status = Rejected"
+    }
+
+    Event_Topic__c {
+        Text         Name "R11, the tag itself, free text, BD-maintained"
+        MasterDetail Marketing_Event__c FK "reparenting disabled"
     }
 
     Event_Attendee__c {
@@ -576,15 +676,21 @@ writing "Attended", which it has no way to know, or an AM writing a status the p
 `Attended_Requires_Approved` keeps the two in the right order — you cannot have attended
 something you were never approved for.
 
-★R6 **`Topic__c` is a multi-select, with everything that costs.** One event genuinely covers
-several subjects, so a single-select would force a false choice. The price is real and shows
-up immediately: a multi-select cannot be rolled up, cannot be referenced by a plain formula
-(only tested with `INCLUDES()`), and filters as "includes" rather than equality. That is why
-`Event_Invitee__c` has formula fields for the event's name, date and type but **not** its
-topic — and therefore why the attendee-side report shows what shape an event was but not what
-it was about. Filtering by subject has to go through the Marketing Events report type, whose
-base object is the event itself. The asymmetry is a consequence of the multi-select, recorded
-rather than papered over.
+~~★R6 **`Topic__c` is a multi-select, with everything that costs.**~~ **Superseded by R11.**
+`Topic__c` is deleted; a subject is now several `Event_Topic__c` rows rather than several
+values in one multi-select field. What survives from this paragraph is the shape of the cost,
+not the field it was about: a child object cannot be referenced by a plain formula any more than
+a multi-select could, so `Event_Invitee__c` still has no `Topic` formula counterpart, and
+filtering by subject still has to go through a report whose base object is the event — now
+`Marketing_Events_with_Topics` rather than a `Topic__c` column. Original text: One event
+genuinely covers several subjects, so a single-select would force a false choice. The price is
+real and shows up immediately: a multi-select cannot be rolled up, cannot be referenced by a
+plain formula (only tested with `INCLUDES()`), and filters as "includes" rather than equality.
+That is why `Event_Invitee__c` has formula fields for the event's name, date and type but
+**not** its topic — and therefore why the attendee-side report shows what shape an event was
+but not what it was about. Filtering by subject has to go through the Marketing Events report
+type, whose base object is the event itself. The asymmetry is a consequence of the multi-select,
+recorded rather than papered over.
 
 ★R6 **The `Event_Type__c` values are simply Symposium / OIP / Conference.** An earlier draft
 of this section treated replacing them as a migration, on the grounds that a restricted
@@ -608,11 +714,11 @@ be needed.
 **The current specification, in full.** The field lists below are the state of
 `force-app/main/default/objects`, not an accumulation of revision deltas — the revision
 markers elsewhere in this document explain *why* the shape is what it is, but none of these
-three objects has ever been deployed, so there is no earlier state of theirs to reconcile
+four objects has ever been deployed, so there is no earlier state of theirs to reconcile
 against. What is listed is what exists.
 
 Note what is *not* here, and that its absence is the point: no `Account`, no `Contact`, no
-`Lead`. The target org holds real data on all three; this project adds three custom objects
+`Lead`. The target org holds real data on all three; this project adds four custom objects
 beside them and touches none of it. A deploy is purely additive to that org.
 
 ```
@@ -621,17 +727,19 @@ Marketing_Event__c                                    OWD: Public Read/Write
   Event_Date__c              Date, required
   Location__c                Text(255)
   Event_Type__c              Picklist, restricted     Symposium | OIP | Conference
-  Topic__c                ★R6 Multi-select, restricted Digital Banking | Payments |
-                                                      Capital Markets | Insurance |
-                                                      Risk & Compliance | Cybersecurity |
-                                                      AI & Data | Sustainable Finance
-                                                      <- PLACEHOLDER VALUES, see OQ 19
   Expected_Attendees__c      Number
   Description__c             Long Text(32768)
   OwnerId                    standard - creating AM
   Approved_Count__c          Roll-Up  count of invitees where Status = Approved
   Pending_Count__c           Roll-Up  count where Status = Pending Approval
   Rejected_Count__c          Roll-Up  count where Status = Rejected
+```
+
+```
+Event_Topic__c                                     ★R11 OWD: ControlledByParent
+  (one row per tag; free text, added by a BD from the event page, no admin curation)
+  Name                       Text(80), required      the tag itself, e.g. "Payments"
+  Marketing_Event__c         Master-Detail -> Marketing_Event__c, reparenting disabled
 ```
 
 ```
@@ -726,8 +834,9 @@ Event_Invitee__c           (junction: one row per event x attendee)  OWD: Contro
   Event_Name__c              Formula, Text            Marketing_Event__r.Name
   Event_Date__c              Formula, Date            Marketing_Event__r.Event_Date__c
   Event_Type__c              Formula, Text            TEXT(Marketing_Event__r.Event_Type__c)
-                                                      (no Topic__c counterpart - a multi-select
-                                                       cannot be read by a formula)
+                                                      (no Topic counterpart - ★R11 it is a child
+                                                       object now, not a field; a formula cannot
+                                                       read through either shape)
 
   -- reads the running user --
   Added_By_Me__c             Formula, Checkbox        Added_By__c = $User.Id
@@ -766,7 +875,10 @@ that this person was put forward for that event, carrying the approval state and
 whether they came. Every question the system answers is one of those three read in some
 direction — and because `Event_Invitee__c` is the only join, both directions of the
 recommendation question ("what has this person attended?" and "who attended things like
-this?") are the same rows read from opposite ends.
+this?") are the same rows read from opposite ends. ★R11 adds a fourth, lighter-weight object,
+`Event_Topic__c`, that answers only one question — what is this event's subject — and does not
+participate in either join above; it exists because a subject is now several free-text tags
+rather than one field's worth of value.
 
 ★R5 **The object above replaces `Event_History__c`, which is deleted.** R4 had just
 built it — a two-headed attendance log hanging off Contact and Lead — and R5 removes it
@@ -1856,10 +1968,10 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 15. ★R5 ~~**Is a manager the right approver, now that the Account Owner cannot be one?**~~ **Answered by R7 and closed by R9, which built it.** The Account Owner is level 1 of the chain and the control R5 gave up is back — reached through the Contact link and the Account behind it, so premise 7 never comes under pressure. Only the *mechanism* changed between the answer and the build: `requirement.md` routes up the org chart rather than through a `cust_cd` table. Original R7 answer follows. **Answered by R7, with the key this entry said was missing.** The recovery it names — "a second approval step keyed off something the attendee does not currently carry" — is exactly what arrived: every row carries a customer code `cust_cd`, and a table maps it to the owning AM and onward to the regional head. The control R5 lost is restored without reaching an Account, so premise 7 never comes under pressure. Original text: **Is a manager the right approver, now that the Account Owner cannot be one?** R3's primary control was "the person who owns the customer relationship signs off on inviting their customer". R5 has no way to know whose customer an attendee is, so that control is gone and only the submitter's reporting line reviews anything. If the approval means "does this person belong at our event?", a manager suffices. If it means "is it appropriate to invite *my* customer?", this revision removed the only person who could answer, and the recovery is a second approval step keyed off something the attendee does not currently carry. **This is the biggest functional loss in R5 and should be confirmed with the business before the demo, not after.**
 16. ★R5 **Is `last|first|company|email` the right identity for an attendee?** It is the whole of de-duplication now. Two consequences are asserted in the tests rather than hoped about: two same-named people at one company with no email collapse into one attendee, and one person whose email changed between two files becomes two. The demo file contains both cases on purpose. If real lists turn out to carry a stable external id, that column is a far better key and the change is one method.
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
-19. ★R6 **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
+19. ★R6 ~~**What is the real `Topic__c` taxonomy, and who back-fills past events?**~~ **Half-settled by R11.** "What is the real taxonomy" is now the wrong question — R11 deletes the picklist precisely because the business does not want one enumerated. What survives unanswered is the second half: historical events still have no tags until somebody adds them, and an untagged event still looks equally similar to everything else in the meantime. What changed is who can act and when — a BD can tag a past event the moment they think to, without first asking an admin to add a value to a picklist that may not have existed yet — so the blocker this question named is gone even though the work itself is not done. Original text: **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
 20. ★R6 ~~**What does "OIP" expand to, and what distinguishes it from a Symposium?**~~ **Settled: it doesn't need distinguishing.** The business's answer is that OIP is its own independent Marketing Event category, not a variant of Symposium or Conference that needs a documented line between them — so the "AM picks at random" risk this entry raised does not apply: there is nothing to confuse it with. Original text: **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
 17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
-21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 6). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
+21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 10). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
 23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
 24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.
 25. ★R8 ~~**How does an approver approve a whole company's invitees at once?**~~ **Answered: a custom LWC on the event page — see *Screen 4b* below.** The business chose the component over the list-view button after seeing both wireframed, and the deciding argument was the phone: a standard list view's checkboxes are the wrong target size on a handset, and requirement.md asks for approval on iOS. The cost is accepted rather than avoided — ~300 lines where 40 would have done, and a partial walk-back of R3. Original text: **How does an approver approve a whole company's invitees at once?** The requirement is one click per company, with the per-invitee record model unchanged. The standard Approval Requests list cannot do it: its rows are `ProcessInstanceWorkitem` records and it cannot show, sort or group by a field on the target record, so the company is not even visible there to select on. The options are a list view on `Event_Invitee__c` (filtered to `Status = Pending Approval`, grouped by company) driving a **custom mass-approve action**, or a small LWC on the event page. Either is a partial reversal of R3, which deleted a hand-built approval console — the difference is that this is one bulk action calling `Approval.process`, not a console. **Needs verifying in a real org**, since design.md's Screen 4 already flags mass approve/reject behaviour as unverified.

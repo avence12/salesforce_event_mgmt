@@ -15,7 +15,6 @@
         <columns><field>Name</field><table>Marketing_Event__c</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Event_Date__c</field><table>Marketing_Event__c</table><checkedByDefault>true</checkedByDefault></columns>
         <columns><field>Event_Type__c</field><table>Marketing_Event__c</table><checkedByDefault>false</checkedByDefault></columns>
-        <columns><field>Topic__c</field><table>Marketing_Event__c</table><checkedByDefault>false</checkedByDefault></columns>
         <columns><field>Location__c</field><table>Marketing_Event__c</table><checkedByDefault>false</checkedByDefault></columns>
         <columns><field>OWNER.NAME</field><table>Marketing_Event__c</table><checkedByDefault>false</checkedByDefault></columns>
         <columns><field>Approved_Count__c</field><table>Marketing_Event__c</table><checkedByDefault>false</checkedByDefault></columns>

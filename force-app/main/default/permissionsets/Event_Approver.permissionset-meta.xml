@@ -30,6 +30,16 @@
         <viewAllRecords>false</viewAllRecords>
         <modifyAllRecords>false</modifyAllRecords>
     </objectPermissions>
+    <!-- ★R11 Read only — an approver views an event's tags, a BD maintains them. -->
+    <objectPermissions>
+        <object>Event_Topic__c</object>
+        <allowCreate>false</allowCreate>
+        <allowRead>true</allowRead>
+        <allowEdit>false</allowEdit>
+        <allowDelete>false</allowDelete>
+        <viewAllRecords>false</viewAllRecords>
+        <modifyAllRecords>false</modifyAllRecords>
+    </objectPermissions>
     <fieldPermissions>
         <field>Marketing_Event__c.Location__c</field>
         <readable>true</readable>
@@ -37,11 +47,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <field>Marketing_Event__c.Event_Type__c</field>
-        <readable>true</readable>
-        <editable>false</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Marketing_Event__c.Topic__c</field>
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>

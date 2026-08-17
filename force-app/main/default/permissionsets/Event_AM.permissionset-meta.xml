@@ -30,6 +30,20 @@
         <viewAllRecords>false</viewAllRecords>
         <modifyAllRecords>false</modifyAllRecords>
     </objectPermissions>
+    <!--
+      ★R11 Create/Edit/Delete, not just Create — a BD who mistypes a tag or wants to
+      remove one needs to fix it themselves, the same self-service reasoning that
+      justified this object replacing an admin-maintained picklist in the first place.
+    -->
+    <objectPermissions>
+        <object>Event_Topic__c</object>
+        <allowCreate>true</allowCreate>
+        <allowRead>true</allowRead>
+        <allowEdit>true</allowEdit>
+        <allowDelete>true</allowDelete>
+        <viewAllRecords>false</viewAllRecords>
+        <modifyAllRecords>false</modifyAllRecords>
+    </objectPermissions>
     <fieldPermissions>
         <field>Marketing_Event__c.Location__c</field>
         <readable>true</readable>
@@ -37,11 +51,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <field>Marketing_Event__c.Event_Type__c</field>
-        <readable>true</readable>
-        <editable>true</editable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <field>Marketing_Event__c.Topic__c</field>
         <readable>true</readable>
         <editable>true</editable>
     </fieldPermissions>

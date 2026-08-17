@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Event Topic</label>
+    <pluralLabel>Event Topics</pluralLabel>
+    <description>★R11 Replaces Marketing_Event__c.Topic__c, a restricted multi-select picklist whose
+value set an admin had to define and maintain in Setup before any BD could tag an event at all.
+The business's answer to "there are too many topics to enumerate" is to stop enumerating them:
+each row here is one free-text tag on one event, added by a BD from the event's own record page,
+with no Setup step in between. What that buys and what it costs are both real. It buys BD
+self-service — the post-deploy step that used to say "replace the placeholder Topic values before
+anything can be judged similar to anything" is gone, because there is no value set to seed. What
+it costs is exactly what Event_Attendee__c.Company__c already costs, for the same reason: free
+text with nothing behind it. "AI &amp; Data" and "ai and data" are two tags, not one, and no report
+rolls them up. That was accepted for Company__c without building deduplication machinery, and the
+same acceptance applies here rather than inventing a normalisation layer this object does not
+need to prove the point twice.</description>
+    <nameField>
+        <label>Topic</label>
+        <type>Text</type>
+    </nameField>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <sharingModel>ControlledByParent</sharingModel>
+    <enableActivities>false</enableActivities>
+    <enableBulkApi>true</enableBulkApi>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>false</enableHistory>
+    <enableLicensing>false</enableLicensing>
+    <enableReports>true</enableReports>
+    <enableSearch>true</enableSearch>
+    <enableSharing>true</enableSharing>
+    <enableStreamingApi>true</enableStreamingApi>
+    <externalSharingModel>Private</externalSharingModel>
+    <visibility>Public</visibility>
+</CustomObject>

@@ -1398,7 +1398,9 @@
       <h2>Screen 2 · Create Marketing Event</h2>
       <p>
         The standard create modal with a curated layout — no custom code. Status is deliberately
-        absent: it belongs to the invitee, not the event.
+        absent: it belongs to the invitee, not the event. Topic is deliberately absent too, as of
+        ★R11 — it is a free-tag child object (<code>Event_Topic__c</code>), added from the
+        event's own record page after it exists, not a field on this create form.
       </p>
     </div>
 
@@ -1425,11 +1427,6 @@
             <label class="field">
               <span class="field-label">Location</span>
               <span class="input">Berlin, DE</span>
-            </label>
-            <label class="field col-span">
-              <span class="field-label">Topic</span>
-              <span class="select">Digital Banking; Payments <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
-              <span class="help">Multi-select — what similarity is computed from later.</span>
             </label>
             <label class="field">
               <span class="field-label">Expected Attendees</span>

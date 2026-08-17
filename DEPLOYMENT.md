@@ -185,9 +185,8 @@ rather than inherit from a `git push`.
    ```bash
    sf apex run --file scripts/seed-demo-data.apex -o poc-sandbox
    ```
-   It creates attendees and two Marketing Events, and **no Account, Contact or Lead** — so it is safe to run in an org that already has real ones.
-7. **Replace the `Topic__c` placeholder values** with the real taxonomy (Setup → Object Manager → Marketing Event → Fields → Topic) and tag any past events. Until that is done nothing can be judged similar to anything, which is what the attendance history exists for.
-8. **★R8 Decide whether AMs may see the linked Contact** — optional, and deliberately not
+   It creates attendees and two Marketing Events, and **no Account, Contact or Lead** — so it is safe to run in an org that already has real ones. ★R11 It also tags them via `Event_Topic__c`, reading each event's existing tags first so a re-run does not duplicate them.
+7. **★R8 Decide whether AMs may see the linked Contact** — optional, and deliberately not
    deployed. `Event_Attendee__c.Contact__c` records that an imported person also exists as a
    Contact in the org. The field deploys; the **Read access on Contact** that makes it render
    as a name does not, because granting a project's users access to the org's customer data is
@@ -196,18 +195,18 @@ rather than inherit from a `git push`.
    The link is populated by a reconciliation run, never by the import — Screen 1 reads no
    standard object, and that is asserted in
    `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts`.
-9. **★R8 Confirm where this org keeps the customer code.** `Event_Invitee__c.Cust_Cd__c` is
+8. **★R8 Confirm where this org keeps the customer code.** `Event_Invitee__c.Cust_Cd__c` is
    snapshotted from the standard `Account.AccountNumber`, because that is the field every org
    has and the one that means "customer account number". If your org keeps it on a custom field
    instead, change the single line in `InviteeSelectorController.stampSnapshot` — no schema
    change here, and no field is ever added to Account by this project.
-10. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
+9. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
     Company* ships on the Marketing Event record page above the attendee selector. An AM who is
     nobody's approver sees it in its empty state, which is one line of text rather than an empty
     table. If that is unwanted, add a component visibility filter on the page or assign a
     second record page by profile. Both change how your org's pages are laid out, so neither is
     deployed from here.
-11. **★R9 Create the non-customer-guest Account, and reconcile the guests behind it** —
+10. **★R9 Create the non-customer-guest Account, and reconcile the guests behind it** —
     required before any such guest can be submitted, and a decision only the business can make.
     Professors, journalists and anyone else who is nobody's customer reach no Account Owner and
     therefore have no approval chain; the submit refuses them by design rather than routing them
@@ -246,7 +245,7 @@ rather than inherit from a `git push`.
        -- confirms the bucket Account resolves to a level-1 owner
        SELECT Id, Name, OwnerId FROM Account WHERE Name LIKE 'ZZ Non-Customer Guests%'
        ```
-12. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
+11. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
     be verified from the repo:
     - **A short chain must finish where it ends.** Submit an invitee whose chain has two levels
       and confirm that approving both marks it Approved — the third step is skipped because
@@ -256,7 +255,7 @@ rather than inherit from a `git push`.
       bell. That notification comes from a step approval action updating `Current_Level__c`,
       which fires the `Invitee_Level_Advanced` flow. If the chain of events does not hold, the
       symptom is silence: the item sits in their Approvals list unannounced.
-13. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+12. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 
