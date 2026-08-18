@@ -501,13 +501,8 @@
     color: var(--n-10);
     white-space: nowrap;
   }
-  .badge-new { background: #cfe9fe; color: var(--brand-30); }
-  .badge-known { background: #ecebea; color: var(--n-30); }
+  .badge-neutral { background: #ecebea; color: var(--n-30); }
   .badge-skip { background: #fdf0d5; color: var(--warning-50); }
-  .badge-approved { background: #cdefc4; color: #194e31; }
-  .badge-pending { background: #fdf0d5; color: var(--warning-50); }
-  .badge-rejected { background: #fddde3; color: var(--error-40); }
-  .badge-draft { background: #ecebea; color: var(--n-30); }
   .badge-vip { background: var(--brand-tint); color: var(--brand-30); border: 1px solid #bcd9f5; }
   /* Quieter than VIP on purpose: VIP is a claim about the guest, the level is context
      about the decision and must not compete for attention on every row. */
@@ -773,21 +768,25 @@
   <symbol id="i-report" viewBox="0 0 24 24"><path d="M4 20h4V10H4zm6 0h4V4h-4zm6 0h4v-7h-4z"/></symbol>
 </svg>
 
+
 <div class="masthead">
   <div class="masthead-inner">
-    <p class="eyebrow">Salesforce Event Management PoC · design.md R9</p>
+    <p class="eyebrow">Salesforce Event Management PoC · redrawn from main</p>
     <h1>Event Workflow Wireframes</h1>
     <p>
-      The end-to-end flow, the approval chain it now routes on, and every screen it passes
-      through — drawn against the Lightning Design System spec in <code>UI_design.md</code>.
-      Screen structure follows the LWC templates as built, so the mock-ups and the code say
-      the same thing.
+      The end-to-end flow, the approval chain it routes on, and every screen it passes
+      through — redrawn against the LWC templates, Apex controllers and metadata as they
+      stand on the <b>main</b> branch. Every label, count and message on this page is the string
+      the code actually renders. Where a screen's copy has fallen behind the routing that
+      sits underneath it, the drawing keeps the copy and says so rather than quietly
+      improving it.
     </p>
     <div class="masthead-meta">
-      <span class="meta-chip">3 custom LWCs</span>
-      <span class="meta-chip">3 standard screens</span>
-      <span class="meta-chip">R9 multi-level chain</span>
-      <span class="meta-chip">SLDS 2 styling hooks</span>
+      <span class="meta-chip">3 custom LWCs + 1 shared module</span>
+      <span class="meta-chip">3 standard surfaces</span>
+      <span class="meta-chip">R11 free-tag topics</span>
+      <span class="meta-chip">Multi-level chain · 5 provisioned levels</span>
+      <span class="meta-chip">SLDS styling hooks</span>
       <span class="meta-chip">English UI · US/EU audience</span>
     </div>
   </div>
@@ -803,7 +802,7 @@
     <a href="#s4">4 · Approval Requests</a>
     <a href="#s4b">4b · Approvals by Company</a>
     <a href="#s4m">4b · On a phone</a>
-    <a href="#s5">5 · Approved Invitees report</a>
+    <a href="#s5">5 · Reports</a>
     <a href="#states">Empty and error states</a>
   </nav>
 
@@ -825,7 +824,6 @@
       <span><i style="background: #eaf5ec; border: 1px solid #2e844a"></i>Record store / read source</span>
       <span><i style="background: #fef1f1; border: 1px solid #ea001e"></i>Refused — nothing written</span>
     </div>
-
     <div class="flowwrap scroller">
       <svg viewBox="0 0 1020 1700" width="1020" height="1700" role="img"
         aria-label="Flowchart of the seven-step event invitation workflow, from CSV import to approved-list export.">
@@ -944,7 +942,7 @@
           <text x="510" y="254" text-anchor="middle" font-size="13" fill="#181818">
             <tspan x="510" dy="0">Preview every row against the pool key</tspan>
             <tspan x="510" dy="16">New · Already known · Skipped</tspan>
-            <tspan x="510" dy="16" font-size="11" fill="#444444">nothing is written yet</tspan>
+            <tspan x="510" dy="16" font-size="11" fill="#444444">skipped rows sort to the top · nothing written yet</tspan>
           </text>
 
           <!-- 3L skipped -->
@@ -992,7 +990,7 @@
           <text x="510" y="634" text-anchor="middle" font-size="13" fill="#014486">
             <tspan x="510" dy="0">Propose guests from the pool</tspan>
             <tspan x="510" dy="16">Event_Invitee__c created as Draft</tspan>
-            <tspan x="510" dy="16" font-size="11" fill="#0b5cab">attendeeSelector · each row records who added it</tspan>
+            <tspan x="510" dy="16" font-size="11" fill="#0b5cab">attendeeSelector · the customer is snapshotted here</tspan>
           </text>
 
           <!-- 8 submit -->
@@ -1075,9 +1073,15 @@
 
     <div class="notes">
       <ul>
-        <li><b>Status lives on the invitee, not the event.</b> The event shows roll-up counts, so one AM's pending batch never blocks another's.</li>
-        <li><b>The chain is stamped whole, not walked.</b> All five approver fields are resolved at submit and frozen, so a reorganisation mid-approval cannot reroute an item somebody is already looking at.</li>
-        <li><b>Every step of this is built at R9</b>, including the chain. It routes on the org chart, not on a route table — see the next section for how a chain is resolved.</li>
+        <li><b>Status lives on the invitee, not the event.</b> The event carries three roll-up
+          counts — Pending, Approved, Rejected — so one AM's pending batch never blocks another's.</li>
+        <li><b>The chain is stamped whole, not walked.</b> All five approver fields plus
+          <code>Approval_Levels__c</code> are resolved at submit and frozen, so a reorganisation
+          mid-approval cannot reroute an item somebody is already looking at.</li>
+        <li><b>The approval process itself is five pre-provisioned steps</b>, each addressed to its
+          own <code>Approver_N__c</code> and gated on <code>NOT(ISBLANK(Approver_N__c))</code>. A
+          two-level chain simply skips steps 3–5; steps 4 and 5 are labelled <i>Reserved</i>
+          because the shipped configuration never fills them.</li>
       </ul>
     </div>
   </section>
@@ -1088,10 +1092,10 @@
       <h2>Approval chain</h2>
       <p>
         Who signs is resolved once, at submit, from the org chart: level 1 is the Account Owner
-        behind the invitee, and each level above is that person's manager, up to the level cap or
-        the first Regional Head — whichever comes first. Two invitees on the same event routinely
-        have different chain lengths, which is why the approver's screen says <i>Level 2 of 3</i>
-        rather than assuming.
+        snapshotted onto the invitee, and each level above is that person's manager, up to the
+        level cap or the first Regional Head — whichever comes first. Two invitees on the same
+        event routinely have different chain lengths, which is why the approver's screen says
+        <i>Level 2 of 3</i> rather than assuming.
       </p>
     </div>
 
@@ -1145,7 +1149,7 @@
           <li><span class="lvl">1</span><span class="who"><b>Ravi Prakash</b><span class="role">her manager</span></span></li>
           <li><span class="lvl">2</span><span class="who"><b>Ingrid Holm</b><span class="role">his manager</span></span></li>
         </ol>
-        <p class="chain-note"><b>Two signatures.</b> Nobody approves their own invitation, and dropping a level shortens the chain rather than buying another one at the top.</p>
+        <p class="chain-note"><b>Two signatures.</b> Nobody approves their own invitation, and dropping a level shortens the chain rather than buying another one at the top — the walk counts places in the org chart, not approvers.</p>
       </div>
 
       <div class="chain-card">
@@ -1163,10 +1167,30 @@
 
     <div class="notes">
       <ul>
-        <li><b>The cap and the title markers are one Custom Metadata record</b>, <code>Approval_Chain_Setting__mdt.Default</code> — raising the cap to 3 or 4 starts populating <code>Approver_4__c</code> and <code>Approver_5__c</code> with no deploy.</li>
-        <li><b>Title matching is a case-insensitive substring</b>, because real titles carry a region. That also matches “Assistant to the Regional Head”, which is why the marker is a setting an admin can narrow rather than a string in the code.</li>
-        <li><b>Unverified from this repo:</b> whether this org populates <code>User.Title</code> at all. An unmatched title does not error — every chain simply climbs to the cap, so the symptom is approvals taking one signature longer than expected.</li>
-        <li><b>What it costs:</b> the chain can no longer be edited as data. Changing who signs means changing the org chart, which is an administrator's Setup change rather than a row an operations team can add.</li>
+        <li><b>Four ways a submit is refused, all of them whole-batch.</b> No Account Owner on some
+          row; an inactive user anywhere in the chain; a manager the submitter cannot see; and a
+          chain whose only member is the submitter. Each raises
+          <code>ApprovalChainService.UnroutableException</code> before any DML, and each message
+          names the cause and the remedy and ends <i>“Nothing was submitted.”</i></li>
+        <li><b>A chain the running user cannot read in full is refused, not truncated.</b> Under a
+          restrictive User sharing model the walk can lose sight of a manager; approving with fewer
+          signatures than the business asked for, silently, is the outcome that rule exists to
+          prevent.</li>
+        <li><b>The cap and the title markers are one Custom Metadata record</b>,
+          <code>Approval_Chain_Setting__mdt.Default</code> — shipped as <i>Regional Head</i> and
+          <i>2</i>. Raising the cap to 3 or 4 starts populating <code>Approver_4__c</code> and
+          <code>Approver_5__c</code> with no deploy; anything above 5 is clamped, because a level no
+          approval step can address would strand the invitee.</li>
+        <li><b>Title matching is a case-insensitive substring</b> against a comma-separated list,
+          because real titles carry a region. That also matches “Assistant to the Regional Head”,
+          which is why the marker is a setting an admin can narrow rather than a string in the code.
+          A blank list is legal and means no early termination.</li>
+        <li><b>Unverified from this repo:</b> whether this org populates <code>User.Title</code> at
+          all. An unmatched title does not error — every chain simply climbs to the cap, so the
+          symptom is approvals taking one signature longer than expected.</li>
+        <li><b>What it costs:</b> the chain can no longer be edited as data. Changing who signs means
+          changing the org chart, which is an administrator's Setup change rather than a row an
+          operations team can add.</li>
       </ul>
     </div>
   </section>
@@ -1176,8 +1200,9 @@
     <div class="sec-head">
       <h2>Screen 1 · Import External Attendee List</h2>
       <p>
-        A three-step wizard on its own app page. The whole point of the middle step is that
-        the user sees the consequence of the file before anything is written.
+        A three-step wizard on its own app page — the <b>Import Attendees</b> tab, which is a
+        FlexiPage holding one component. The whole point of the middle step is that the user sees
+        the consequence of the file before anything is written.
       </p>
     </div>
 
@@ -1193,8 +1218,8 @@
         </div>
         <div class="lex-nav">
           <span class="lex-appname">Event Management</span>
-          <a href="#s1">Home</a>
           <a href="#s3">Marketing Events</a>
+          <a href="#s1">Event Attendees</a>
           <a class="on" href="#s1">Import Attendees</a>
           <a href="#s5">Reports</a>
         </div>
@@ -1246,53 +1271,43 @@
                   </thead>
                   <tbody>
                     <tr>
+                      <td><input type="checkbox" disabled aria-label="Row skipped, cannot be imported"></td>
+                      <td>Elena</td>
+                      <td>Technische Universität München</td>
+                      <td>e.kaufmann@tum.example</td>
+                      <td class="weak">No last name — an attendee with no name is unrecognisable later</td>
+                      <td><span class="badge badge-skip">Skipped</span></td>
+                    </tr>
+                    <tr>
                       <td><input type="checkbox" checked aria-label="Import Anna Weber"></td>
                       <td>Anna Weber</td>
                       <td>Nordbank AG</td>
                       <td>anna.weber@nordbank.example</td>
-                      <td class="weak">Will be created</td>
-                      <td><span class="badge badge-new">New</span></td>
+                      <td class="weak">Will be created as an event attendee</td>
+                      <td><span class="badge badge-neutral">New</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked aria-label="Import Tom Whitfield"></td>
+                      <td>Tom Whitfield</td>
+                      <td>Helvetia Insurance</td>
+                      <td>n/a</td>
+                      <td class="weak">Will be created as an event attendee (the Email column is not an address, so it was not stored)</td>
+                      <td><span class="badge badge-neutral">New</span></td>
                     </tr>
                     <tr>
                       <td><input type="checkbox" checked aria-label="Import Marcus Reid"></td>
                       <td>Marcus Reid</td>
                       <td>Helvetia Insurance</td>
                       <td>m.reid@helvetia.example</td>
-                      <td class="weak">Title, mobile and source file will refresh</td>
-                      <td><span class="badge badge-known">Already known</span></td>
-                    </tr>
-                    <tr>
-                      <td><input type="checkbox" checked aria-label="Import Sofia Almeida"></td>
-                      <td>Sofia Almeida</td>
-                      <td>Banco Atlântico</td>
-                      <td>sofia.almeida@batlantico.example</td>
-                      <td class="weak">Will be created</td>
-                      <td><span class="badge badge-new">New</span></td>
-                    </tr>
-                    <tr>
-                      <td><input type="checkbox" checked aria-label="Import Tom Whitfield"></td>
-                      <td>Tom Whitfield</td>
-                      <td>Helvetia Insurance</td>
-                      <td class="weak">—</td>
-                      <td class="weak">Will be created · “n/a” is not an address, so it is dropped and the person kept</td>
-                      <td><span class="badge badge-new">New</span></td>
-                    </tr>
-                    <tr>
-                      <td><input type="checkbox" disabled aria-label="Row skipped, cannot be imported"></td>
-                      <td class="weak">(no last name)</td>
-                      <td>Technische Universität München</td>
-                      <td>e.kaufmann@tum.example</td>
-                      <td class="weak">Nothing is written — a person with no surname cannot be recognised later</td>
-                      <td><span class="badge badge-skip">Skipped</span></td>
+                      <td class="weak">Already an attendee — title, mobile and source file will be refreshed</td>
+                      <td><span class="badge badge-neutral">Already known</span></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
               <div class="spread" style="margin-top: 1rem">
-                <button class="btn" type="button">
-                  <svg viewBox="0 0 24 24"><use href="#i-download"></use></svg>Download Skipped Rows
-                </button>
+                <button class="btn" type="button">Download Skipped Rows</button>
                 <div style="display: flex; gap: 0.375rem">
                   <button class="btn" type="button">Back</button>
                   <button class="btn btn-brand" type="button">Import 123 Attendees</button>
@@ -1306,9 +1321,25 @@
 
     <div class="notes">
       <ul>
-        <li><b>Skipped rows are unticked and disabled</b>, not hidden — the count on screen has to match the file the user is holding.</li>
-        <li><b>The primary button carries the number</b> it will act on, so the commit is never a guess.</li>
-        <li>Row selection is a plain checkbox rather than <code>lightning-datatable</code> because rows carry a per-row explanation column.</li>
+        <li><b>Skipped rows sort to the top</b>, unticked and disabled — in a file of thousands the
+          rows the user may want to fix would otherwise be buried mid-wall. Below them come New,
+          then Already known; within a rank the file's own order is preserved.</li>
+        <li><b>“What will happen” is the server's sentence, not the client's.</b> Every row is
+          classified in Apex against <code>Unique_Key__c</code> and the wizard prints the reason it
+          came back with, so the preview cannot describe an outcome the import would not produce.</li>
+        <li><b>Only Skipped is coloured.</b> New and Already known share the plain SLDS badge; the
+          warning theme is reserved for the rows that write nothing, so the eye goes to the
+          exception rather than to three competing colours.</li>
+        <li><b>An unusable email costs the address, not the person.</b> The uploaded value stays
+          visible in the Email column and the row still imports, with the reason saying what was
+          dropped.</li>
+        <li><b>The primary button carries the number</b> it will act on, and it counts ticks — not
+          rows — so unticking a row is visible in the commit.</li>
+        <li><b>Download Skipped Rows appears only when there are skipped rows</b>, on this step and
+          again on step 3. It is the one CSV this project still writes itself, and the one place a
+          formula-injection guard is applied (<code>c/csvDownload</code>).</li>
+        <li>Row selection is a plain checkbox rather than <code>lightning-datatable</code> because
+          rows carry a per-row explanation column.</li>
       </ul>
     </div>
 
@@ -1370,16 +1401,27 @@
           </div>
           <div class="progress-step current"><span class="marker"></span><span class="lbl">3 Import Results</span></div>
         </div>
-        <div class="alert alert-success">
-          <svg viewBox="0 0 24 24"><use href="#i-check"></use></svg>
-          <div>
-            <b>Import complete.</b> 96 attendees created, 27 already known and refreshed.
-            No contact, lead or account was created, changed or deleted.
-          </div>
-        </div>
+        <p style="display: flex; align-items: center; gap: 0.375rem; font-size: 1.125rem; margin: 0 0 0.5rem">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="#2e844a"><use href="#i-check"></use></svg>
+          Import complete
+        </p>
+        <p style="margin: 0 0 0.5rem">
+          <b>96</b> attendee(s) created, <b>27</b> already known and refreshed.<br>
+          <b>2</b> failed to import.<br>
+          No contact, lead or account was created, changed or deleted.
+        </p>
         <p class="help">Invite them from an event: open a Marketing Event and use <b>Add Attendees</b>.</p>
+        <p style="color: var(--error-40); margin: 0.5rem 0">
+          <b>2</b> row(s) could not be imported. Batches apply independently, so the rows before the
+          failing one were already written and were not rolled back. Download the list, fix them in
+          the file and upload it again — that is safe, because the import refreshes the same
+          attendees rather than duplicating them.
+        </p>
+        <button class="btn" type="button" style="margin-bottom: 0.5rem">
+          <svg viewBox="0 0 24 24"><use href="#i-download"></use></svg>Download Failed Rows
+        </button>
         <p class="help">
-          <b>5 rows</b> could not be imported — download the list, fix them in the file and upload
+          <b>5</b> row(s) could not be imported — download the list, fix them in the file and upload
           again. Starting another import discards it.
         </p>
         <div style="display: flex; gap: 0.375rem; margin-top: 0.75rem">
@@ -1390,6 +1432,34 @@
         </div>
       </div>
     </div>
+
+    <div class="notes">
+      <ul>
+        <li><b>The result is a heading and two paragraphs, not a success banner.</b> The count of
+          created and refreshed rows is the news; the no-contacts-were-touched sentence is repeated
+          here because it is the promise the whole import is judged on.</li>
+        <li><b>“Import Another File” resets everything</b>, including the skipped list — which is
+          why the copy says so before the user presses it.</li>
+        <li><b>Skipped and Failed are two different downloads, because they are two different
+          facts.</b> Skipped rows were refused by the preview and never written; failed rows were
+          attempted and refused by the database — a surname that is purely a number, say, which a
+          validation rule rejects whoever writes it. Each carries its own reason column, and both
+          are formula-guarded on the way out.</li>
+        <li><b>A partial import is reported as a partial import.</b> Within a batch the upsert is
+          <code>allOrNone = false</code>, so one bad row cannot take the other 199 down; between
+          batches nothing can be rolled back, so if a whole call throws the error says which batch
+          it was and how many had already been applied.</li>
+        <li><b>The parse is entirely client-side</b>: delimiter sniffed from the header line, UTF-8
+          decoded with <code>fatal: true</code>, BOM stripped, rows de-duplicated on the same key
+          the server upserts with. One file may carry 8,000 rows, and de-duplication happens across
+          the whole file before it is chunked — so no person can land in two batches.</li>
+        <li><b>Both Apex calls are chunked at 200 rows and run one after another</b>, not in
+          parallel: <code>previewMatches</code> while checking, <code>applyChanges</code> while
+          importing. The spinner carries <i>“Checking batch 3 of 40…”</i> so a long import does not
+          look hung, and the label stays blank when there is only one batch. The server's own guard
+          is 1,000 rows per call, so the client's 200 can be re-tuned without a redeploy.</li>
+      </ul>
+    </div>
   </section>
 
   <!-- ================= SCREEN 2 ================= -->
@@ -1397,10 +1467,9 @@
     <div class="sec-head">
       <h2>Screen 2 · Create Marketing Event</h2>
       <p>
-        The standard create modal with a curated layout — no custom code. Status is deliberately
-        absent: it belongs to the invitee, not the event. Topic is deliberately absent too, as of
-        ★R11 — it is a free-tag child object (<code>Event_Topic__c</code>), added from the
-        event's own record page after it exists, not a field on this create form.
+        The standard create modal driven by the page layout — no custom code. Status is deliberately
+        absent: it belongs to the invitee, not the event. Topic is absent too: it is a free-text
+        child object a BD adds after the event exists, not a field on this form.
       </p>
     </div>
 
@@ -1410,37 +1479,38 @@
       <div class="modal">
         <div class="modal-hdr"><h4>New Marketing Event</h4></div>
         <div class="modal-body">
-          <p class="section-label">Event Information</p>
+          <p class="section-label">Information</p>
           <div class="form-grid">
             <label class="field">
-              <span class="field-label"><span class="req">*</span>Event Name</span>
+              <span class="field-label"><span class="req">*</span>Marketing Event Name</span>
               <span class="input">FinTech Forum Berlin 2026</span>
-            </label>
-            <label class="field">
-              <span class="field-label"><span class="req">*</span>Event Date</span>
-              <span class="input">17/09/2026</span>
-            </label>
-            <label class="field">
-              <span class="field-label">Event Type</span>
-              <span class="select">Conference <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
-            </label>
-            <label class="field">
-              <span class="field-label">Location</span>
-              <span class="input">Berlin, DE</span>
             </label>
             <label class="field">
               <span class="field-label">Expected Attendees</span>
               <span class="input">150</span>
             </label>
             <label class="field">
-              <span class="field-label">Event Owner</span>
-              <span class="input placeholder">Dana Brooks</span>
+              <span class="field-label"><span class="req">*</span>Event Date</span>
+              <span class="input">17/09/2026</span>
             </label>
-            <label class="field col-span">
+            <label class="field">
               <span class="field-label">Description</span>
               <span class="input" style="height: 64px; align-items: flex-start; padding-top: 0.5rem">
                 Annual customer and partner forum, Berlin.
               </span>
+            </label>
+            <label class="field">
+              <span class="field-label">Location</span>
+              <span class="input">Berlin, DE</span>
+            </label>
+            <label class="field">
+              <span class="field-label">Owner</span>
+              <span class="input">Dana Brooks</span>
+            </label>
+            <label class="field">
+              <span class="field-label">Event Type</span>
+              <span class="select">Conference <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
+              <span class="help">Symposium · OIP · Conference — restricted.</span>
             </label>
           </div>
         </div>
@@ -1454,7 +1524,22 @@
 
     <div class="notes">
       <ul>
-        <li><b>No Status field.</b> Several AMs submit independent batches, so an event-level state machine would deadlock. The event shows counts instead.</li>
+        <li><b>The layout is two columns, top to bottom</b>: Name, Event Date, Location, Event Type
+          on the left; Expected Attendees, Description, Owner on the right. The modal interleaves
+          them, which is what a two-column layout looks like in a create dialog.</li>
+        <li><b>No Status field.</b> Several AMs submit independent batches, so an event-level state
+          machine would deadlock. The event carries roll-up counts instead — and they sit in a
+          separate read-only <b>Review Progress</b> section that a create form does not show.</li>
+        <li><b>Topic became <code>Event_Topic__c</code>, one free-text row per tag.</b> It replaced a
+          restricted multi-select whose value set an admin had to seed in Setup before anyone could
+          tag anything; a BD now types the tag themselves, and the permission sets follow — BD gets
+          create/read/edit/delete, an approver gets read. The cost is the one Company__c already
+          pays: “AI &amp; Data” and “ai and data” are two tags, and nothing rolls them up.</li>
+        <li><b>Where a BD actually types that tag is worth checking in a real org.</b> The page
+          layout carries an Event Topics related list, but the Lightning record page (Screen 3) is a
+          FlexiPage with no related-list component in any of its four regions — highlights, the two
+          custom LWCs and the detail panel. As shipped, that leaves the related list nowhere to
+          appear.</li>
         <li>Save navigates straight to the record page, which is where Screen 3 lives.</li>
       </ul>
     </div>
@@ -1465,8 +1550,10 @@
     <div class="sec-head">
       <h2>Screen 3 · Event Invitees</h2>
       <p>
-        The event record page: standard highlights panel carrying the roll-up counts, with the
-        attendee selector below it. Two tabs — propose guests, then read and mark up the whole list.
+        The event record page. The FlexiPage puts <b>Approvals by Company</b> above the attendee
+        selector in the main column and the detail panel in the sidebar — an approver arriving here
+        has one job, and it should be the first thing on the page. An AM sees that component in its
+        one-line empty state.
       </p>
     </div>
 
@@ -1482,8 +1569,8 @@
         </div>
         <div class="lex-nav">
           <span class="lex-appname">Event Management</span>
-          <a href="#s3">Home</a>
           <a class="on" href="#s3">Marketing Events</a>
+          <a href="#s1">Event Attendees</a>
           <a href="#s1">Import Attendees</a>
           <a href="#s5">Reports</a>
         </div>
@@ -1501,92 +1588,125 @@
               </div>
             </div>
             <div class="highlights">
-              <div><div class="hl-label">Event Date</div><div class="hl-value">17/09/2026</div></div>
-              <div><div class="hl-label">Type</div><div class="hl-value">Conference</div></div>
-              <div><div class="hl-label">Approved</div><div class="hl-value">27</div></div>
-              <div><div class="hl-label">Pending</div><div class="hl-value">12</div></div>
-              <div><div class="hl-label">Rejected</div><div class="hl-value">3</div></div>
-              <div><div class="hl-label">Owner</div><div class="hl-value link">Dana Brooks</div></div>
+              <div>
+                <div class="hl-label">Highlights panel</div>
+                <div class="hl-value" style="font-weight: 400; color: var(--n-50)">
+                  Whatever the org's default compact layout shows — this project ships none
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="card">
-            <div class="card-hdr">
-              <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
-              <h4>Event Invitees</h4>
-            </div>
-            <div class="card-body">
-              <div class="tabs"><span class="on">Add Attendees</span><span>All Invitees</span></div>
-
-              <p class="help" style="margin-bottom: 0.75rem">
-                Everyone here came from an imported attendee list. They are not contacts or leads and
-                belong to no account — the organisation below is the text their file carried.
-              </p>
-
-              <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.75rem; margin-bottom: 0.75rem">
-                <label class="field">
-                  <span class="field-label">Organisation</span>
-                  <span class="select">All organisations <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
-                </label>
-                <label class="field">
-                  <span class="field-label">Search name / email / title</span>
-                  <span class="input placeholder">Search…</span>
-                </label>
-              </div>
-
-              <div class="alert alert-warning">
-                <svg viewBox="0 0 24 24"><use href="#i-warning"></use></svg>
-                <div>Showing the first 2,000 attendees. Narrow by organisation or search to see the rest.</div>
-              </div>
-
-              <div class="bordered">
-                <table class="t">
-                  <thead>
-                    <tr><th class="col-x"></th><th>Name</th><th>Title</th><th>Email</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr class="group"><td colspan="4">Nordbank AG (14)</td></tr>
-                    <tr>
-                      <td><input type="checkbox" checked aria-label="Select Anna Weber"></td>
-                      <td>Anna Weber</td><td>Head of Payments</td><td>anna.weber@nordbank.example</td>
-                    </tr>
-                    <tr>
-                      <td><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
-                      <td>Jonas Fischer</td><td>Treasury Manager</td><td>j.fischer@nordbank.example</td>
-                    </tr>
-                    <tr class="group"><td colspan="4">Helvetia Insurance (9)</td></tr>
-                    <tr>
-                      <td><input type="checkbox" aria-label="Select Marcus Reid"></td>
-                      <td>Marcus Reid</td><td>CTO</td><td>m.reid@helvetia.example</td>
-                    </tr>
-                    <tr>
-                      <td><input type="checkbox" checked aria-label="Select Tom Whitfield"></td>
-                      <td>Tom Whitfield</td><td>Data Platform Lead</td><td class="weak">—</td>
-                    </tr>
-                    <tr class="group"><td colspan="4">Technische Universität München (3)</td></tr>
-                    <tr>
-                      <td><input type="checkbox" aria-label="Select Elena Kaufmann"></td>
-                      <td>Elena Kaufmann</td><td>Professor, Financial Computing</td><td>e.kaufmann@tum.example</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div class="spread" style="margin-top: 1rem">
-                <p class="help" style="display: flex; align-items: center; gap: 0.375rem; margin: 0">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="#dd7a01"><use href="#i-warning"></use></svg>
-                  6 of the 9 selected are hidden by the current filter.
-                </p>
-                <div style="display: flex; gap: 0.375rem">
-                  <button class="btn" type="button">Add 9 Attendees</button>
-                  <button class="btn btn-brand" type="button">Submit My 14 Invitees for Approval</button>
+          <div style="display: grid; grid-template-columns: 2.2fr 1fr; gap: 0.75rem; align-items: start">
+            <div>
+              <div class="card">
+                <div class="card-hdr">
+                  <span class="objicon oi-approval"><svg viewBox="0 0 24 24"><use href="#i-approval"></use></svg></span>
+                  <h4>Approvals by Company</h4>
+                  <button class="btn btn-sm" type="button">Refresh</button>
+                </div>
+                <div class="card-body">
+                  <p class="help" style="margin: 0">
+                    Nothing on this event is waiting on you. Invitees appear here once an AM submits
+                    them and the approval routes to you.
+                  </p>
                 </div>
               </div>
-              <p class="help" style="margin-top: 0.5rem">
-                Each invitee records who added it. You submit only your own batch — other AMs'
-                selections are unaffected. Submitting sends each invitee to the account manager who
-                owns their customer, and up the approval chain from there.
-              </p>
+
+              <div class="card">
+                <div class="card-hdr">
+                  <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+                  <h4>Event Invitees</h4>
+                </div>
+                <div class="card-body">
+                  <div class="tabs"><span class="on">Add Attendees</span><span>All Invitees</span></div>
+
+                  <p class="help" style="margin-bottom: 0.75rem">
+                    Everyone here came from an imported attendee list. They are not contacts or leads and
+                    belong to no account — the organisation below is the text their file carried.
+                  </p>
+
+                  <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.75rem; margin-bottom: 0.75rem">
+                    <label class="field">
+                      <span class="field-label">Organisation</span>
+                      <span class="select">All <svg viewBox="0 0 24 24"><use href="#i-down"></use></svg></span>
+                    </label>
+                    <label class="field">
+                      <span class="field-label">Search name / email / title</span>
+                      <span class="input placeholder">Search…</span>
+                    </label>
+                  </div>
+
+                  <div class="alert alert-warning">
+                    <svg viewBox="0 0 24 24"><use href="#i-warning"></use></svg>
+                    <div>
+                      Showing the first 2000 attendees — more have been imported. Narrow the list with
+                      the organisation filter or search to reach the rest.
+                    </div>
+                  </div>
+
+                  <div class="bordered">
+                    <table class="t">
+                      <thead>
+                        <tr><th class="col-x"></th><th>Name</th><th>Title</th><th>Email</th></tr>
+                      </thead>
+                      <tbody>
+                        <tr class="group"><td colspan="4">Nordbank AG — 2/14 selected</td></tr>
+                        <tr>
+                          <td><input type="checkbox" checked aria-label="Select Anna Weber"></td>
+                          <td>Anna Weber</td><td>Head of Payments</td><td>anna.weber@nordbank.example</td>
+                        </tr>
+                        <tr>
+                          <td><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
+                          <td>Jonas Fischer</td><td>Treasury Manager</td><td>j.fischer@nordbank.example</td>
+                        </tr>
+                        <tr class="group"><td colspan="4">Helvetia Insurance — 1/9 selected</td></tr>
+                        <tr>
+                          <td><input type="checkbox" aria-label="Select Marcus Reid"></td>
+                          <td>Marcus Reid</td><td>CTO</td><td>m.reid@helvetia.example</td>
+                        </tr>
+                        <tr>
+                          <td><input type="checkbox" checked aria-label="Select Tom Whitfield"></td>
+                          <td>Tom Whitfield</td><td>Data Platform Lead</td><td class="weak"></td>
+                        </tr>
+                        <tr class="group"><td colspan="4">Technische Universität München — 0/3 selected</td></tr>
+                        <tr>
+                          <td><input type="checkbox" aria-label="Select Elena Kaufmann"></td>
+                          <td>Elena Kaufmann</td><td>Professor, Financial Computing</td><td>e.kaufmann@tum.example</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="spread" style="margin-top: 1rem">
+                    <p class="help" style="display: flex; align-items: center; gap: 0.375rem; margin: 0">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="#dd7a01"><use href="#i-warning"></use></svg>
+                      6 selected attendees are outside the current filter and will still be added.
+                    </p>
+                    <div style="display: flex; gap: 0.375rem">
+                      <button class="btn" type="button">Add Selected (9)</button>
+                      <button class="btn btn-brand" type="button">Submit My Invitees for Approval (14)</button>
+                    </div>
+                  </div>
+                  <p class="help" style="margin-top: 0.5rem">
+                    Each invitee records who added it. You submit only your own batch — other AMs'
+                    selections are unaffected. Submitting sends each invitee to the account manager
+                    who owns their customer, and up the approval chain from there.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top: 0">
+              <div class="card-hdr"><h4>Details</h4></div>
+              <div class="card-body">
+                <p class="section-label" style="margin-top: 0">Review Progress</p>
+                <div style="display: grid; gap: 0.5rem">
+                  <div><div class="hl-label">Pending Count</div><div class="hl-value">12</div></div>
+                  <div><div class="hl-label">Approved Count</div><div class="hl-value">27</div></div>
+                  <div><div class="hl-label">Rejected Count</div><div class="hl-value">3</div></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1609,16 +1729,28 @@
 
     <div class="notes">
       <ul>
-        <li><b>Grouped by company text</b>, because an attendee has no Account behind them. Two spellings of one organisation group separately, and the screen does not pretend otherwise.</li>
-        <li><b>Selections survive a filter change</b>, so the component says out loud when the Add count includes rows that are off screen — a count silently disagreeing with the table is worse than a note.</li>
-        <li>Both buttons carry counts; <b>Submit</b> is the brand button because it is the one irreversible act on this tab.</li>
-        <li><b>The chain sentence appears only when a chain is longer than one level</b> — on the common case it would be noise, and on the uncommon one it is the whole news.</li>
-        <li><b>A batch is all-or-nothing.</b> One invitee that reaches no Account Owner refuses the whole submission, including the rows that could have been routed. Nothing moves out of Draft.</li>
-        <li>
-          <b>The helper text names the first approver, not the whole ladder.</b> It used to read
-          “sends each invitee to <i>your manager</i>”, which R9 made wrong; an AM needs to know who
-          gets it first, and the toast supplies the depth once the chain is actually resolved.
-        </li>
+        <li><b>The group header carries the selection, not the size.</b> It reads
+          <i>“Nordbank AG — 2/14 selected”</i>, recomputed as ticks change, and falls back to
+          <i>“(no company)”</i> when the imported text was blank. Grouping is by company text,
+          because an attendee has no Account behind them — two spellings of one organisation group
+          separately, and the screen does not pretend otherwise.</li>
+        <li><b>The two buttons count different things.</b> <i>Add Selected</i> counts ticks in the
+          table; <i>Submit My Invitees for Approval</i> counts this AM's Draft rows already on the
+          event. They routinely disagree, and both are disabled at zero.</li>
+        <li><b>Selections survive a filter change</b>, so the component says out loud when the Add
+          count includes rows that are off screen — a count silently disagreeing with the table is
+          worse than a note.</li>
+        <li><b>The 2,000-row cap is detected, not assumed</b>: the query asks for one row past the
+          cap and drops it, so the warning appears only when there really is more to see.</li>
+        <li><b>The helper text names the first approver, not the whole ladder.</b> It says the
+          invitee goes to “the account manager who owns their customer, and up the approval chain
+          from there” — an AM needs to know who gets it first, and the toast supplies the depth once
+          the chain has actually been resolved.</li>
+        <li><b>A batch is all-or-nothing.</b> One invitee that reaches no Account Owner refuses the
+          whole submission, including the rows that could have been routed. Nothing moves out of
+          Draft.</li>
+        <li><b>The chain sentence in the toast appears only when a chain is longer than one level</b>
+          — on the common case it would be noise, and on the uncommon one it is the whole news.</li>
       </ul>
     </div>
 
@@ -1638,48 +1770,67 @@
             <tbody>
               <tr>
                 <td>Anna Weber</td><td>Head of Payments</td><td>Nordbank AG</td>
-                <td><span class="badge badge-approved">Approved</span></td><td class="weak">Dana Brooks</td>
+                <td><span class="badge badge-neutral">Approved</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" checked aria-label="Anna Weber attended"></td>
               </tr>
               <tr>
                 <td>Jonas Fischer</td><td>Treasury Manager</td><td>Nordbank AG</td>
-                <td><span class="badge badge-approved">Approved</span></td><td class="weak">Dana Brooks</td>
+                <td><span class="badge badge-neutral">Approved</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" aria-label="Jonas Fischer attended"></td>
               </tr>
               <tr>
                 <td>Marcus Reid</td><td>CTO</td><td>Helvetia Insurance</td>
-                <td><span class="badge badge-pending">Pending Approval</span></td><td class="weak">Luis Ortega</td>
+                <td><span class="badge badge-neutral">Pending Approval</span></td><td>Luis Ortega</td>
                 <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
               </tr>
               <tr>
                 <td>Elena Kaufmann</td><td>Professor, Financial Computing</td><td>Technische Universität München</td>
-                <td><span class="badge badge-draft">Draft</span></td><td class="weak">Luis Ortega</td>
+                <td><span class="badge badge-neutral">Draft</span></td><td>Luis Ortega</td>
                 <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
               </tr>
               <tr>
                 <td>Sofia Almeida</td><td>Head of Digital</td><td>Banco Atlântico</td>
-                <td><span class="badge badge-rejected">Rejected</span></td><td class="weak">Dana Brooks</td>
+                <td><span class="badge badge-neutral">Rejected</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
               </tr>
             </tbody>
           </table>
         </div>
         <div class="spread" style="margin-top: 1rem">
-          <p class="help" style="margin: 0">1 of 27 approved invitees marked as attended.</p>
-          <button class="btn" type="button">Save Attendance</button>
+          <p class="help" style="margin: 0">1 of 27 approved invitee(s) marked as attended.</p>
+          <button class="btn is-disabled" type="button" disabled>Save Attendance</button>
         </div>
         <p class="help" style="margin-top: 0.5rem">
-          Mark who actually turned up after the event. Only approved invitees can be ticked — an event
-          nobody marks up has no attendance history rather than a wrong one.
+          Mark who actually turned up after the event. Only approved invitees can be ticked, and
+          attendance is what the <b>Attendee Event History</b> report reads — an event nobody marks
+          up has no attendance history rather than a wrong one.
+        </p>
+        <p class="help" style="margin-top: 0.5rem">
+          Approved invitees are exported from the <b>Approved Invitees</b> reports, in the Event
+          Management report folder.
         </p>
       </div>
     </div>
 
     <div class="notes">
       <ul>
-        <li><b>Attendance is a separate fact from approval.</b> Approval is permission to come; the tick is evidence somebody came, and nothing sets it automatically.</li>
-        <li>Status is read-only here — it is written by the approval process, not by the AM.</li>
-        <li><b>Elena Kaufmann is stuck in Draft, and that is R9 showing through.</b> She belongs to no customer, so she reaches no Account Owner and her submission is refused — she can be added to an event and never submitted until an account exists for guests like her.</li>
+        <li><b>Status is a plain badge, whatever it says.</b> There is no colour coding here — one
+          neutral <code>slds-badge</code> renders Draft, Pending Approval, Approved and Rejected
+          alike. If status is meant to be scannable, that is a change to make deliberately.</li>
+        <li><b>Save Attendance is disabled until something actually changed</b>, measured against
+          what was loaded — so an accidental visit to the tab cannot write anything.</li>
+        <li><b>Both halves of attendance are sent explicitly</b>, attended and not-attended, because
+          the list is capped at 2,000 rows and inferring absence from what is missing would clear
+          everybody past the cap.</li>
+        <li><b>“Added By” marks your own rows</b> with a trailing <i>(me)</i>, which is what makes
+          the Submit count legible: those are the rows it can act on.</li>
+        <li><b>Attendance is not restricted to the AM who added the invitee.</b> Approval is a
+          control over what each AM proposes; attendance is a fact about the room, and whoever ran
+          the event records it.</li>
+        <li><b>Elena Kaufmann is stuck in Draft, and that is the chain showing through.</b> She
+          belongs to no customer, so she reaches no Account Owner and any batch containing her is
+          refused — she can be added to an event and never submitted until an account exists for
+          guests like her.</li>
       </ul>
     </div>
   </section>
@@ -1734,10 +1885,25 @@
 
     <div class="notes">
       <ul>
-        <li><b>The rows are work items, not invitees.</b> Company, title and remark live on the target record, so this list cannot show or sort by them at all — the reason Screen 4b was built.</li>
-        <li>Approvers set <b>Receive Approval Request Emails = Never</b>; the one aggregated email from <code>EventNotificationService</code> is the notification instead of 40 per-item mails.</li>
-        <li><b>Levels 2 and up are told when their turn begins</b>, not at submit. Each step's approval action advances <code>Current_Level__c</code>, and the <code>Invitee_Level_Advanced</code> flow turns that into one aggregated notice per approver per event — without it, a Regional Head would never hear anything at all.</li>
+        <li><b>The rows are work items, not invitees.</b> Company, title and remark live on the
+          target record, so this list cannot show or sort by them at all — the reason Screen 4b was
+          built.</li>
+        <li><b>Five steps, one of which is yours.</b> Each step is gated on its own
+          <code>Approver_N__c</code> being populated, so a two-level chain runs steps 1 and 2 and
+          skips the rest. Steps 4 and 5 are labelled <i>Reserved</i>: they exist so the cap can be
+          raised in configuration without a deploy.</li>
+        <li>Approvers set <b>Receive Approval Request Emails = Never</b> (post-deploy step 4); the
+          aggregated mail and bell from <code>EventNotificationService</code> is the notification
+          instead of one per invitee.</li>
+        <li><b>Levels 2 and up are told when their turn begins</b>, not at submit. Each step's
+          approval action advances <code>Current_Level__c</code>, and the
+          <code>Invitee_Level_Advanced</code> flow turns that into one notice per approver per event
+          — <i>“N invitee(s) … have been approved at the level below yours and are now waiting on
+          you.”</i> Without it, a Regional Head would never hear anything at all.</li>
         <li><b>A rejection at any level ends the whole request</b>; no level above is asked.</li>
+        <li><b>The AM hears once, at the end.</b> <code>Invitee_Decision_Completion</code> fires when
+          a submitter has nothing left pending on the event: <i>“… fully reviewed: X approved, Y
+          rejected”</i>, pointing at the Approved Invitees reports.</li>
       </ul>
     </div>
   </section>
@@ -1764,8 +1930,9 @@
         </div>
         <div class="lex-nav">
           <span class="lex-appname">Event Management</span>
-          <a href="#s4b">Home</a>
           <a class="on" href="#s4b">Marketing Events</a>
+          <a href="#s1">Event Attendees</a>
+          <a href="#s1">Import Attendees</a>
           <a href="#s5">Reports</a>
         </div>
         <div class="lex-body">
@@ -1777,14 +1944,13 @@
             </div>
             <div class="card-body">
               <p class="help" style="margin-bottom: 0.75rem">
-                5 invitees on FinTech Forum Berlin 2026 are waiting on you. Tick a company to select
-                everyone from it, or tick people individually — then approve or reject.
-                Nothing is selected to begin with.
+                5 invitees awaiting your approval. Tick a company to select everyone from it, or tick
+                people individually — then approve or reject. Nothing is selected to begin with.
               </p>
 
               <label class="field" style="margin-bottom: 1rem">
                 <span class="field-label">Comment (optional, recorded on the approval)</span>
-                <span class="input placeholder">Add a comment…</span>
+                <span class="input placeholder"></span>
               </label>
 
               <div class="company">
@@ -1796,12 +1962,12 @@
                     </label>
                     <div class="company-sub">
                       <span class="cust-cd">CUST-4471</span>
-                      <span style="margin-left: 0.75rem">3 waiting on you</span>
+                      <span style="margin-left: 0.75rem">3 pending</span>
                     </div>
                   </div>
                   <div style="display: flex; gap: 0.375rem">
-                    <button class="btn btn-sm btn-brand" type="button">Approve all 3</button>
-                    <button class="btn btn-sm btn-destructive-text" type="button">Reject all 3</button>
+                    <button class="btn btn-sm btn-brand" type="button">Approve 3</button>
+                    <button class="btn btn-sm btn-destructive-text" type="button">Reject 3</button>
                   </div>
                 </div>
                 <table class="t">
@@ -1809,7 +1975,7 @@
                     <tr>
                       <td class="col-x"><input type="checkbox" checked aria-label="Select Anna Weber"></td>
                       <td>
-                        Anna Weber
+                        Ms. Anna Weber
                         <span class="badge badge-vip">VIP</span>
                         <span class="badge badge-level" title="More approvers follow you in this chain">Level 1 of 3</span>
                         <div class="remark">Keynote panellist — confirmed by marketing.</div>
@@ -1845,13 +2011,13 @@
                       Helvetia Insurance
                     </label>
                     <div class="company-sub">
-                      <span class="cust-cd">CUST-2093</span>
-                      <span style="margin-left: 0.75rem">2 waiting on you</span>
+                      <span class="cust-cd">No customer code</span>
+                      <span style="margin-left: 0.75rem">2 pending</span>
                     </div>
                   </div>
                   <div style="display: flex; gap: 0.375rem">
-                    <button class="btn btn-sm btn-brand" type="button">Approve all 2</button>
-                    <button class="btn btn-sm btn-destructive-text" type="button">Reject all 2</button>
+                    <button class="btn btn-sm btn-brand is-disabled" type="button" disabled>Approve</button>
+                    <button class="btn btn-sm btn-destructive-text is-disabled" type="button" disabled>Reject</button>
                   </div>
                 </div>
                 <table class="t">
@@ -1878,8 +2044,8 @@
               </div>
 
               <div style="display: flex; gap: 0.375rem; border-top: 1px solid var(--n-90); padding-top: 0.75rem">
-                <button class="btn btn-brand" type="button">Approve 3 Selected</button>
-                <button class="btn btn-destructive-text" type="button">Reject 3 Selected</button>
+                <button class="btn btn-brand" type="button">Approve selected (3)</button>
+                <button class="btn btn-destructive-text" type="button">Reject selected (3)</button>
               </div>
             </div>
           </div>
@@ -1889,18 +2055,42 @@
 
     <div class="notes">
       <ul>
-        <li><b>Nothing starts selected.</b> Pre-ticking every row would make "approve everybody" the path of least resistance, which inverts what an approval is for.</li>
-        <li><b>“Level 1 of 3” is deliberately quieter than VIP.</b> VIP is a claim about the guest and should catch the eye; the level is context about the decision — whether this signature is the last one — and must not compete for attention on every row. It is hidden entirely on a one-level chain.</li>
-        <li><b>Two invitees on one event legitimately show different chain lengths</b>, because a Regional Head ends a chain wherever they appear. Nordbank's owner is three rungs below one; Helvetia's reports to one directly.</li>
-        <li><b>“Waiting on me” is read from <code>ProcessInstanceWorkitem</code></b>, not from a field comparison. <code>Approver_2__c</code> is populated from the moment of submission, so a field test would let a level-2 approver act on work that level 1 has not released yet.</li>
-        <li>
-          <b>The <i>Not a customer</i> group can no longer hold pending rows.</b> Routing starts at
-          the Account Owner, so a guest with no Contact link is refused at submit and never reaches
-          this screen. The branch survives in the template from R8; the guests it was drawn for now
-          need an account kept for them, which is a manual step in DEPLOYMENT.md.
-        </li>
-        <li><b>Remark and VIP sit on the row</b>, because they are the AM's case for inviting this person, and the approver is the reader they were written for.</li>
-        <li>Capped at 200 invitees per decision: refusing at a stated number beats a governor limit surfacing as an unexplained error.</li>
+        <li><b>Nothing starts selected.</b> Pre-ticking every row would make “approve everybody” the
+          path of least resistance, which inverts what an approval is for.</li>
+        <li><b>The group buttons act on the group's <i>selection</i>, not on the group.</b> They read
+          <i>Approve 3</i> when three of that company are ticked and fall back to a disabled
+          <i>Approve</i> when none are — so the company tick and the decision stay two deliberate
+          steps, and a stray tap on the header cannot decide anything.</li>
+        <li><b>The company checkbox goes indeterminate</b> when only part of a company is selected,
+          set from <code>renderedCallback</code> because <code>indeterminate</code> is a DOM property
+          a template cannot express.</li>
+        <li><b>The table has no visible header row.</b> Its <code>thead</code> is
+          <code>slds-assistive-text</code>: four columns of headings above two-line name cells would
+          cost more than they explain, and a screen reader still gets them.</li>
+        <li><b>“Level 1 of 3” is deliberately quieter than VIP.</b> VIP is a claim about the guest
+          and should catch the eye; the level is context about the decision — whether this signature
+          is the last one — and must not compete for attention on every row. It is hidden entirely on
+          a one-level chain.</li>
+        <li><b>Two invitees on one event legitimately show different chain lengths</b>, because a
+          Regional Head ends a chain wherever they appear. Nordbank's owner is three rungs below one;
+          Helvetia's reports to one directly.</li>
+        <li><b>The customer code is the Account's <code>AccountNumber</code></b>, and when it is
+          blank the line says <i>No customer code</i> rather than going empty. A guest with no
+          Account at all gets an italic <i>Not a customer</i> instead — a branch that survives from
+          R8 and can no longer hold pending rows, since routing starts at the Account Owner and such
+          a guest is refused at submit.</li>
+        <li><b>Grouping is by Account where there is one</b>, and by the snapshotted company text
+          otherwise — deliberately not one bucket for every unlinked guest, which would put unrelated
+          people behind the same button.</li>
+        <li><b>“Waiting on me” is read from <code>ProcessInstanceWorkitem</code></b>, not from a
+          field comparison. <code>Approver_2__c</code> is populated from the moment of submission, so
+          a field test would let a level-2 approver act on work that level 1 has not released yet.</li>
+        <li><b>Remark and VIP sit on the row</b>, because they are the AM's case for inviting this
+          person, and the approver is the reader they were written for. The name carries the
+          snapshotted salutation when there is one.</li>
+        <li>Capped at 200 invitees per decision: refusing at a stated number beats a governor limit
+          surfacing as an unexplained error. Rows that stopped being yours between load and click are
+          reported back as skipped rather than silently dropped.</li>
       </ul>
     </div>
   </section>
@@ -1929,7 +2119,7 @@
               <h4 style="font-size: 0.875rem">Approvals by Company</h4>
             </div>
             <div class="card-body" style="padding: 0.75rem">
-              <p class="help" style="margin-bottom: 0.625rem">5 invitees are waiting on you.</p>
+              <p class="help" style="margin-bottom: 0.625rem">5 invitees awaiting your approval.</p>
 
               <div class="company">
                 <div class="company-hdr">
@@ -1939,48 +2129,35 @@
                       Nordbank AG
                     </label>
                     <div class="company-sub"><span class="cust-cd">CUST-4471</span>
-                      <span style="margin-left: 0.5rem">3 waiting</span></div>
+                      <span style="margin-left: 0.5rem">3 pending</span></div>
+                  </div>
+                  <div style="display: flex; gap: 0.375rem; width: 100%; margin-top: 0.375rem">
+                    <button class="btn btn-sm btn-brand" type="button">Approve 3</button>
+                    <button class="btn btn-sm btn-destructive-text" type="button">Reject 3</button>
                   </div>
                 </div>
                 <table class="t">
                   <tbody>
                     <tr>
                       <td class="col-x"><input type="checkbox" checked aria-label="Select Anna Weber"></td>
-                      <td>Anna Weber
+                      <td>Ms. Anna Weber
                         <span class="badge badge-vip">VIP</span>
                         <span class="badge badge-level">Level 1 of 3</span>
-                        <div class="remark">Head of Payments</div></td>
+                        <div class="remark">Keynote panellist — confirmed by marketing.</div></td>
+                      <td>Head of Payments</td>
                     </tr>
                     <tr>
                       <td class="col-x"><input type="checkbox" checked aria-label="Select Jonas Fischer"></td>
-                      <td>Jonas Fischer <span class="badge badge-level">Level 1 of 3</span>
-                        <div class="remark">Treasury Manager</div></td>
-                    </tr>
-                    <tr>
-                      <td class="col-x"><input type="checkbox" checked aria-label="Select Lena Hoffmann"></td>
-                      <td>Lena Hoffmann <span class="badge badge-level">Level 1 of 3</span>
-                        <div class="remark">Product Owner, Cards</div></td>
+                      <td>Jonas Fischer <span class="badge badge-level">Level 1 of 3</span></td>
+                      <td>Treasury Manager</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              <div class="company">
-                <div class="company-hdr">
-                  <div class="grow">
-                    <label class="company-name" style="font-size: 0.875rem">
-                      <input type="checkbox" aria-label="Select everyone from Helvetia Insurance">
-                      Helvetia Insurance
-                    </label>
-                    <div class="company-sub"><span class="cust-cd">CUST-2093</span>
-                      <span style="margin-left: 0.5rem">2 waiting</span></div>
-                  </div>
-                </div>
-              </div>
-
               <div class="phone-actions">
-                <button class="btn btn-brand" type="button">Approve 3 Selected</button>
-                <button class="btn btn-destructive-text" type="button">Reject 3 Selected</button>
+                <button class="btn btn-brand" type="button">Approve selected (3)</button>
+                <button class="btn btn-destructive-text" type="button">Reject selected (3)</button>
               </div>
             </div>
           </div>
@@ -1990,10 +2167,18 @@
       <div class="phone-note">
         <div class="notes" style="margin-top: 0">
           <ul>
-            <li><b>The company header is the primary target</b> — one tap selects everyone from it, which is the requirement's single tick.</li>
-            <li><b>Group action buttons drop off</b> below the small breakpoint; the two bulk buttons at the bottom stay full width and stay reachable with a thumb.</li>
-            <li><b>Title moves under the name</b> instead of into its own column — the same rows, re-flowed rather than a second template.</li>
-            <li>This is the standard Salesforce Mobile App rendering the same LWC. No native app is involved.</li>
+            <li><b>The company header is the primary target</b> — one tap selects everyone from it,
+              which is the requirement's single tick. The whole label is clickable, not just the
+              13-pixel checkbox; on a phone that difference is the difference between the feature
+              working and not.</li>
+            <li><b>Nothing is hidden at a small breakpoint.</b> The component ships no media queries:
+              the header is <code>slds-grid slds-wrap</code>, so the group buttons wrap under the
+              company name rather than dropping off, and the table keeps all four columns and
+              scrolls. That is the honest drawing of what a handset gets today.</li>
+            <li><b>If the columns should re-flow on a phone</b> — title under the name, added-by
+              dropped — that is unbuilt work, not a behaviour to read off this page.</li>
+            <li>This is the standard Salesforce Mobile App rendering the same LWC. The app declares
+              both the Large and Small form factors; no native app is involved.</li>
           </ul>
         </div>
       </div>
@@ -2003,10 +2188,11 @@
   <!-- ================= SCREEN 5 ================= -->
   <section id="s5">
     <div class="sec-head">
-      <h2>Screen 5 · Approved Invitees report</h2>
+      <h2>Screen 5 · Reports</h2>
       <p>
-        Export is a saved report, not custom code: one event or all of them, a decision-date range
-        in the running user's timezone, and a subscription if somebody wants it by email.
+        Export is a saved report, not custom code. Three reports ship in the <b>Event Management</b>
+        folder — the approved list, the same list filtered to the running user, and the attendance
+        history that feeds “recommend a similar event” — over three report types.
       </p>
     </div>
 
@@ -2021,8 +2207,8 @@
         </div>
         <div class="lex-nav">
           <span class="lex-appname">Event Management</span>
-          <a href="#s5">Home</a>
           <a href="#s3">Marketing Events</a>
+          <a href="#s1">Event Attendees</a>
           <a href="#s1">Import Attendees</a>
           <a class="on" href="#s5">Reports</a>
         </div>
@@ -2041,10 +2227,10 @@
               </div>
             </div>
             <div class="highlights">
+              <div><div class="hl-label">Format</div><div class="hl-value">Summary · subtotals + grand total</div></div>
               <div><div class="hl-label">Filters</div><div class="hl-value">Status equals Approved</div></div>
-              <div><div class="hl-label">Decided</div><div class="hl-value">01/08/2026 – 15/08/2026</div></div>
-              <div><div class="hl-label">Grouped by</div><div class="hl-value">Event Name</div></div>
-              <div><div class="hl-label">Rows</div><div class="hl-value">41</div></div>
+              <div><div class="hl-label">Decided At</div><div class="hl-value">Custom range — unset by default</div></div>
+              <div><div class="hl-label">Grouped by</div><div class="hl-value">Marketing Event: Name</div></div>
             </div>
           </div>
 
@@ -2053,42 +2239,41 @@
               <table class="t">
                 <thead>
                   <tr>
-                    <th>Invitee Name</th><th>Title</th><th>Organisation</th><th>Email</th>
-                    <th>Approver 1</th><th class="num">Levels</th><th>Decided At</th><th>Added By</th>
+                    <th>Invitee Name</th><th>Invitee Title</th><th>Invitee Organisation</th><th>Invitee Email</th>
+                    <th>Approver 1</th><th class="num">Approval Levels</th><th>Decided At</th><th>Added By</th>
+                    <th>Event Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr class="group"><td colspan="8">FinTech Forum Berlin 2026 (27)</td></tr>
+                  <tr class="group"><td colspan="9">FinTech Forum Berlin 2026 (27)</td></tr>
                   <tr>
                     <td>Anna Weber</td><td>Head of Payments</td><td>Nordbank AG</td>
                     <td>anna.weber@nordbank.example</td><td class="weak">Maya Kessler</td>
                     <td class="num weak">3</td>
                     <td class="weak">14/08/2026 16:20</td><td class="weak">Dana Brooks</td>
+                    <td class="weak">17/09/2026</td>
                   </tr>
                   <tr>
                     <td>Jonas Fischer</td><td>Treasury Manager</td><td>Nordbank AG</td>
                     <td>j.fischer@nordbank.example</td><td class="weak">Maya Kessler</td>
                     <td class="num weak">3</td>
                     <td class="weak">14/08/2026 16:20</td><td class="weak">Dana Brooks</td>
+                    <td class="weak">17/09/2026</td>
                   </tr>
-                  <tr>
-                    <td>Sofia Almeida</td><td>Head of Digital</td><td>Banco Atlântico</td>
-                    <td>sofia.almeida@batlantico.example</td><td class="weak">Maya Kessler</td>
-                    <td class="num weak">3</td>
-                    <td class="weak">15/08/2026 08:05</td><td class="weak">Dana Brooks</td>
-                  </tr>
-                  <tr class="group"><td colspan="8">Payments Symposium Zurich 2026 (14)</td></tr>
+                  <tr class="group"><td colspan="9">Payments Symposium Zurich 2026 (14)</td></tr>
                   <tr>
                     <td>Marcus Reid</td><td>CTO</td><td>Helvetia Insurance</td>
                     <td>m.reid@helvetia.example</td><td class="weak">Peter Lindqvist</td>
                     <td class="num weak">2</td>
                     <td class="weak">09/08/2026 10:44</td><td class="weak">Luis Ortega</td>
+                    <td class="weak">03/08/2026</td>
                   </tr>
                   <tr>
                     <td>Tom Whitfield</td><td>Data Platform Lead</td><td>Helvetia Insurance</td>
-                    <td class="weak">—</td><td class="weak">Peter Lindqvist</td>
+                    <td class="weak"></td><td class="weak">Peter Lindqvist</td>
                     <td class="num weak">2</td>
                     <td class="weak">09/08/2026 10:44</td><td class="weak">Luis Ortega</td>
+                    <td class="weak">03/08/2026</td>
                   </tr>
                 </tbody>
               </table>
@@ -2100,11 +2285,31 @@
 
     <div class="notes">
       <ul>
-        <li><b>One report covers both entry points.</b> To get one event, filter it; to get all of them, don't.</li>
-        <li><b>"My Approved Invitees"</b> is the same report filtered to <code>Added By = $User.Id</code>.</li>
-        <li><b>Approver became Approver 1, and Levels joined it.</b> Levels 2–5 and <code>Current_Level__c</code> are in the report type but unchecked by default — a fully approved row's interesting number is how many people had to agree, not which of five fields held them.</li>
-        <li>The date filter is evaluated in the running user's timezone by the platform, which is what removed the custom exporter's timezone-boundary handling.</li>
-        <li><b>Known gap:</b> the standard exporter does not guard against CSV formula injection. Only Screen 1's Download Skipped Rows still does.</li>
+        <li><b>One report covers both entry points.</b> To get one event, filter it; to get all of
+          them, don't. It is a Summary report grouped by event name with subtotals, so the group
+          rows are the per-event counts — and the export is <i>Export → Details Only</i>, choosing
+          CSV or XLSX and the encoding.</li>
+        <li><b>“My Approved Invitees” is the same report plus one filter</b>, and the filter is the
+          <code>Added_By_Me__c</code> formula checkbox rather than a user comparison — a saved report
+          cannot reference the running user in a lookup filter, so the field does it on the row.</li>
+        <li><b>The date filter is empty by design.</b> <code>Decided At</code> is wired as a custom
+          interval with no range set, so the report opens on everything and the user narrows it. The
+          platform evaluates it in the running user's timezone, which is what removed the custom
+          exporter's timezone-boundary handling.</li>
+        <li><b>Approver became Approver 1, and Approval Levels joined it.</b> Approvers 2–5,
+          <code>Current Level</code>, <code>Submitted At</code>, Attended and Status are in the
+          report type but unchecked — a fully approved row's interesting number is how many people
+          had to agree, not which of five fields held them.</li>
+        <li><b>Attendee Event History is the third report</b>, on its own report type, grouped by
+          attendee and filtered to <code>Attended = true</code>: approved no-shows are excluded,
+          because approval is permission to come and only attendance is evidence of interest.</li>
+        <li><b>A third report type ships with no report on it.</b> <i>Marketing Events with Event
+          Topics</i> is how “which events are tagged X” gets asked now that Topic is a child object —
+          a formula cannot read through a one-to-many, so the join has to be in the report type.
+          Nobody has saved a report against it yet; that is a report builder's job, not a
+          deploy's.</li>
+        <li><b>Known gap:</b> the standard exporter does not guard against CSV formula injection.
+          Only Screen 1's Download Skipped Rows still does.</li>
       </ul>
     </div>
   </section>
@@ -2114,8 +2319,8 @@
     <div class="sec-head">
       <h2>Empty and error states</h2>
       <p>
-        Every component that mutates data has to render loading, empty and error explicitly.
-        These are the three the demo actually hits.
+        Every component that mutates data renders loading, empty and error explicitly. These are the
+        ones the demo actually hits, quoted as the code renders them.
       </p>
     </div>
 
@@ -2136,7 +2341,7 @@
       <div class="card">
         <div class="card-hdr">
           <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
-          <h4>Event Invitees</h4>
+          <h4>Event Invitees · Add Attendees</h4>
         </div>
         <div class="card-body">
           <p class="help" style="margin: 0">
@@ -2148,33 +2353,55 @@
 
       <div class="card">
         <div class="card-hdr">
+          <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
+          <h4>Event Invitees · All Invitees</h4>
+        </div>
+        <div class="card-body">
+          <p class="help" style="margin: 0">No invitees yet.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
           <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
           <h4>Import External Attendee List</h4>
         </div>
         <div class="card-body">
-          <div class="alert" style="background: var(--error-tint); border: 1px solid #f5b8bd; color: #8a0b14; margin: 0">
-            <svg viewBox="0 0 24 24" fill="#ba0517"><use href="#i-warning"></use></svg>
-            <div>
-              This file is not UTF-8, so accented names would be stored incorrectly. Re-save it in
-              Excel as <b>CSV UTF-8</b> and upload again.
-            </div>
-          </div>
+          <p style="color: var(--error-40); margin: 0" role="alert">
+            The file is not UTF-8 text, so non-English characters would be corrupted. Re-save it in
+            Excel with File → Save As → "CSV UTF-8 (Comma delimited)" and upload again.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <span class="objicon oi-list"><svg viewBox="0 0 24 24"><use href="#i-list"></use></svg></span>
+          <h4>Import External Attendee List</h4>
+        </div>
+        <div class="card-body">
+          <p style="color: var(--error-40); margin: 0" role="alert">
+            No recognised column headers. The first row read as: Name | Firm | Mail. Expected: First
+            Name, Last Name, Email, Company (Title and Mobile are optional).
+          </p>
         </div>
       </div>
 
       <div class="card">
         <div class="card-hdr">
           <span class="objicon oi-people"><svg viewBox="0 0 24 24"><use href="#i-people"></use></svg></span>
-          <h4>Event Invitees</h4>
+          <h4>Event Invitees · submit refused</h4>
         </div>
         <div class="card-body">
-          <div class="alert" style="background: var(--error-tint); border: 1px solid #f5b8bd; color: #8a0b14; margin: 0">
-            <svg viewBox="0 0 24 24" fill="#ba0517"><use href="#i-warning"></use></svg>
+          <div class="toast" style="background: var(--error-40)">
+            <svg viewBox="0 0 24 24"><use href="#i-warning"></use></svg>
             <div>
-              Nothing was submitted. <b>Elena Kaufmann</b> belongs to no customer account, so there
-              is no approver to route to. Remove her from the batch, or ask an administrator to
-              place her under the account kept for non-customer guests.
+              <b>Error.</b> 1 of your 14 invitee(s) have no Account Owner, so there is nobody to
+              start their approval chain: Elena Kaufmann. An invitee acquires one through the
+              attendee’s Contact link — guests who are nobody’s customer belong to the account your
+              administrator keeps for them. Nothing was submitted.
             </div>
+            <span class="x" aria-hidden="true">✕</span>
           </div>
         </div>
       </div>
@@ -2182,16 +2409,33 @@
 
     <div class="notes">
       <ul>
-        <li><b>An error names the fix</b>, not just the fault — the wizard echoes the header row it actually read when a file turns out not to be an attendee list at all.</li>
-        <li><b>The submit refusal names the person</b>, because "no approver found" would leave an AM to guess which of forty rows caused it. It is all-or-nothing by design: routing the rest and leaving the rest behind would hide the data problem instead of forcing it.</li>
-        <li>The empty approval card is visible to AMs on every event page. Hiding it needs a component visibility filter, which is an admin's decision about their own record pages.</li>
+        <li><b>The wizard's errors are a red line of text, not a banner</b> — one
+          <code>slds-text-color_error</code> paragraph above the current step, replaced on the next
+          attempt. Both examples above are that same element.</li>
+        <li><b>An error names the fix</b>, not just the fault: the header failure echoes the row it
+          actually read, because the usual causes are a delimiter it could not sniff or a file that
+          is not an attendee list at all.</li>
+        <li><b>The submit refusal names the people</b>, up to three of them and then “and N more”,
+          because “no approver found” would leave an AM to guess which of forty rows caused it. It is
+          all-or-nothing by design: routing the rest would hide the data problem instead of forcing
+          it.</li>
+        <li><b>Refusals arrive as an error toast</b>, titled <i>Error</i> from the selector and
+          <i>Nothing was changed</i> from the approval component — the second says the outcome in the
+          title, because that is the question an approver has when a bulk action fails.</li>
+        <li>The empty approval card is visible to AMs on every event page. Hiding it needs a
+          component visibility filter or a second record page by profile, which is an admin's
+          decision about their own org — post-deploy, not shipped.</li>
       </ul>
     </div>
   </section>
 
   <p class="footnote">
-    Structure follows the LWC templates in <code>force-app/main/default/lwc</code> as built at R9;
-    styling follows <code>UI_design.md</code>. Colours are SLDS values compiled into this page rather
-    than loaded from the platform, so verify them against your org's SLDS version before go-live.
+    Redrawn from <code>force-app/main/default</code> on <code>main</code>: LWC templates and their
+    JavaScript getters for every label and count, Apex for every server-side message, and the
+    object, layout, FlexiPage, approval-process and report metadata for everything standard.
+    Styling follows <code>UI_design.md</code>; the colours are SLDS values compiled into this page
+    rather than loaded from the platform, so verify them against your org's SLDS version before
+    go-live. Nothing here has been verified in a running org — no Apex test or deploy runs without
+    one.
   </p>
 </div>
