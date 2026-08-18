@@ -511,6 +511,30 @@ describe('c-attendee-selector', () => {
             expect(text).toContain('Hélène Dubois');
             expect(text).toContain('Université de Genève');
         });
+
+        /**
+         * Each status carries its own colour so the column can be scanned. The mapping
+         * is asserted rather than eyeballed: a picklist value with no class silently
+         * falls back to the neutral badge, which looks deliberate and is not.
+         */
+        it('gives each decided status its own badge colour', async () => {
+            inviteesAdapter.emit([
+                { ...INVITEES[0], status: 'Draft' },
+                { ...INVITEES[1], status: 'Pending Approval' },
+                { ...INVITEES[2], status: 'Approved' },
+                { ...INVITEES[3], status: 'Rejected' }
+            ]);
+            await flush(1);
+            const classes = [...element.shadowRoot.querySelectorAll('.slds-badge')].map(
+                (b) => b.className
+            );
+            expect(classes).toEqual([
+                'slds-badge',
+                'slds-badge status-pending',
+                'slds-badge status-approved',
+                'slds-badge status-rejected'
+            ]);
+        });
     });
 
     /**

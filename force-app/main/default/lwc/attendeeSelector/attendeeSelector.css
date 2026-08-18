@@ -5,3 +5,22 @@
 .col-select {
     width: 2rem;
 }
+
+/* Status colours. Solid semantic backgrounds rather than the tints a badge usually
+   carries, because the tints are not in the styling-hook palette and would have to be
+   hardcoded hex — see UI_design.md §2. Each of these is 4.65:1 against white, which
+   clears WCAG AA for the badge's small text. Draft keeps the base neutral badge. */
+.status-approved {
+    background: var(--slds-g-color-success-base-50, #2e844a);
+    color: var(--slds-g-color-neutral-base-100, #ffffff);
+}
+
+.status-pending {
+    background: var(--slds-g-color-warning-base-50, #a96404);
+    color: var(--slds-g-color-neutral-base-100, #ffffff);
+}
+
+.status-rejected {
+    background: var(--slds-g-color-error-base-50, #ea001e);
+    color: var(--slds-g-color-neutral-base-100, #ffffff);
+}
