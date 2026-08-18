@@ -502,6 +502,9 @@
     white-space: nowrap;
   }
   .badge-neutral { background: #ecebea; color: var(--n-30); }
+  .badge-approved { background: var(--success-50); color: var(--n-100); }
+  .badge-pending { background: var(--warning-50); color: var(--n-100); }
+  .badge-rejected { background: var(--error-50); color: var(--n-100); }
   .badge-skip { background: #fdf0d5; color: var(--warning-50); }
   .badge-vip { background: var(--brand-tint); color: var(--brand-30); border: 1px solid #bcd9f5; }
   /* Quieter than VIP on purpose: VIP is a claim about the guest, the level is context
@@ -1770,17 +1773,17 @@
             <tbody>
               <tr>
                 <td>Anna Weber</td><td>Head of Payments</td><td>Nordbank AG</td>
-                <td><span class="badge badge-neutral">Approved</span></td><td>Dana Brooks (me)</td>
+                <td><span class="badge badge-approved">Approved</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" checked aria-label="Anna Weber attended"></td>
               </tr>
               <tr>
                 <td>Jonas Fischer</td><td>Treasury Manager</td><td>Nordbank AG</td>
-                <td><span class="badge badge-neutral">Approved</span></td><td>Dana Brooks (me)</td>
+                <td><span class="badge badge-approved">Approved</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" aria-label="Jonas Fischer attended"></td>
               </tr>
               <tr>
                 <td>Marcus Reid</td><td>CTO</td><td>Helvetia Insurance</td>
-                <td><span class="badge badge-neutral">Pending Approval</span></td><td>Luis Ortega</td>
+                <td><span class="badge badge-pending">Pending Approval</span></td><td>Luis Ortega</td>
                 <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
               </tr>
               <tr>
@@ -1790,7 +1793,7 @@
               </tr>
               <tr>
                 <td>Sofia Almeida</td><td>Head of Digital</td><td>Banco Atlântico</td>
-                <td><span class="badge badge-neutral">Rejected</span></td><td>Dana Brooks (me)</td>
+                <td><span class="badge badge-rejected">Rejected</span></td><td>Dana Brooks (me)</td>
                 <td><input type="checkbox" disabled aria-label="Attendance can only be marked once approved"></td>
               </tr>
             </tbody>
@@ -1814,9 +1817,14 @@
 
     <div class="notes">
       <ul>
-        <li><b>Status is a plain badge, whatever it says.</b> There is no colour coding here — one
-          neutral <code>slds-badge</code> renders Draft, Pending Approval, Approved and Rejected
-          alike. If status is meant to be scannable, that is a change to make deliberately.</li>
+        <li><b>Three statuses carry a colour; Draft does not.</b> Approved is success, Rejected is
+          error and Pending Approval is warning — each the SLDS <code>-50</code> hook against white,
+          4.65:1, which clears WCAG AA for text this small. Draft keeps the neutral badge on purpose:
+          it is the absence of a decision rather than a state of one, and a fourth colour would
+          compete with the three that carry news.</li>
+        <li><b>The colour is never the only carrier.</b> The word is in the badge, so a reader who
+          cannot separate the hues loses nothing — and an unmapped picklist value falls back to the
+          neutral badge, which is why the mapping is pinned by a test rather than eyeballed.</li>
         <li><b>Save Attendance is disabled until something actually changed</b>, measured against
           what was loaded — so an accidental visit to the tab cannot write anything.</li>
         <li><b>Both halves of attendance are sent explicitly</b>, attended and not-attended, because

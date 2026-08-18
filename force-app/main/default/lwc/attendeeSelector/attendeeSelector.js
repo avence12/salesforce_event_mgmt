@@ -8,6 +8,24 @@ import submitMyInvitees from '@salesforce/apex/InviteeSelectorController.submitM
 import saveAttendance from '@salesforce/apex/InviteeSelectorController.saveAttendance';
 
 /**
+ * Status badge colour, keyed by the picklist value Status__c actually holds.
+ *
+ * Draft is deliberately absent and falls through to the plain neutral badge: it is the
+ * absence of a decision rather than a state of one, and giving it a colour of its own
+ * would put four competing colours in a column where only three carry news.
+ *
+ * The colours are semantic and nothing else — approved is success, rejected is error,
+ * waiting is warning — and each is the -50 hook against white, which is 4.65:1 and
+ * clears WCAG AA for the badge's small text. The value is never colour alone: the word
+ * is right there, so a reader who cannot separate the hues loses nothing.
+ */
+const STATUS_CLASS = {
+    Approved: 'slds-badge status-approved',
+    Rejected: 'slds-badge status-rejected',
+    'Pending Approval': 'slds-badge status-pending'
+};
+
+/**
  * Replaces c/contactSelector. R5 collapsed the Add Contacts and Add Leads tabs into
  * one list of Event Attendees: with a single kind of invitee there is nothing left
  * for two tabs to tell apart, and the duplicated filter/search/selection state that
@@ -201,6 +219,7 @@ export default class AttendeeSelector extends LightningElement {
             ...i,
             key: idx,
             addedByLabel: i.mine ? `${i.addedByName} (me)` : i.addedByName,
+            statusClass: STATUS_CLASS[i.status] || 'slds-badge',
             attendedChecked: this.attendedIds.has(i.inviteeId),
             attendDisabled: !i.canAttend
         }));
