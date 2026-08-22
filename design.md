@@ -99,10 +99,13 @@ Four consequences, and only the first was asked for:
    Lead Owner needed a Lead. What remains is the submitter's manager, which is what
    requirement.md asked for before Account Owner was ever used as a stand-in for it.
    **This is the largest functional loss in R5 — see Open Question 15.**
-4. **The import stops reading standard objects, not just writing them.** R4 could say it no
+4. ~~**The import stops reading standard objects, not just writing them.** R4 could say it no
    longer needed *edit* on Contact. R5 needs no permission on Contact, Lead or Account at all,
    which is a materially stronger claim: the feature becomes safe to hand to an org that would
-   never let an import near its customer data.
+   never let an import near its customer data.~~ ★R12 **Reversed on reading, upheld on writing
+   and on permissions.** The import reads Contact and Account again, to match on `cust_cd` +
+   email. It still writes no standard object and this repo still ships no permission on one —
+   Apex does not enforce object-level CRUD, so the read needs no grant. See the R12 header.
 
 **What it costs is not small, and is tabled rather than buried** — see *The price, stated
 plainly* under *Data model*. In short: no link at all between an attendee and existing
@@ -175,6 +178,10 @@ decisions R5 made:
 **`Event_Attendee__c.Contact__c` answers Open Question 17** with exactly the recovery that
 question named: a lookup populated by a separate reconciliation step, not by putting matching
 back inside the import. `SEIM_PERSON.CONT_PERSON_SEQ` is that field in the source system.
+★R12 **Half of that sentence did not survive.** The lookup is right and the reconciliation step
+is not — it was never built, so the field sat empty for four revisions, and R12 puts the matching
+back inside the import on a key strict enough that the reason for keeping it out no longer holds.
+See the R12 header.
 
 **What R8 costs, stated before the field lists rather than after:** R5's headline property was
 that the feature touched no standard object at all. Reusing Account and linking to Contact ends
@@ -319,6 +326,142 @@ type is now `Marketing_Events_with_Topics`, replacing the `Topic__c` column that
 `Marketing_Events_with_Invitees`.
 
 ★R11 items are marked ★R11. **All of it is built.**
+
+**Revised 2026-08-23 (R12) — the import matches Contacts, and snapshots thaw while a decision
+is still pending.** Two changes, decided together. They are independent — either could ship
+without the other — but they are both corrections to the same habit: R8 and R9 each took a rule
+that was right in one case and applied it to every case.
+
+> 1. `Event_Attendee__c` keeps its link to a Contact, and that link becomes the import's job,
+>    matched on **customer code + email**.
+> 2. `Event_Invitee__c` must stay in step with its attendee.
+
+**Change 1 breaks a circle that R8 could not see, because R8 drew it.**
+
+R8 added `Event_Attendee__c.Contact__c` and wrote *THE IMPORT MUST NOT SET THIS* into its
+description in capitals. The prohibition had two supports and both have gone:
+
+- *The ambiguity argument.* R4's cascade matched on name, then company, then email, narrowing
+  until something hit — and a name matches two people, so R4 needed an `AMBIGUOUS` outcome to
+  admit it could not tell them apart. R12 does not reinstate that cascade. It requires
+  **`cust_cd` AND `email` together**, and links only when exactly one Contact answers. No hit
+  and several hits are the same outcome: no link. There is nothing left to be uncertain about,
+  so the reason for the rule expired before the rule did.
+- *The reconciliation argument.* R8 said an admin would populate the field by a deliberate
+  reconciliation run instead. **That step was never built.** Until R12, `Contact__c` was
+  populated by nothing at all — `Is_Known_Contact__c` was permanently false and every invitee
+  fell back to free-text company. The import filling it is not a widening of the feature; it is
+  the first thing that makes the field work.
+
+**The circle itself:** R8 derived `Event_Invitee__c.Cust_Cd__c` from `Contact → Account →
+AccountNumber`, because that was the only route available while the import could not read
+Contact. Match *on* the code and that route closes — a key cannot be both what you find the
+Contact with and what you read off the Contact once found. So `cust_cd` moves back to where R7
+originally put it and R8 struck it from: **it arrives in the CSV and lands on
+`Event_Attendee__c.Cust_Cd__c`**. The org-specific assumption R8 recorded has not disappeared, it
+has moved one class over — `AttendeeImportController` compares the CSV code against
+`Account.AccountNumber`, and if this org keeps its code elsewhere that is still one line and a
+post-deploy note.
+
+**One thing this recovers that R8 could not.** A guest whose code matched no Contact now still
+carries the code. Under R8 they carried nothing, because no Account meant no snapshot. They still
+have **no `Account__c` and no `Account_Manager__c`** — those genuinely require the Contact link,
+and the chain's level 1 is the Account Owner — so this does **not** by itself make them
+submittable. Open Question 21 is unchanged and this revision does not close it.
+
+**Change 2 narrows R8's freeze from "always" to "once decided".**
+
+R8 converted three invitee fields from formulas to snapshots on a sound argument: *an approval
+record that changes after the fact is not a record*. That argument is airtight for an Approved
+row and **vacuous for a Draft one** — a Draft has been approved by nobody, so freezing a typo
+into it protects no record and merely guarantees the approver reads stale data when it is finally
+submitted. R8 took the whole trade because it was choosing between a formula and a snapshot, and
+a formula cannot ask what status a row is in.
+
+So the rule becomes conditional, and `EventAttendeeSync` (this project's only trigger) enforces
+it:
+
+| Status | On an attendee edit |
+|---|---|
+| Draft | Full re-stamp, routing fields included. Nothing is frozen |
+| Pending Approval | **Display fields only** — salutation, title, org, `cust_cd` |
+| Approved / Rejected | Nothing, ever. R8's case, unchanged |
+
+**Why Pending is display-only rather than a full re-stamp**, which is the non-obvious half: the
+approver chain was resolved and frozen onto `Approver_1..5__c` at submit. Re-stamping
+`Account_Manager__c` underneath it would leave the row *describing* one approver while
+*addressed to* another — an inconsistency nothing downstream would notice and no report could
+explain.
+
+**What was rejected: reverting to formula fields.** A formula would sync all four statuses, which
+is exactly the Approved case above. The trigger is not a more expensive formula; it exists
+because the correct behaviour is conditional and a formula cannot express it. Equally rejected:
+syncing unconditionally via automation, which is a formula's behaviour with a trigger's cost.
+
+**What this costs, stated plainly.**
+
+- **Matching is per-user.** `AttendeeImportController` is `with sharing`, so a Contact the running
+  AM cannot see does not match — the same file imported by two AMs can link differently. Reading
+  the org's customer data `without sharing` to avoid that is not a trade this project makes on the
+  org's behalf. The preview reports match/no-match per row, so the difference is visible rather
+  than silent.
+- **A stale code costs a link.** A row whose email is right and whose `cust_cd` is out of date
+  imports unlinked. That is the same place the person was before R12, and the remedy is to fix the
+  file and re-upload.
+- **The import reads two more objects.** One extra SOQL per batch, over Contact joined to Account.
+- **Every attendee edit now risks a second DML.** Mitigated by comparing against `Trigger.oldMap`:
+  an edit touching no snapshotted field queries nothing and writes nothing, which matters because
+  a re-upload of an 8,000-row file updates every attendee in it.
+
+★R12 items are marked ★R12. **All of it is built**, but see *★R12 What still needs an org*.
+
+### ★R12 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| `Event_Attendee__c.Cust_Cd__c` (Text 40) | From the CSV. Deliberately **not** part of `Unique_Key__c` — an employer's code can be reassigned, and folding it in would make one person two attendees the day it changes |
+| `InviteeSnapshot` | The one place invitee snapshots are written from an attendee. Extracted because R12 gave the stamping a second caller; two copies would drift the first time one gained a field |
+| `EventAttendeeSync` + `EventAttendeeTrigger` | The per-status rule. This project's only trigger |
+| `EventAttendeeSyncTest` | Eight tests. The load-bearing one is `approvedInviteesNeverMove` — R12 is a narrowing, and a narrowing is safe only if the case it was protecting still holds |
+| `custCd` on `ImportRow`, `contactMatched` on `PreviewResult` | The preview reports the match per row because it is the one outcome an AM cannot predict from their own file |
+| CSV header aliases `Cust Cd` / `Customer Code` / `Account Number` | Optional, like Title and Mobile. A file without the column still imports; its people arrive unlinked |
+| `Cust_Cd__c` on both permission sets | Editable for `Event_AM` (correcting a code so the next re-upload links is ordinary work), read-only for `Event_Approver` |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `AttendeeImportController` | `matchContacts()` + `contactKey()`; `classify()` takes the resolved map so preview and apply share one query. Writes `Contact__c` and `Cust_Cd__c` **only when non-null**, so an upsert cannot unlink by omission |
+| `Event_Attendee__c.Contact__c` description | The capitalised prohibition is replaced by the reasoning above |
+| `Event_Invitee__c.Cust_Cd__c` description | Source changed from `Account.AccountNumber` to the attendee |
+| `Event_Invitee__c.Invitee_Title__c` description | Carries the per-status rule and why it is not a formula |
+| `InviteeSelectorController` | `stampSnapshot` delegates to `InviteeSnapshot`; `AccountNumber` drops out of the attendee select |
+| `EventWorkflowTest.editingTheAttendeeLaterDoesNotRewriteTheInvitation` | The row is Approved before the edit. It previously relied on a Draft never moving, which is precisely what R12 changes |
+| `EventWorkflowTest` fixture | Attendees carry a `cust_cd`; Hélène's is blank, the same fact as her missing Contact arriving one column earlier |
+
+**Not shipped, deliberately**
+
+- **No validation of `cust_cd` against the org.** A code the org has never heard of is stored
+  as-is and matches nothing. Whether a code is real is a question for whoever produced the file.
+- **No back-fill.** Attendees imported before R12 stay unlinked until their file is re-uploaded.
+  No record of ours exists in any org yet, so this is theoretical — noted because the code makes
+  it recoverable rather than requiring a script.
+- **Nothing that closes Open Question 21.** A coded guest with no Contact is still unsubmittable.
+
+### ★R12 What still needs an org
+
+1. **Nothing here has been compiled or deployed.** The LWC suite, ESLint, Prettier and the
+   mutation spot-check pass locally; Apex compilation, the Apex tests and deploy validation all
+   require an org and have **not** been run.
+2. **Whether `Account.AccountNumber` is where this org keeps the customer code.** Inherited from
+   R8 as an assumption and still unverified — DEPLOYMENT.md step 8. R12 raises the stakes: it was
+   a display field, and it is now half of a matching key, so a wrong guess means nothing matches
+   rather than one column reading oddly.
+3. **How many Contacts share an email under one account number in real data.** Every such pair is
+   a row that silently does not link. Cheap to measure against the real org and not guessable from
+   here.
 
 ### ★R11 Deliverables delta
 
@@ -626,7 +769,8 @@ erDiagram
         Text  Last_Name__c "required, no surname means no identity"
         Email Email__c "optional and NOT unique"
         Text  Company__c "free text, no Account lookup"
-        Lookup Contact__c FK "R8, optional, set by reconciliation not by the import"
+        Text  Cust_Cd__c "R12, from the CSV; half of the Contact match key"
+        Lookup Contact__c FK "R12, matched by the import on cust_cd + email"
         Text  Unique_Key__c UK "normalised last, first, company, email"
     }
 
@@ -757,11 +901,17 @@ Event_Attendee__c                                     OWD: Public Read/Write
   Mobile__c                  Phone                    as given, never normalised
   Work_Phone__c           ★R8 Phone                    kept beside Mobile__c, not instead of it
   Address__c              ★R8 Text Area(255)           one field, not five - see the field description
+  Cust_Cd__c              ★R12 Text(40)                the customer code as the CSV supplied it.
+                                                      NOT part of Unique_Key__c - an employer's
+                                                      code can be reassigned
   Contact__c              ★R8 Lookup -> Contact, SetNull
                                                       "also exists as a Contact in the org".
-                                                      Written by reconciliation, NEVER by the
-                                                      import. SetNull, never Restrict - this
-                                                      must not block the org deleting a Contact
+                                                      ★R12 Written by the import, matching on
+                                                      Cust_Cd__c AND Email together - reversing
+                                                      R8's rule, whose two supports both expired.
+                                                      Reads Contact; writes it never. SetNull,
+                                                      never Restrict - this must not block the
+                                                      org deleting a Contact
   Is_Known_Contact__c     ★R8 Formula, Checkbox        NOT(ISBLANK(Contact__c)); readable without
                                                       any grant on Contact
   Source_File__c             Text(255)                which upload it last came in on
@@ -903,7 +1053,7 @@ structural problems in R3 and R4 stop existing rather than getting better:
 
 | Given up | Consequence |
 |---|---|
-| **Any link to existing customer data.** An attendee who is also a Contact is now two unrelated records. | Nobody can answer "which of tonight's guests are customers?" from this system. That question was answerable in R4 and is not now. **If it turns out to matter, the cheapest recovery is an optional `Contact__c` lookup on the attendee populated by a separate reconciliation job — not putting matching back into the import.** |
+| **Any link to existing customer data.** An attendee who is also a Contact is now two unrelated records. | Nobody can answer "which of tonight's guests are customers?" from this system. That question was answerable in R4 and is not now. **If it turns out to matter, the cheapest recovery is an optional `Contact__c` lookup on the attendee populated by a separate reconciliation job — not putting matching back into the import.** ★R8 built the lookup; ★R12 built the matching, inside the import, on `cust_cd` + email. |
 | **The narrowing cascade, `Match_Basis__c`, and the Ambiguous outcome.** | With nothing to match against, there is nothing to be uncertain about. The preview loses a category and gains nothing to replace it. |
 | **Organisation is free text with nothing behind it.** | "Acme Corp" and "ACME Corp." are two organisations in the selector's grouping, and no report can roll them up. R3 had this only for Leads; R5 has it for everybody. |
 | **De-duplication rests entirely on `Unique_Key__c`.** | Two same-named people at one company with no email collapse into one attendee; one person whose email changed between two files becomes two. Both are visible in the demo file on purpose. |
@@ -1698,9 +1848,12 @@ Sequenced so the negative assertions exist before the code that could violate th
 
 **Not shipped, deliberately**
 
-- **No reconciliation between attendees and Contacts.** Named as the recovery path in the price
+- ~~**No reconciliation between attendees and Contacts.** Named as the recovery path in the price
   table rather than half-built here — a matching pass that runs on a schedule is a different
-  feature from an import, and building it into the import is what R5 exists to undo.
+  feature from an import, and building it into the import is what R5 exists to undo.~~
+  **★R12 Overtaken.** The scheduled pass was never built, and R12 put the matching inside the
+  import after all — on a two-part key strict enough that the ambiguity R5 was avoiding cannot
+  arise. See the R12 header.
 - **No roll-up of attendee counts on the event.** `Event_Invitee__c` already provides the three
   status counters; an attendee count is the same number before approval.
 
@@ -1970,7 +2123,7 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 18. ★R6 **Does anyone need to filter *people* by their attendance history?** R6 deliberately ships no aggregate on the attendee — no "events attended" count, no "last attended" date — because `Event_Invitee__c` is a Lookup child and a roll-up needs a Master-Detail, so any such field costs a trigger or Flow to maintain. The *Attendee Event History* report answers the question by group; what it cannot do is return "everyone who has attended three or more events" as a list to act on. If marketing wants to segment on that, the cheapest honest answer is a scheduled Flow maintaining two fields, and it should be built then rather than now.
 19. ★R6 ~~**What is the real `Topic__c` taxonomy, and who back-fills past events?**~~ **Half-settled by R11.** "What is the real taxonomy" is now the wrong question — R11 deletes the picklist precisely because the business does not want one enumerated. What survives unanswered is the second half: historical events still have no tags until somebody adds them, and an untagged event still looks equally similar to everything else in the meantime. What changed is who can act and when — a BD can tag a past event the moment they think to, without first asking an admin to add a value to a picklist that may not have existed yet — so the blocker this question named is gone even though the work itself is not done. Original text: **What is the real `Topic__c` taxonomy, and who back-fills past events?** The values shipped are placeholders taken from the demo data's financial-services domain. Until they are replaced *and* historical events are tagged, every past event looks equally similar to every new one and any recommendation is noise. This is the single thing standing between R6 and the requirement actually being met — the plumbing is done, the data is not.
 20. ★R6 ~~**What does "OIP" expand to, and what distinguishes it from a Symposium?**~~ **Settled: it doesn't need distinguishing.** The business's answer is that OIP is its own independent Marketing Event category, not a variant of Symposium or Conference that needs a documented line between them — so the "AM picks at random" risk this entry raised does not apply: there is nothing to confuse it with. Original text: **What does "OIP" expand to, and what distinguishes it from a Symposium?** It is the business's term and this design does not know it. Nothing breaks — no record holds a value — but a picklist whose values the documentation cannot explain is one an AM will pick from at random, and the event type is a column in every report.
-17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes, and by the exact route this entry recommended.** `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
+17. ★R5 ~~**Should an attendee ever be linked back to a Contact?**~~ **Answered by R8: yes.** ★R12 **And re-answered on the second half: the import populates it.** R8's route — a separate reconciliation run, with the import reading no standard object — was never built, so the field held nothing until R12. What replaced it is the thing R8 and R5 both refused, made safe by being far stricter than the R4 cascade they were refusing: a match on `cust_cd` AND email together, linking only on a single hit. The import reads Contact and Account, and still writes neither. Original R8 answer follows. `Event_Attendee__c.Contact__c` is a lookup populated by a separate reconciliation run; the import still reads no standard object. `SEIM_PERSON.CONT_PERSON_SEQ` is the same field in the source system, which is a fair sign the question was worth asking. What it costs is a Read grant on Contact that this repo does not ship — see the R8 header. Original text: **Should an attendee ever be linked back to a Contact?** Deliberately not built — see the price table under *Data model*. The question is when somebody asks "which of tonight's guests are existing customers?", which R4 could answer and R5 cannot. The recommended recovery is an optional `Contact__c` lookup populated by a separate reconciliation job, **not** matching inside the import.
 21. ★R7 ~~**What approves a guest with no `cust_cd`?**~~ ★R9 **Answered by the business: nothing does, and that is the point — put those guests behind an account instead.** The rule is unchanged (no Account Owner, no chain, refused at submit), and the remedy is a data one: an administrator keeps an account for non-customer guests, names its owner when creating it, and the reconciliation links those attendees to Contacts under it. Approval then follows the ordinary path with no special case anywhere in the code. **Two things this repo deliberately does not do about it.** It does not create that account — no code here writes to Account, Contact or Lead, which is the invariant in `CLAUDE.md` and is asserted in the tests — so it is a manual post-deploy step (DEPLOYMENT.md step 10). And it does not name the account: whether one bucket serves every non-customer guest or the business wants several is theirs to decide, and premise 7 constrains it — such an account is not a customer and must not be counted as one, so whatever name is chosen should make that obvious in every report that reads Account. **Until that account exists, professors, press and other non-customer guests can be added to an event and not submitted.** Original text: **What approves a guest with no `cust_cd`?** R7 routes on the customer code, so an attendee who belongs to no customer — a professor, a journalist, the people who were Leads two revisions ago — has no chain and cannot be submitted at all. The design refuses rather than falling back to the submitter's manager, because a fallback turns a data gap into a quieter approval. But refusing is only correct if such guests are rare or unwanted; if they are routine, the chain needs a default route (a `cust_cd` of `INTERNAL`, or a level-0 rule) and that is a business decision, not a build one. **Confirm alongside Open Question 15's answer, not after it.**
 23. ★R8 ~~**How does an invitee acquire its Account?**~~ **Answered: through the Contact, option (a).** `Event_Attendee__r.Contact__r.AccountId` at add time, with `Account.OwnerId` as `Account_Manager__c` and `Account.AccountNumber` as `Cust_Cd__c`. Two things follow that are worth keeping in view. **The Account Owner rung is buildable again** — R5 deleted it for want of an Account, and requirement.md asked for it in the first place; nothing routes to it yet, but `Account_Manager__c` is now on the row. **And a guest with no Contact has no customer**, so Open Question 21 arrives through this door rather than R7's: those rows carry no `cust_cd` and no chain. One more limit, recorded rather than worked around: `InviteeSelectorController` is `with sharing`, so an Account the running AM cannot see comes back null and the row silently falls back to the imported company text. Reading the org's customer data `without sharing` to avoid that is not a trade this project makes on the org's behalf. Original text: **How does an invitee acquire its Account?** The ERD's `SEIM_INVITEE` carries `COMP_SEQ` / `CUST_CD` / `ACCT_MNGR`, so the source system knew a person's company per invitation. Three routes here, and they are not equivalent: (a) **through the Contact** — `Contact__c.AccountId` gives Account, `Account.OwnerId` gives the account manager, and the whole chain falls out of the link R8 already built; (b) the AM **picks the Account** in the selector when adding the invitee, which works for guests who are nobody's Contact but adds a step to the screen the demo is built around; (c) a **reconciliation run** stamps it, same as the Contact link. (a) is the tidiest and has one consequence worth naming out loud: an attendee who is not a Contact has no Account, no `cust_cd` and therefore — under R7's routing — no approval chain. That is Open Question 21 arriving through a different door.
 24. ★R8 ~~**Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?**~~ **Answered: both stay, and the invitee snapshots its own copy.** The attendee keeps the raw imported value and the identity key is untouched; `Invitee_Org__c` holds the company this person was invited *as*. What that buys is the ERD's correction — a job change shows correctly on each event — without narrowing attendee identity to `last|first|email`, which would have made two same-named colleagues with no email indistinguishable. **What it costs is a genuine duplicate:** the same company is recorded in two places, and when they disagree the invitee is right about the invitation while the attendee is right about today. Open Question 16 is therefore *not* settled — a person who changes jobs is still two attendees. Original text: **Does `Company__c` stay on the attendee, and does it stay inside `Unique_Key__c`?** The ERD says no to the first (`SEIM_PERSON` has no company column) and therefore no to the second. Moving it to the invitee makes a job change a new invitation rather than a new person, which is what Open Question 16 was complaining about. What it costs: the import's CSV carries a Company column and would have nowhere person-level to put it, and identity narrows to `last|first|email` — so two same-named people at one company with no email stop being distinguishable at all, where today the company at least separates them from people elsewhere. Keeping both — raw import value on the attendee, snapshot on the invitee — is the middle path and duplicates the data.

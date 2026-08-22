@@ -5,6 +5,12 @@
  * Account is created, updated or deleted, even when the file names people who
  * exist as all three. Those assertions ARE the requirement; the rest of this
  * class is detail about how de-duplication reaches one attendee per person.
+ *
+ * ★R12 The import now READS Contact, to link an attendee to one. Nothing above changes:
+ * the invariant was always about writing, and importNeverTouchesContactsLeadsOrAccounts
+ * asserts exactly what it always did. The matching tests are grouped at the foot of the
+ * class, and the one they hang on is aReuploadWithoutTheCodeDoesNotUnlink — a link, once
+ * made, must not be destroyed by a later file that simply lacks the column.
  */
 @IsTest
 private class AttendeeImportControllerTest {
@@ -12,7 +18,9 @@ private class AttendeeImportControllerTest {
     static void setup() {
         // Deliberately populated: the file below names these same people, and the
         // import must walk straight past them. An empty org would prove nothing.
-        Account acme = new Account(Name = 'Acme Corp');
+        // ★R12 AccountNumber is what the import compares the CSV's cust_cd against, so
+        // the fixture has to carry one for any matching test to mean anything.
+        Account acme = new Account(Name = 'Acme Corp', AccountNumber = 'CUST-0042');
         insert acme;
         insert new Contact(
             FirstName = 'Emily',
@@ -41,6 +49,28 @@ private class AttendeeImportControllerTest {
 
     private static List<AttendeeImportController.ImportRow> one(AttendeeImportController.ImportRow r) {
         return new List<AttendeeImportController.ImportRow>{ r };
+    }
+
+    /** ★R12 The same row plus the customer code the Contact match needs. */
+    private static AttendeeImportController.ImportRow row(
+        String first,
+        String last,
+        String email,
+        String company,
+        String custCd
+    ) {
+        AttendeeImportController.ImportRow r = row(first, last, email, company);
+        r.custCd = custCd;
+        return r;
+    }
+
+    private static Event_Attendee__c attendeeNamed(String lastName) {
+        return [
+            SELECT Id, Contact__c, Cust_Cd__c, Is_Known_Contact__c
+            FROM Event_Attendee__c
+            WHERE Last_Name__c = :lastName
+            LIMIT 1
+        ];
     }
 
     // ================= the requirement =================
@@ -94,8 +124,14 @@ private class AttendeeImportControllerTest {
 
     /**
      * A person who is already a customer Contact is still imported as an attendee.
-     * This is not an oversight to be fixed later — it is the shape R5 chose, and a
-     * test that asserts it stops someone quietly reintroducing Contact matching.
+     * This is not an oversight to be fixed later — it is the shape R5 chose.
+     *
+     * ★R12 What this test used to also assert, in its comment, was that nobody could
+     * reintroduce Contact matching. R12 reintroduced it deliberately, and the assertion
+     * below survives that unchanged because matching was never what this test was really
+     * about: a matched person is *linked*, not *skipped*. The row passed here carries no
+     * cust_cd, so it matches nothing anyway — see the R12 section at the foot of this
+     * class for the matching behaviour itself.
      */
     @IsTest
     static void anExistingContactIsImportedAsAnAttendeeAnyway() {
@@ -110,7 +146,7 @@ private class AttendeeImportControllerTest {
         System.assertEquals(
             1,
             [SELECT COUNT() FROM Event_Attendee__c WHERE Last_Name__c = 'Carter'],
-            'The import does not look at Contact, so it cannot skip her'
+            'Matching a Contact links the attendee; it never replaces or skips one'
         );
     }
 
@@ -503,5 +539,145 @@ private class AttendeeImportControllerTest {
             threw = true;
         }
         System.assert(threw, 'De-duplication has to hold at the database, not only in the import');
+    }
+
+    // ================= ★R12 Contact matching =================
+
+    /**
+     * The happy path, and the thing R12 exists for: the code and the email agree, so
+     * the attendee comes out linked to the Contact the org already had.
+     *
+     * Emily Carter is the fixture Contact — the same person the R5 test above proves the
+     * import must not WRITE. Both assertions are true at once, and that is the whole
+     * distinction R12 rests on: reading her to record a link is allowed, changing her is
+     * not.
+     */
+    @IsTest
+    static void linksTheContactWhenCodeAndEmailBothMatch() {
+        Test.startTest();
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', 'CUST-0042')),
+            'f.csv'
+        );
+        Test.stopTest();
+
+        Event_Attendee__c a = attendeeNamed('Carter');
+        System.assertNotEquals(null, a.Contact__c, 'Code and email both matched — the link is the point of R12');
+        System.assertEquals(true, a.Is_Known_Contact__c, 'The checkbox is the half readable without a Contact grant');
+        System.assertEquals('CUST-0042', a.Cust_Cd__c, 'The code is stored as the file supplied it');
+    }
+
+    /**
+     * The R4 failure mode, refused. The email is Emily's and the code belongs to nobody,
+     * so a cascade that fell back to email alone would link her. R12 does not fall back:
+     * both parts or no link.
+     */
+    @IsTest
+    static void doesNotLinkWhenOnlyTheEmailMatches() {
+        Test.startTest();
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', 'CUST-9999')),
+            'f.csv'
+        );
+        Test.stopTest();
+
+        Event_Attendee__c a = attendeeNamed('Carter');
+        System.assertEquals(null, a.Contact__c, 'A stale code must not resolve to a namesake at another customer');
+        System.assertEquals('CUST-9999', a.Cust_Cd__c, 'Stored anyway — the import does not validate codes');
+    }
+
+    /**
+     * A guest who belongs to no customer: a professor, a journalist. Blank is ordinary,
+     * attempts no match, and is not an error.
+     */
+    @IsTest
+    static void doesNotLinkWhenTheCodeIsBlank() {
+        Test.startTest();
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', null)),
+            'f.csv'
+        );
+        Test.stopTest();
+
+        Event_Attendee__c a = attendeeNamed('Carter');
+        System.assertEquals(null, a.Contact__c, 'No code, no match attempt — the email alone is never enough');
+        System.assertEquals(false, a.Is_Known_Contact__c);
+    }
+
+    /**
+     * Two Contacts, one customer, one shared address — a role mailbox, or a duplicate the
+     * org has not merged. Neither wins. Picking the first would be a guess the AM cannot
+     * see; no link is a state the preview reports.
+     */
+    @IsTest
+    static void doesNotLinkWhenTwoContactsShareTheCodeAndEmail() {
+        Account acme = [SELECT Id FROM Account WHERE AccountNumber = 'CUST-0042'];
+        insert new Contact(
+            FirstName = 'Emily',
+            LastName = 'Carter-Duplicate',
+            Email = 'emily.carter@acmecorp.example',
+            AccountId = acme.Id
+        );
+
+        Test.startTest();
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', 'CUST-0042')),
+            'f.csv'
+        );
+        Test.stopTest();
+
+        System.assertEquals(
+            null,
+            attendeeNamed('Carter').Contact__c,
+            'Two candidates collapse to none, never to the first'
+        );
+    }
+
+    /**
+     * A link, once made, survives a file that cannot reproduce it.
+     *
+     * This is the destructive case R12 has to rule out: an AM re-uploads a list whose
+     * cust_cd column is missing, and everybody the previous import linked quietly
+     * unlinks. The upsert leaves an unassigned field alone precisely so that cannot
+     * happen — nothing in a CSV should be able to break a link by omission.
+     */
+    @IsTest
+    static void aReuploadWithoutTheCodeDoesNotUnlink() {
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', 'CUST-0042')),
+            'first.csv'
+        );
+        Id linked = attendeeNamed('Carter').Contact__c;
+        System.assertNotEquals(null, linked, 'Precondition: the first upload linked her');
+
+        Test.startTest();
+        // Same person — same Unique_Key__c, because the code is deliberately not part of
+        // it — but this file has no cust_cd column at all.
+        AttendeeImportController.applyChanges(
+            one(row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', null)),
+            'second.csv'
+        );
+        Test.stopTest();
+
+        Event_Attendee__c a = attendeeNamed('Carter');
+        System.assertEquals(linked, a.Contact__c, 'A re-upload that cannot match must not blank an established link');
+        System.assertEquals('CUST-0042', a.Cust_Cd__c, 'Nor blank the code it can no longer see');
+    }
+
+    /** The preview says so per row, because it is the one outcome the AM cannot predict from their file. */
+    @IsTest
+    static void thePreviewReportsWhetherEachRowMatched() {
+        Test.startTest();
+        List<AttendeeImportController.PreviewResult> results = AttendeeImportController.previewMatches(
+            new List<AttendeeImportController.ImportRow>{
+                row('Emily', 'Carter', 'emily.carter@acmecorp.example', 'Globex', 'CUST-0042'),
+                row('Someone', 'Unknown', 'nobody@nowhere.example', 'NewCo', 'CUST-9999')
+            }
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].contactMatched);
+        System.assert(results[0].reason.contains('known Contact'), 'The row says so in words too');
+        System.assertEquals(false, results[1].contactMatched);
     }
 }

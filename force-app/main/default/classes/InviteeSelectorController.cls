@@ -163,9 +163,13 @@ public with sharing class InviteeSelectorController {
         //
         // ★R8 The same query carries everything the invitee snapshots. The Account is
         // reached through the Contact link and never guessed from the company text:
-        // Contact__c is set by a deliberate reconciliation run, so an Account here means
-        // somebody established that this person is that customer's, rather than that two
-        // strings looked alike.
+        // ★R12 Contact__c is set by the import, matching on customer code AND email
+        // together, so an Account here means both of those agreed — not that two company
+        // strings looked alike. Account.AccountNumber has dropped out of the select:
+        // Cust_Cd__c now comes from the attendee, and the Account is only needed for its
+        // name, its Id and its owner.
+        // The select must cover everything InviteeSnapshot reads — a field missing here
+        // is stamped as null rather than failing, so keep the two in step.
         Map<Id, Event_Attendee__c> attendees = new Map<Id, Event_Attendee__c>(
             [
                 SELECT
@@ -173,9 +177,9 @@ public with sharing class InviteeSelectorController {
                     Salutation__c,
                     Title__c,
                     Company__c,
+                    Cust_Cd__c,
                     Contact__r.AccountId,
                     Contact__r.Account.Name,
-                    Contact__r.Account.AccountNumber,
                     Contact__r.Account.OwnerId
                 FROM Event_Attendee__c
                 WHERE Id IN :attendeeIds
@@ -426,9 +430,10 @@ public with sharing class InviteeSelectorController {
      * actually saw — a live formula lets a later edit to the attendee rewrite the past.
      *
      * The company falls back to the attendee's imported text when there is no Contact behind
-     * them, so the field is never blank just because a guest is nobody's customer. Account__c,
-     * Cust_Cd__c and Account_Manager__c stay blank in that case, which is the honest answer:
-     * there is no customer to name.
+     * them, so the field is never blank just because a guest is nobody's customer. Account__c
+     * and Account_Manager__c stay blank in that case, which is the honest answer: there is no
+     * customer to name. ★R12 Cust_Cd__c no longer stays blank with them — it comes from the
+     * CSV by way of the attendee, so a guest whose code matched no Contact still carries it.
      *
      * Two things this deliberately does not do. It never writes to Account or Contact — it
      * only reads them. And it does not bypass sharing: this class is `with sharing`, so an
@@ -436,26 +441,14 @@ public with sharing class InviteeSelectorController {
      * text. That is a real gap under a Private Account OWD, and the alternative — reading the
      * org's customer data `without sharing` to fill in a convenience field — is not a trade
      * this project gets to make on the org's behalf.
+     *
+     * ★R12 The body moved to InviteeSnapshot, which EventAttendeeSync also calls when an
+     * attendee is edited after the fact. This is the add-time caller and always stamps
+     * everything: a row being created, or a Rejected row being re-added, has no frozen
+     * approver chain for the routing fields to contradict.
      */
     private static void stampSnapshot(Event_Invitee__c inv, Event_Attendee__c attendee) {
-        inv.Invitee_Salutation__c = attendee.Salutation__c;
-        inv.Invitee_Title__c = attendee.Title__c;
-
-        Account customer = attendee.Contact__r == null ? null : attendee.Contact__r.Account;
-        if (customer == null) {
-            inv.Invitee_Org__c = attendee.Company__c;
-            inv.Account__c = null;
-            inv.Cust_Cd__c = null;
-            inv.Account_Manager__c = null;
-            return;
-        }
-        inv.Invitee_Org__c = customer.Name;
-        inv.Account__c = customer.Id;
-        // The one org-specific assumption in this class: AccountNumber is where the customer
-        // code lives. If this org keeps it elsewhere, change this line — see the field's
-        // description and DEPLOYMENT.md.
-        inv.Cust_Cd__c = customer.AccountNumber;
-        inv.Account_Manager__c = customer.OwnerId;
+        InviteeSnapshot.stamp(inv, attendee);
     }
 
     /**

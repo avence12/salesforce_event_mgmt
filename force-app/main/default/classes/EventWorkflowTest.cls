@@ -76,7 +76,12 @@ private class EventWorkflowTest {
         ApprovalChainService.levelsAboveOverride = 2;
     }
 
-    private static Event_Attendee__c attendee(String first, String last, String company) {
+    /**
+     * ★R12 `custCd` is what the CSV carried, and it is now where Event_Invitee__c.Cust_Cd__c
+     * comes from — R8 read it off Account.AccountNumber instead. Blank models the guest who
+     * belongs to no customer.
+     */
+    private static Event_Attendee__c attendee(String first, String last, String company, String custCd) {
         return new Event_Attendee__c(
             Name = first + ' ' + last,
             First_Name__c = first,
@@ -84,6 +89,7 @@ private class EventWorkflowTest {
             Email__c = first.toLowerCase() + '@' + 'evt.example',
             Title__c = 'Attendee',
             Company__c = company,
+            Cust_Cd__c = custCd,
             Unique_Key__c = (last + '|' + first + '|' + company).toLowerCase()
         );
     }
@@ -149,15 +155,17 @@ private class EventWorkflowTest {
         insert people;
 
         List<Event_Attendee__c> attendees = new List<Event_Attendee__c>{
-            attendee('Emily', 'Carter', 'Acme Corp'),
-            attendee('Robert', 'Kim', 'Acme Corp'),
-            attendee('James', 'Mueller', 'Nordbank AG'),
-            attendee('Hélène', 'Dubois', 'Université de Genève')
+            attendee('Emily', 'Carter', 'Acme Corp', 'CUST-0042'),
+            attendee('Robert', 'Kim', 'Acme Corp', 'CUST-0042'),
+            attendee('James', 'Mueller', 'Nordbank AG', 'CUST-0077'),
+            // ★R12 No code, because she belongs to no customer — the same fact that leaves
+            // her without a Contact below, arriving one column earlier.
+            attendee('Hélène', 'Dubois', 'Université de Genève', null)
         };
         insert attendees;
 
-        // The Contact link, as the reconciliation step would leave it — never the import.
-        // Hélène keeps none, which is what makes her the unroutable guest.
+        // ★R12 The Contact link as the import now leaves it, having matched on customer
+        // code plus email. Hélène keeps none, which is what makes her the unroutable guest.
         attendees[0].Contact__c = people[0].Id;
         attendees[1].Contact__c = people[1].Id;
         attendees[2].Contact__c = people[2].Id;
@@ -490,6 +498,10 @@ private class EventWorkflowTest {
         // and inventing one from the company text is the mistake the Contact link exists
         // to avoid. ★R9 It is also the state that now stops the row being submitted at all.
         System.assertEquals(null, inv.Account__c, 'No Contact behind them means no Account');
+        // ★R12 Blank for a new reason worth keeping distinct from the line above: her CSV
+        // row carried no customer code, not merely no Account. Had it carried one, she
+        // would have a code here and still no Account — which is precisely the case
+        // Open Question 21 is about.
         System.assertEquals(null, inv.Cust_Cd__c);
         System.assertEquals(null, inv.Account_Manager__c);
 
@@ -503,6 +515,12 @@ private class EventWorkflowTest {
      * ★R8 The whole reason the formulas became snapshots. Editing an attendee after they
      * have been invited must not rewrite what the invitation — and therefore the approval
      * that was made on it — appears to have said.
+     *
+     * ★R12 Narrowed, and the narrowing is the point of the extra line below. R8 froze the
+     * row from the moment it was created; R12 freezes it from the moment it is decided.
+     * A Draft invitation has misrepresented nobody, so it follows the attendee — see
+     * EventAttendeeSyncTest for that half. What this test now pins is the half R8 was
+     * actually arguing for, and it is unchanged: once Approved, nothing moves it.
      */
     @IsTest
     static void editingTheAttendeeLaterDoesNotRewriteTheInvitation() {
@@ -513,6 +531,11 @@ private class EventWorkflowTest {
         System.runAs(alex) {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
         }
+        // The state R8's argument is about. Set directly rather than through the approval
+        // process: what is under test is the snapshot rule, not how a row reaches Approved.
+        Event_Invitee__c row = [SELECT Id FROM Event_Invitee__c WHERE Event_Attendee__c = :emily];
+        row.Status__c = 'Approved';
+        update row;
 
         Test.startTest();
         update new Event_Attendee__c(Id = emily, Title__c = 'Managing Director', Company__c = 'Globex');
@@ -560,7 +583,11 @@ private class EventWorkflowTest {
             inv.Invitee_Org__c,
             'The Account name wins over the imported text once there is an Account'
         );
-        System.assertEquals('CUST-0042', inv.Cust_Cd__c, 'AccountNumber is the assumed home of the customer code');
+        // ★R12 Same value, different provenance: it is snapshotted from the attendee's own
+        // Cust_Cd__c, which came from the CSV. The Account agrees because that agreement is
+        // what let the import link her in the first place — but the Account is no longer
+        // where the invitee reads it from.
+        System.assertEquals('CUST-0042', inv.Cust_Cd__c, 'Snapshotted from the attendee, not from AccountNumber');
         System.assertEquals(
             acme.OwnerId,
             inv.Account_Manager__c,

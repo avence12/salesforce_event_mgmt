@@ -46,8 +46,16 @@ Contact, and the invitee snapshots a company from `Contact.Account`. Reading is 
 allowed where a decision has been recorded for it; writing is not, at all, ever. Three rules
 keep that boundary honest and none of them is optional:
 
-- **The import still reads nothing.** Screen 1 matches no CSV row against Contact, Lead or
-  Account. The Contact link is populated by a separate reconciliation step an admin runs.
+- ~~**The import still reads nothing.** Screen 1 matches no CSV row against Contact, Lead or
+  Account. The Contact link is populated by a separate reconciliation step an admin runs.~~
+  **R12 removed this rule and it is not coming back.** Both halves had failed: the
+  reconciliation step was never built, so `Contact__c` was populated by nothing for four
+  revisions. Screen 1 now **reads** Contact and Account to match each row on `Cust_Cd__c` AND
+  `Email` together, linking only on a single hit. What replaces the rule is narrower and is
+  the thing that actually mattered: **the import writes no standard object**, which
+  `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` asserts. Do not
+  reintroduce R4's name → company → email cascade — the strictness of the two-part key is what
+  makes reading safe, not the reading itself being rare.
 - **No lookup to a standard object may use `deleteConstraint Restrict`.** Our record must never
   be able to block the org from deleting its own Contact or Account. `SetNull` always.
 - **No permission on a standard object ships in this repo.** `Event_AM` and `Event_Approver`

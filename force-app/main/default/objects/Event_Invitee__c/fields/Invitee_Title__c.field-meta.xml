@@ -6,7 +6,17 @@
 
 The reason is the one design.md already recorded as a known risk and never fixed: with a live formula, correcting an attendee&apos;s title after their invitation was approved silently rewrites what the approval appears to have shown. An approval record that changes after the fact is not a record. The API name is unchanged so every report, report type, layout and approval page that already reads it keeps working — a rename would have been churn for nothing.
 
-What the snapshot costs, and it is the mirror image of what it buys: a typo fixed on the attendee no longer propagates. The invitee keeps the wrong spelling until someone edits that row too.</description>
+What the snapshot costs, and it is the mirror image of what it buys: a typo fixed on the attendee no longer propagates. The invitee keeps the wrong spelling until someone edits that row too.
+
+★R12 That cost is now paid only where it buys something, and Status__c is the line. R8 framed this as a choice between a live formula and a frozen snapshot, and took the frozen one whole. But the audit argument it rests on — &quot;an approval record that changes after the fact is not a record&quot; — only applies once there is an approval to misrepresent. A Draft row has been approved by nobody, so freezing a typo into it protects nothing and simply shows the approver stale data when it is finally submitted.
+
+So the rule is per-status, and EventAttendeeSync enforces it:
+
+- Draft — full re-stamp when the attendee changes. Nothing is frozen yet, including the routing fields, because nothing has been submitted.
+- Pending — the display snapshots only: Invitee_Salutation__c, Invitee_Title__c, Invitee_Org__c, Cust_Cd__c. An approver should read what is true now. Account__c and Account_Manager__c are deliberately NOT re-stamped: the approver chain was frozen onto Approver_1..5__c at submit, and moving the routing fields underneath a chain already in flight would leave the row describing one approver and addressed to another.
+- Approved, Rejected — nothing, ever. This is the case R8 was actually arguing about, and R8 wins it unchanged.
+
+Why a trigger rather than reverting to a formula: a formula would sync every status, which is precisely the Approved case R8 ruled out. The automation is not there to reproduce a formula more expensively — it is there because the correct behaviour is conditional and a formula cannot be.</description>
     <type>Text</type>
     <length>128</length>
     <required>false</required>

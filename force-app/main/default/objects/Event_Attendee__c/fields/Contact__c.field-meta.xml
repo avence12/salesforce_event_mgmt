@@ -4,12 +4,18 @@
     <label>Contact</label>
     <description>★R8 SEIM_PERSON.CONT_PERSON_SEQ. Populated means &quot;this person also exists as a Contact in the org&quot;; blank means we have not established that, which is not the same as knowing they are not one. This is the field Open Question 17 named as the recovery for what R5 gave up — the answer to &quot;which of tonight&apos;s guests are existing customers?&quot;
 
-Two rules travel with it, and the field is unsafe without them.
+★R12 THE IMPORT NOW SETS THIS, reversing the rule this description used to carry in capitals. What made the old rule necessary was R4&apos;s matching cascade — name, then company, then email — which could not tell two people with the same name apart and needed an AMBIGUOUS outcome to say so. R12 does not reinstate that cascade. It matches on Cust_Cd__c AND Email together, both required, and links only on a single hit; zero hits and several hits are the same outcome, which is no link. There is nothing left to be ambiguous about, so the reason for the prohibition went before the prohibition did.
 
-1. THE IMPORT MUST NOT SET THIS. Screen 1 still reads no standard object; matching a CSV row against Contact is what R4 and R5 spent two revisions removing, and putting it back inside the import would restore the ambiguity problem along with it. This field is populated by a separate reconciliation step that an admin runs deliberately.
+What made the old rule *possible* was the assumption that an admin would run a reconciliation step instead. No such step was ever built. Until R12 this field was populated by nothing at all, which meant Is_Known_Contact__c was always false and every invitee fell back to free-text company. The import filling it is not a widening of what the feature does; it is the first thing that makes the field work.
+
+Two rules still travel with it, and the field is unsafe without them.
+
+1. Reading is all the import does. It queries Contact and Account to resolve this link and writes neither — the invariant in CLAUDE.md is about writing, and it is unchanged. AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts asserts it.
 2. deleteConstraint is SetNull and may never be Restrict. Restrict would let an attendee record block the org from deleting its own Contact — bad-neighbour behaviour on an object this project does not own. SetNull means a deleted Contact silently unlinks, and that is the correct trade: our data goes quiet, theirs stays theirs.
 
-What it costs: reading the linked Contact&apos;s name requires Read on Contact, which the Event_AM permission set deliberately does not grant. That grant is an org decision and lives in the post-deploy checklist, not in this repo. Is_Known_Contact__c exists so the useful half of this field — the yes/no — is readable and reportable without it.</description>
+What it costs: reading the linked Contact&apos;s name requires Read on Contact, which the Event_AM permission set deliberately does not grant. That grant is an org decision and lives in the post-deploy checklist, not in this repo. Is_Known_Contact__c exists so the useful half of this field — the yes/no — is readable and reportable without it. The import itself needs no such grant: Apex does not enforce object-level CRUD, so the matching query runs whatever the AM is or is not permitted to see in the UI.
+
+★R12 known limit, recorded rather than fixed: the import is `with sharing`, so a Contact the running AM cannot see does not match. The same file imported by two AMs can therefore produce different links. Reading the org&apos;s customer data `without sharing` to avoid that is not a trade this project makes on the org&apos;s behalf — the preview reports which rows matched, so the difference is visible rather than silent.</description>
     <type>Lookup</type>
     <referenceTo>Contact</referenceTo>
     <relationshipLabel>Event Attendees</relationshipLabel>
