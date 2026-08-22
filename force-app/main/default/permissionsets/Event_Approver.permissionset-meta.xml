@@ -297,6 +297,15 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R12 Read-only, unlike on Event_AM. An approver weighs an invitation; they do not
+      correct the file it came from.
+    -->
+    <fieldPermissions>
+        <field>Event_Attendee__c.Cust_Cd__c</field>
+        <readable>true</readable>
+        <editable>false</editable>
+    </fieldPermissions>
     <fieldPermissions>
         <field>Event_Attendee__c.Source_File__c</field>
         <readable>true</readable>

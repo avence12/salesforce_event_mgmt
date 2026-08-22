@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cust_Cd__c</fullName>
+    <label>Customer Code</label>
+    <description>★R12 The customer company code as it arrived in the CSV, and half of the key the import matches a Contact on. This reinstates what R7 designed and R8 struck out — &quot;cust_cd arrives in the CSV and lands on Event_Attendee__c&quot; — because the reason R8 struck it out has gone.
+
+R8 derived the code instead: Contact__c → Account → AccountNumber. That was the only route available while the import was forbidden to read Contact, and it is circular now that the import matches on the code. A key cannot be the thing you find the Contact with AND the thing you read off the Contact once found. The CSV is the source; the Account is the confirmation.
+
+WHAT IT IS NOT: a relationship. Nothing dereferences it. A row carrying a code this org has never heard of is stored as-is and simply matches no Contact — the import does not validate it, because a code the org does not recognise is a data question for whoever produced the file, not an error the import can resolve.
+
+Blank is ordinary and means &quot;not a customer&quot;: professors, press and other guests who belong to no Account. Those rows attempt no Contact match at all. See design.md Open Question 21 for what approves them.</description>
+    <type>Text</type>
+    <length>40</length>
+    <required>false</required>
+    <unique>false</unique>
+    <externalId>false</externalId>
+    <trackHistory>false</trackHistory>
+</CustomField>

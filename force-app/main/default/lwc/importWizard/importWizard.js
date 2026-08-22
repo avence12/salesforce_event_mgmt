@@ -53,7 +53,15 @@ const HEADER_MAP = {
     mobile: 'mobile',
     mobilephone: 'mobile',
     phone: 'mobile',
-    cell: 'mobile'
+    cell: 'mobile',
+    // R12: the customer company code, half of the key the server matches a Contact on.
+    // Optional like Title and Mobile — a file without it still imports, the people in it
+    // just arrive unlinked.
+    custcd: 'custCd',
+    customercode: 'custCd',
+    customercd: 'custCd',
+    accountnumber: 'custCd',
+    accountno: 'custCd'
 };
 
 const APPLYABLE = new Set(['NEW_ATTENDEE', 'EXISTING_ATTENDEE']);
@@ -143,7 +151,7 @@ export default class ImportWizard extends LightningElement {
             const rows = await this.parseFile(file);
             if (rows.length === 0)
                 throw new Error(
-                    'No data rows found. Expected headers like: First Name, Last Name, Email, Company.'
+                    'No data rows found. Expected headers like: First Name, Last Name, Email, Company, Cust Cd.'
                 );
             if (rows.length > MAX_ROWS)
                 throw new Error(
@@ -296,12 +304,15 @@ export default class ImportWizard extends LightningElement {
         if (!headers.some(Boolean)) {
             throw new Error(
                 `No recognised column headers. The first row read as: ${raw[0].join(' | ')}. ` +
-                    'Expected: First Name, Last Name, Email, Company (Title and Mobile are optional).'
+                    'Expected: First Name, Last Name, Email, Company (Title, Mobile and Cust Cd are optional).'
             );
         }
         // In-file de-dup mirrors the server's Unique_Key__c exactly: name, company and
         // email are the person's identity, so collapsing here and collapsing there
         // cannot disagree about how many people the file contains.
+        // R12: custCd is deliberately NOT in the key. It says which customer the person
+        // belongs to, which is a fact about their employer and can change; folding it in
+        // would make the same person two attendees the day their code is reassigned.
         const seen = new Map(); // last occurrence wins
         const unkeyed = [];
         for (let i = 1; i < raw.length; i++) {
@@ -311,7 +322,8 @@ export default class ImportWizard extends LightningElement {
                 email: '',
                 title: '',
                 company: '',
-                mobile: ''
+                mobile: '',
+                custCd: ''
             };
             headers.forEach((field, col) => {
                 if (field && raw[i][col] !== undefined && raw[i][col] !== null) {

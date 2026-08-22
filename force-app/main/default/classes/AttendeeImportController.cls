@@ -2,17 +2,35 @@
  * Screen 1 — Import External Attendee List.
  *
  * R5 reduced this to one job: put the people in an uploaded file into
- * Event_Attendee__c. It does not read Contact, does not read Lead, and creates
- * neither — nor an Account. An imported person is an attendee and nothing else,
- * which is what makes the import safe to run against a production org: the only
- * object it can touch is one this project owns outright.
+ * Event_Attendee__c. It creates no Contact, no Lead and no Account — an imported
+ * person is an attendee and nothing else, which is what makes the import safe to run
+ * against a production org: the only object it can *write* is one this project owns
+ * outright, and importNeverTouchesContactsLeadsOrAccounts asserts it.
  *
- * What that removed, deliberately, is the whole R4 matching cascade. There is no
- * name → company → email narrowing any more, and therefore no AMBIGUOUS outcome
- * and no Match_Basis__c: with nothing to match against, there is nothing to be
- * uncertain about. The cost is stated rather than hidden — an attendee who is also
- * a customer Contact is now two records in the org that nothing connects, and
- * reconciling them is a job this feature no longer attempts.
+ * ★R12 IT DOES NOW READ CONTACT, which R5's version of this comment forbade. The
+ * distinction that makes that safe is the one CLAUDE.md draws: writing a standard
+ * object is never allowed, reading one is allowed where a decision has been recorded
+ * for it. This is that decision.
+ *
+ * What R5 removed, and R12 does NOT put back, is the R4 matching cascade — name, then
+ * company, then email, narrowing until something hit. That cascade needed an AMBIGUOUS
+ * outcome because a name matches two people and the code could not tell which. R12
+ * matches on Cust_Cd__c AND Email together, both required, and links only when exactly
+ * one Contact answers. No hits and several hits are the same outcome — no link — so
+ * there is still no AMBIGUOUS classification and still no Match_Basis__c. The
+ * uncertainty went away rather than being handled.
+ *
+ * Why it came back at all: Event_Attendee__c.Contact__c has existed since R8 and until
+ * R12 nothing populated it. The reconciliation step its description promised was never
+ * built, so Is_Known_Contact__c was permanently false and every invitee fell back to
+ * free-text company. This is what makes that field work.
+ *
+ * Two limits worth knowing, both recorded rather than fixed. The class is
+ * `with sharing`, so a Contact the running AM cannot see does not match and the same
+ * file can link differently for two AMs — the preview reports match/no-match per row,
+ * so it is visible. And a match never *unlinks*: a re-upload that fails to match
+ * leaves an existing Contact__c alone rather than blanking it, because a file missing
+ * its cust_cd column would otherwise silently unlink everybody in it.
  *
  * De-duplication is what is left, and Unique_Key__c is the whole of it: normalised
  * last name + first name + company + email. Re-uploading a file updates the same
@@ -109,6 +127,13 @@ public with sharing class AttendeeImportController {
         public String company { get; set; }
         @AuraEnabled
         public String mobile { get; set; }
+        /**
+         * ★R12 The customer company code from the CSV. Blank is ordinary and means the
+         * person belongs to no customer — a professor, a journalist — and such a row
+         * attempts no Contact match at all.
+         */
+        @AuraEnabled
+        public String custCd { get; set; }
     }
 
     public class PreviewResult {
@@ -122,6 +147,14 @@ public with sharing class AttendeeImportController {
         /** Set only for EXISTING_ATTENDEE, so the preview can link to the record it will refresh. */
         @AuraEnabled
         public Id attendeeId { get; set; }
+        /**
+         * ★R12 Whether customer code + email resolved to exactly one Contact. Reported
+         * per row because it is the one outcome of this import a user cannot predict
+         * from their own file: it depends on the org's data, and on what this
+         * particular user is allowed to see of it.
+         */
+        @AuraEnabled
+        public Boolean contactMatched { get; set; }
     }
 
     public class ApplyResult {
@@ -147,15 +180,21 @@ public with sharing class AttendeeImportController {
     @AuraEnabled
     public static List<PreviewResult> previewMatches(List<ImportRow> rows) {
         guard(rows, 'preview');
-        return classify(rows);
+        return classify(rows, matchContacts(rows));
     }
 
     @AuraEnabled
     public static ApplyResult applyChanges(List<ImportRow> rows, String sourceFile) {
         guard(rows, 'apply');
+        // ★R12 Resolved once and passed to both the classifier and the writer. It is
+        // deliberately not read back off PreviewResult, which carries only whether a row
+        // matched and not what it matched — a Contact Id has no business crossing to the
+        // client and back.
+        Map<String, Id> contactByKey = matchContacts(rows);
+
         // Server-side re-classification. The blast radius is small now, but "the client
         // tells the server which record to write against" is a shape worth never having.
-        List<PreviewResult> results = classify(rows);
+        List<PreviewResult> results = classify(rows, contactByKey);
 
         Datetime now = Datetime.now();
         Map<String, Integer> indexByKey = new Map<String, Integer>();
@@ -179,6 +218,19 @@ public with sharing class AttendeeImportController {
                 Imported_On__c = now,
                 Unique_Key__c = key
             );
+            // ★R12 Both fields are assigned only when the file has something to say, and
+            // never as null. On an upsert an unassigned field is left as it was, so a
+            // re-upload of a file whose cust_cd column is missing — or whose codes have
+            // gone stale — refreshes the person without unlinking them from the Contact
+            // an earlier upload established. Blanking a link is a destructive act and no
+            // file should be able to do it by omission.
+            Id matched = contactByKey.get(contactKey(pr.row));
+            if (matched != null) {
+                rec.Contact__c = matched;
+            }
+            if (String.isNotBlank(pr.row.custCd)) {
+                rec.Cust_Cd__c = clip(pr.row.custCd, 40);
+            }
             // Same person twice in one file: one record, last occurrence winning. The
             // key is the map key precisely so this cannot become two rows.
             if (indexByKey.containsKey(key)) {
@@ -242,8 +294,14 @@ public with sharing class AttendeeImportController {
      * Two outcomes and a refusal. Everything with a last name becomes an attendee;
      * the only question is whether the org already has that attendee, which is a
      * lookup on Unique_Key__c rather than any kind of judgement call.
+     *
+     * ★R12 A second, independent question is answered alongside it: is this person also
+     * a Contact? The two do not interact. Unique_Key__c decides NEW vs EXISTING attendee;
+     * the Contact match decides only whether Contact__c gets filled. A row can be an
+     * existing attendee who has never matched a Contact, or a brand-new attendee who
+     * matches one immediately.
      */
-    private static List<PreviewResult> classify(List<ImportRow> rows) {
+    private static List<PreviewResult> classify(List<ImportRow> rows, Map<String, Id> contactByKey) {
         Set<String> keys = new Set<String>();
         for (ImportRow r : rows) {
             if (String.isNotBlank(r.lastName)) {
@@ -288,9 +346,94 @@ public with sharing class AttendeeImportController {
             if (String.isNotBlank(r.email) && storableEmail(r.email) == null) {
                 pr.reason += ' (the Email column is not an address, so it was not stored)';
             }
+            // ★R12 Never a reason to skip the row — an unmatched person is imported
+            // exactly the same way, just without the Contact link.
+            pr.contactMatched = contactByKey.containsKey(contactKey(r));
+            if (pr.contactMatched) {
+                pr.reason += ' · linked to a known Contact';
+            } else if (String.isNotBlank(r.custCd) && String.isNotBlank(r.email)) {
+                pr.reason += ' · no single Contact for that customer code and email';
+            }
             results.add(pr);
         }
         return results;
+    }
+
+    // ---------- ★R12 Contact matching ----------
+
+    /**
+     * Resolves customer code + email to a Contact, for the rows that carry both.
+     *
+     * THE RULE IS ALL-OR-NOTHING BY DESIGN. Both parts must be present and the pair must
+     * resolve to exactly one Contact. Everything else — a blank code, a blank email, no
+     * hit, two hits — produces no link. There is no fallback to email alone and no
+     * "closest match", because the failure this replaces is R4's: a cascade that
+     * narrowed until something matched, and matched the wrong person often enough to
+     * need an AMBIGUOUS outcome to admit it.
+     *
+     * The two-part key is what makes the strictness cheap rather than costly. Email
+     * alone would already be nearly unique; requiring the customer code as well means a
+     * shared or recycled address at one customer cannot resolve to a namesake at
+     * another. The row that loses is the one whose email is right and whose code is
+     * stale — that person imports unlinked, which is the same place they were before
+     * R12 and is recoverable by fixing the file and re-uploading.
+     *
+     * Two hits collapse to none rather than to the first. Picking one would be a guess
+     * the caller cannot see; no link is a state the preview reports and a human can act
+     * on. The map is built to make that automatic — a key seen twice is put back as
+     * null and skipped at read time.
+     *
+     * Query shape: one SOQL over Contact filtered on both lists, then re-paired locally.
+     * The filter is deliberately not a per-row OR chain, which at BATCH_SIZE = 200 would
+     * blow the statement-length ceiling BATCH_SIZE itself is derived from. Cross-pairs
+     * the filter admits — row A's email beside row B's code — simply never form a key
+     * and fall out.
+     */
+    private static Map<String, Id> matchContacts(List<ImportRow> rows) {
+        Set<String> emails = new Set<String>();
+        Set<String> codes = new Set<String>();
+        for (ImportRow r : rows) {
+            if (String.isNotBlank(r.custCd) && String.isNotBlank(r.email)) {
+                emails.add(r.email.trim());
+                codes.add(r.custCd.trim());
+            }
+        }
+        Map<String, Id> byKey = new Map<String, Id>();
+        if (emails.isEmpty()) {
+            return byKey;
+        }
+
+        Set<String> ambiguous = new Set<String>();
+        for (Contact c : [
+            SELECT Id, Email, Account.AccountNumber
+            FROM Contact
+            WHERE Email IN :emails AND Account.AccountNumber IN :codes
+        ]) {
+            String key = normalise(c.Account.AccountNumber) + '|' + normalise(c.Email);
+            if (byKey.containsKey(key)) {
+                // Second holder of the same key: neither wins. Recorded so a third
+                // cannot un-poison it by overwriting.
+                ambiguous.add(key);
+            } else {
+                byKey.put(key, c.Id);
+            }
+        }
+        for (String key : ambiguous) {
+            byKey.remove(key);
+        }
+        return byKey;
+    }
+
+    /**
+     * The row's half of the Contact key. Returns a key that cannot match anything when
+     * either part is missing, so callers need no null check — '|' is not a key any
+     * Contact produces, because matchContacts only ever indexes rows that had both.
+     */
+    private static String contactKey(ImportRow r) {
+        if (String.isBlank(r.custCd) || String.isBlank(r.email)) {
+            return '|';
+        }
+        return normalise(r.custCd) + '|' + normalise(r.email);
     }
 
     // ---------- internals ----------

@@ -4,9 +4,13 @@
     <label>Customer Code</label>
     <description>★R8 SEIM_INVITEE.CUST_CD, and the field R7 routes the approval chain on. On the invitee rather than the attendee, correcting the R7 draft: a customer code follows the employer, and an attendee who changes jobs would otherwise carry a code that is quietly wrong from that day on.
 
-A code, not a relationship. Snapshotted from the Account at add time so that reading it needs no grant on Account and no dereference at approval time — the chain lookup is a string comparison against Approval_Route__c.Cust_Cd__c.
+A code, not a relationship. Snapshotted at add time so that reading it needs no grant on Account and no dereference at approval time.
 
-WHICH ACCOUNT FIELD IT COMES FROM IS AN ASSUMPTION: InviteeSelectorController reads the standard Account.AccountNumber, because that is the field every org has and it is the one that means &quot;customer account number&quot;. If this org keeps its customer code somewhere else, that is one line in that class and a note in the post-deploy checklist, not a redesign.</description>
+★R12 THE SOURCE CHANGED: it is snapshotted from Event_Attendee__c.Cust_Cd__c, which the CSV supplied, not from Account.AccountNumber. R8&apos;s route through the Contact was the only one available while the import could not read Contact; now that the import matches *on* the code, deriving the code back off the matched Account would be a circle. The org-specific assumption R8 recorded here — &quot;AccountNumber is where the customer code lives&quot; — has not gone away, it has moved: AttendeeImportController compares the CSV code against Account.AccountNumber to find the Contact. It is still one line and a post-deploy note, still not a redesign.
+
+One thing this buys that R8 could not: a guest whose code matched no Contact still carries the code. Under R8 they carried nothing, because no Account meant no snapshot. They still have no Account__c and no Account_Manager__c — those genuinely require the Contact link — so this does not by itself make them submittable. See design.md Open Question 21.
+
+★R12 Re-stamped after add, not only at add: when the attendee&apos;s code changes, invitees still in Draft or Pending pick it up. Approved and Rejected rows never do. EventAttendeeSync owns that rule and the reasoning is on Invitee_Title__c.</description>
     <type>Text</type>
     <length>40</length>
     <required>false</required>

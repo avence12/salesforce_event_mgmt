@@ -1,25 +1,25 @@
-﻿First Name,Last Name,Email,Title,Company,Mobile
-Emily,Carter,emily.carter@acmecorp.example,Senior Manager,Acme Corp,
-James,Mueller,j.mueller@nordbank.example,Director,Nordbank AG,
-Robert,Kim,robert.kim@acmecorp.example,"SVP, Operations",Acme Corp,
-Laura,Chen,laura.chen@acmeins.example,"VP, Finance",Acme Insurance,
-Anna,Kowalski,a.kowalski@nordbank.example,Associate,Nordbank AG,
-Hélène,Dubois,h.dubois@unige.example,Professor,Université de Genève,
-Anke,Weber,a.weber@tuberlin.example,Professor,TU Berlin,
-Tomas,Lindqvist,t.lindqvist@kth.example,Senior Researcher,KTH Royal Institute,
-Priya,Raman,p.raman@techpress.example,Editor,TechPress Media,
-Solo,,solo@startup.example,Founder,Startup GmbH,
-,,anonymous@startup.example,,Startup GmbH,
-Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,
-Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,
-Marie,Dupont,m.dupont@acmecorp.example,Analyst,Acme Corp,
-Marie,Dupont,marie.dupont@acmecorp.example,Senior Analyst,Acme Corp,
-Sophie,Laurent,,CMO,Globex,
-Sophie,Laurent,,Head of Brand,Globex,
-Marco,Rossi,m.rossi@vertex.example,Partner,Vertex Capital,
-Marco,Rossi,m.rossi@vertex.example,Advisor,Bluepeak Bank,
-Ben,Nomail,n/a,Analyst,Acme Corp,
-Zoë,Müller-Sørensen,z.muller@newcolabs.example,Head of Analytics,NewCo Labs,
+﻿First Name,Last Name,Email,Title,Company,Mobile,Cust Cd
+Emily,Carter,emily.carter@acmecorp.example,Senior Manager,Acme Corp,,CUST-0042
+James,Mueller,j.mueller@nordbank.example,Director,Nordbank AG,,CUST-0077
+Robert,Kim,robert.kim@acmecorp.example,"SVP, Operations",Acme Corp,,CUST-0042
+Laura,Chen,laura.chen@acmeins.example,"VP, Finance",Acme Insurance,,CUST-0088
+Anna,Kowalski,a.kowalski@nordbank.example,Associate,Nordbank AG,,CUST-0077
+Hélène,Dubois,h.dubois@unige.example,Professor,Université de Genève,,
+Anke,Weber,a.weber@tuberlin.example,Professor,TU Berlin,,
+Tomas,Lindqvist,t.lindqvist@kth.example,Senior Researcher,KTH Royal Institute,,
+Priya,Raman,p.raman@techpress.example,Editor,TechPress Media,,
+Solo,,solo@startup.example,Founder,Startup GmbH,,
+,,anonymous@startup.example,,Startup GmbH,,
+Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,,CUST-0042
+Dana,Duplicate,dana@dupe.example,Analyst,Acme Corp,,CUST-0042
+Marie,Dupont,m.dupont@acmecorp.example,Analyst,Acme Corp,,CUST-0042
+Marie,Dupont,marie.dupont@acmecorp.example,Senior Analyst,Acme Corp,,CUST-0042
+Sophie,Laurent,,CMO,Globex,,CUST-0055
+Sophie,Laurent,,Head of Brand,Globex,,CUST-0055
+Marco,Rossi,m.rossi@vertex.example,Partner,Vertex Capital,,CUST-0101
+Marco,Rossi,m.rossi@vertex.example,Advisor,Bluepeak Bank,,CUST-0102
+Ben,Nomail,n/a,Analyst,Acme Corp,,CUST-0042
+Zoë,Müller-Sørensen,z.muller@newcolabs.example,Head of Analytics,NewCo Labs,,CUST-0103
 David,Attendee1,david.a1@prospect.example,Director,NewCo Labs,
 Nina,Attendee2,nina.a2@prospect.example,Manager,Vertex Capital,
 Oscar,Attendee3,oscar.a3@prospect.example,Manager,Bluepeak Bank,

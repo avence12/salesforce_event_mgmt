@@ -307,6 +307,18 @@
         <readable>true</readable>
         <editable>false</editable>
     </fieldPermissions>
+    <!--
+      ★R12 The customer code the CSV supplied, and half of what the import matches a
+      Contact on. Editable, unlike the Contact link beside it: the code is our own field
+      carrying our own file's data, and an AM correcting a code so the next re-upload
+      links correctly is ordinary work. Contact__c stays read-only because pointing a
+      record at an arbitrary Contact by hand is not.
+    -->
+    <fieldPermissions>
+        <field>Event_Attendee__c.Cust_Cd__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
     <fieldPermissions>
         <field>Event_Attendee__c.Is_Known_Contact__c</field>
         <readable>true</readable>

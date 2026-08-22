@@ -196,7 +196,11 @@ describe('c-import-wizard', () => {
             ['Account', 'company'],
             ['Mobile Phone', 'mobile'],
             ['Cell', 'mobile'],
-            ['Phone', 'mobile']
+            ['Phone', 'mobile'],
+            // R12: the customer code, half of what the server matches a Contact on.
+            ['Cust Cd', 'custCd'],
+            ['Customer Code', 'custCd'],
+            ['Account Number', 'custCd']
         ])('recognises the %s alias', async (header, field) => {
             // Needs a second identifying column so the row survives the
             // "fully empty line" filter — chosen so it never maps to the same
@@ -204,6 +208,26 @@ describe('c-import-wizard', () => {
             const anchor = field === 'email' ? ['Last Name', 'Doe'] : ['Email', 'a@x.com'];
             await upload(element, `${header},${anchor[0]}\nvalue,${anchor[1]}`);
             expect(sentRows()[0][field]).toBe('value');
+        });
+
+        // R12: "Account" and "Account Number" are different columns with different
+        // destinations, and the normaliser strips the space between them. A file with
+        // both must not collapse them.
+        it('keeps Account and Account Number apart', async () => {
+            await upload(element, `Email,Account,Account Number\nj@x.com,Acme Corp,CUST-0042`);
+            expect(sentRows()[0]).toMatchObject({ company: 'Acme Corp', custCd: 'CUST-0042' });
+        });
+
+        // R12: the code says which customer someone works for, which can be reassigned.
+        // Folding it into the identity would make the same person two attendees the day
+        // it changes — the server's Unique_Key__c does not include it either.
+        it('excludes the customer code from the in-file de-dup key', async () => {
+            await upload(
+                element,
+                `First Name,Last Name,Email,Company,Cust Cd\nJane,Doe,j@x.com,Acme,CUST-1\nJane,Doe,j@x.com,Acme,CUST-2`
+            );
+            expect(sentRows()).toHaveLength(1);
+            expect(sentRows()[0].custCd).toBe('CUST-2');
         });
 
         it('normalises case, spaces and punctuation in headers', async () => {

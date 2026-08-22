@@ -18,18 +18,25 @@
 // Deliberately a subset of demo-data/FinTech_Summit_2026_Attendees.csv: those rows
 // come back as EXISTING_ATTENDEE, the rest as NEW_ATTENDEE.
 List<List<String>> seed = new List<List<String>>{
-    new List<String>{ 'Emily',  'Carter',   'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp' },
-    new List<String>{ 'James',  'Mueller',  'j.mueller@nordbank.example',    'Director',       'Nordbank AG' },
-    new List<String>{ 'Robert', 'Kim',      'robert.kim@acmecorp.example',   'SVP, Operations','Acme Corp' },
-    new List<String>{ 'Hélène', 'Dubois',   'h.dubois@unige.example',        'Professor of Cryptography', 'Université de Genève' },
-    new List<String>{ 'Anke',   'Weber',    'a.weber@tuberlin.example',      'Professor, Distributed Systems', 'TU Berlin' },
-    new List<String>{ 'Tomas',  'Lindqvist','t.lindqvist@kth.example',       'Senior Researcher', 'KTH Royal Institute' },
-    new List<String>{ 'Priya',  'Raman',    'p.raman@techpress.example',     'Editor',         'TechPress Media' }
+// ★R12 The sixth column is the customer code the CSV carries. Blank for the professors,
+// the researcher and the journalist — they belong to no customer, and that blank is the
+// same fact that leaves them without a Contact and therefore without an approval chain.
+List<List<String>> seed = new List<List<String>>{
+    new List<String>{ 'Emily',  'Carter',   'emily.carter@acmecorp.example', 'Senior Manager', 'Acme Corp', 'CUST-0042' },
+    new List<String>{ 'James',  'Mueller',  'j.mueller@nordbank.example',    'Director',       'Nordbank AG', 'CUST-0077' },
+    new List<String>{ 'Robert', 'Kim',      'robert.kim@acmecorp.example',   'SVP, Operations','Acme Corp', 'CUST-0042' },
+    new List<String>{ 'Hélène', 'Dubois',   'h.dubois@unige.example',        'Professor of Cryptography', 'Université de Genève', '' },
+    new List<String>{ 'Anke',   'Weber',    'a.weber@tuberlin.example',      'Professor, Distributed Systems', 'TU Berlin', '' },
+    new List<String>{ 'Tomas',  'Lindqvist','t.lindqvist@kth.example',       'Senior Researcher', 'KTH Royal Institute', '' },
+    new List<String>{ 'Priya',  'Raman',    'p.raman@techpress.example',     'Editor',         'TechPress Media', '' }
 };
 
 List<Event_Attendee__c> attendees = new List<Event_Attendee__c>();
 for (List<String> s : seed) {
     String first = s[0], last = s[1], email = s[2], title = s[3], company = s[4];
+    // ★R12 Deliberately NOT folded into the key below — Unique_Key__c does not include
+    // the code, so a reassigned code refreshes one attendee rather than creating a second.
+    String custCd = s[5];
     // Must match AttendeeImportController.attendeeKey exactly, or the import will
     // create second copies of these people instead of recognising them.
     String key =
@@ -44,6 +51,7 @@ for (List<String> s : seed) {
         Email__c = email,
         Title__c = title,
         Company__c = company,
+        Cust_Cd__c = String.isBlank(custCd) ? null : custCd,
         Source_File__c = 'seed-demo-data.apex',
         Imported_On__c = Datetime.now(),
         Unique_Key__c = key
@@ -120,8 +128,10 @@ if (!newTopics.isEmpty()) {
 // invariant is what makes it safe to run in an org full of real ones — so the attendees above
 // arrive with no customer behind them and cannot be submitted for approval yet.
 //
-// Before demonstrating the chain, link a few of them by hand to Contacts under Accounts whose
-// owners have a reporting line above them:
+// ★R12 There are now two ways to link them, and the import is the better one. Create Accounts
+// whose AccountNumber matches the codes above (CUST-0042, CUST-0077) with Contacts whose Email
+// matches, then re-upload demo-data/FinTech_Summit_2026_Attendees.csv — the import links them
+// for you and the whole matched path is demonstrated rather than described. By hand, still:
 //
 //   update new Event_Attendee__c(Id = '<attendee id>', Contact__c = '<contact id>');
 //

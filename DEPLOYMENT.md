@@ -192,14 +192,27 @@ rather than inherit from a `git push`.
    as a name does not, because granting a project's users access to the org's customer data is
    an admin's decision, not a `git push`'s. Without it AMs still see `Is_Known_Contact__c`
    (yes/no), which is the half of the answer this feature actually needs.
-   The link is populated by a reconciliation run, never by the import — Screen 1 reads no
-   standard object, and that is asserted in
-   `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts`.
-8. **★R8 Confirm where this org keeps the customer code.** `Event_Invitee__c.Cust_Cd__c` is
-   snapshotted from the standard `Account.AccountNumber`, because that is the field every org
-   has and the one that means "customer account number". If your org keeps it on a custom field
-   instead, change the single line in `InviteeSelectorController.stampSnapshot` — no schema
-   change here, and no field is ever added to Account by this project.
+   **★R12 The link is populated by the import**, matching each CSV row's `Cust Cd` + `Email`
+   against `Account.AccountNumber` + `Contact.Email` and linking only on a single hit. This
+   reverses what R8 wrote here. Screen 1 now **reads** Contact and Account; it still writes
+   neither, and that is what
+   `AttendeeImportControllerTest.importNeverTouchesContactsLeadsOrAccounts` asserts.
+   Two consequences for you as the admin. The import needs **no** grant on Contact to do this —
+   Apex does not enforce object-level CRUD, so step 7's decision remains purely about what AMs
+   *see*. But it is `with sharing`, so **a Contact the importing AM cannot see will not match**;
+   if your Contact OWD is Private, expect matching to vary by who runs the import.
+8. **★R8 Confirm where this org keeps the customer code — ★R12 and it now matters more.** The
+   code arrives in the CSV as `Cust Cd` and lands on `Event_Attendee__c.Cust_Cd__c`;
+   `Event_Invitee__c.Cust_Cd__c` is snapshotted from there. What still touches your Account is
+   the **matching**: the import compares the CSV's code against the standard
+   `Account.AccountNumber`, because that is the field every org has and the one that means
+   "customer account number". If your org keeps it on a custom field instead, change the single
+   query in `AttendeeImportController.matchContacts` — no schema change here, and no field is
+   ever added to Account by this project.
+   **Why this is now a step you should actually do rather than note.** Under R8 a wrong guess
+   meant one column read oddly. Under R12 it is half of a matching key, so a wrong guess means
+   **nothing matches at all** — every attendee imports unlinked and every invitee falls back to
+   free-text company, quietly and with no error.
 9. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
     Company* ships on the Marketing Event record page above the attendee selector. An AM who is
     nobody's approver sees it in its empty state, which is one line of text rather than an empty
@@ -228,11 +241,12 @@ rather than inherit from a `git push`.
     c. **Create a Contact under that Account for each non-customer guest** who needs to be
        invited. App Launcher → Contacts → New, `Account Name` = the Account from step b. This is
        ordinary Salesforce data entry — nothing in this repo does it, and nothing here needs to.
-    d. **Link each guest's `Event_Attendee__c.Contact__c`** to the Contact created in step c —
-       this is the "reconciliation run" the design refers to (Open Question 17), and it is
-       deliberately outside this repo's scope. For the PoC, a one-off manual edit on each
-       `Event_Attendee__c` record is enough; a scheduled matching job is a production concern,
-       not something this deploy provides.
+    d. **Link each guest's `Event_Attendee__c.Contact__c`** to the Contact created in step c.
+       ★R12 There are now two ways to do this. Give the guest's CSV row the `Cust Cd` of the
+       Account from step b and make sure their `Email` matches the Contact's, and the **import
+       links them for you** on the next upload — which is the tidier route if you are seeding
+       these guests from a file anyway. Otherwise a one-off manual edit on each
+       `Event_Attendee__c` record does it. Either way this is admin data work, not a deploy step.
     e. **For the demo specifically, leave at least one guest unlinked.** Success Criterion 7
        depends on a guest with no Account Owner being refused by name — the seed data's
        `Hélène Dubois` is written to be that guest. Reconciling her along with everyone else
