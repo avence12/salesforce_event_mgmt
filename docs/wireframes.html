@@ -2228,6 +2228,13 @@
                 <button class="btn btn-brand" type="button">Approve selected (3)</button>
                 <button class="btn btn-destructive-text" type="button">Reject selected (3)</button>
               </div>
+
+              <!-- R13 add panel, folded — the state a phone shows first -->
+              <div style="border-top: 1px solid var(--n-90); margin-top: 0.625rem; padding-top: 0.625rem">
+                <button class="btn btn-sm" type="button" style="border: 0; background: none; color: var(--brand-50); padding-left: 0">
+                  ＋ Add invitees from the attendee list
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2246,6 +2253,11 @@
               scrolls. That is the honest drawing of what a handset gets today.</li>
             <li><b>If the columns should re-flow on a phone</b> — title under the name, added-by
               dropped — that is unbuilt work, not a behaviour to read off this page.</li>
+            <li><b>★R13 The add panel is drawn folded, because that is what a handset shows first.</b>
+              Opening it swaps this row for a search box and up to 25 matching attendees — the desktop
+              drawing above shows the open state, and there is no second layout: the panel is the same
+              markup at both breakpoints. Folded is also the argument for the 25-row limit; an approver
+              adding somebody types a name, and 2,000 rows under a company list is not a phone screen.</li>
             <li>This is the standard Salesforce Mobile App rendering the same LWC. The app declares
               both the Large and Small form factors; no native app is involved.</li>
           </ul>
@@ -2494,6 +2506,11 @@
         <li>The empty approval card is visible to AMs on every event page. Hiding it needs a
           component visibility filter or a second record page by profile, which is an admin's
           decision about their own org — post-deploy, not shipped.</li>
+        <li><b>★R13 That empty card has no add button, and that is drawn rather than omitted.</b>
+          The add panel renders only when the server says the viewer approves something on this
+          event, so an AM sees exactly what is above: one line of text and nothing to press. An
+          approver whose queue is empty <i>does</i> get the panel — being named in a chain survives
+          the decision — so the empty card is not a single picture, it is two, and this is the AM's.</li>
       </ul>
     </div>
   </section>
