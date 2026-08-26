@@ -891,7 +891,7 @@ private class EventWorkflowTest {
         Test.stopTest();
 
         System.runAs(alex) {
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            AttendeePicker.Page sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
             System.assertEquals(4, sel.attendees.size(), 'A rejected invitee is selectable again');
         }
     }
@@ -907,7 +907,7 @@ private class EventWorkflowTest {
         Id emily = attendeeId('Carter');
 
         System.runAs(alex) {
-            InviteeSelectorController.SelectableResult sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
+            AttendeePicker.Page sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
             System.assertEquals(4, sel.attendees.size(), 'Every imported attendee is invitable by any AM');
             System.assertEquals(false, sel.truncated, 'Four attendees is nowhere near the cap');
             System.assertEquals(InviteeSelectorController.ATTENDEE_CAP, sel.cap);
@@ -915,7 +915,7 @@ private class EventWorkflowTest {
             InviteeSelectorController.addAttendees(evt.Id, new List<Id>{ emily });
             sel = InviteeSelectorController.getSelectableAttendees(evt.Id);
             System.assertEquals(3, sel.attendees.size(), 'Invited (Draft) attendee must be hidden');
-            for (InviteeSelectorController.SelectableAttendee sa : sel.attendees) {
+            for (AttendeePicker.Attendee sa : sel.attendees) {
                 System.assertNotEquals(emily, sa.attendeeId);
             }
 

@@ -2055,6 +2055,45 @@
                 <button class="btn btn-brand" type="button">Approve selected (3)</button>
                 <button class="btn btn-destructive-text" type="button">Reject selected (3)</button>
               </div>
+
+              <!-- R13 add panel, shown open -->
+              <div style="border-top: 1px solid var(--n-90); margin-top: 0.75rem; padding-top: 0.75rem">
+                <button class="btn" type="button" style="border: 0; background: none; color: var(--brand-50); padding-left: 0">
+                  ▾ Close
+                </button>
+                <p class="weak" style="font-size: 0.75rem; margin: 0.25rem 0 0.5rem">
+                  Somebody missing from this list? Search the imported attendees and add them. They
+                  are submitted straight away and approved the same way as anyone else — starting
+                  with the account manager who owns their customer.
+                </p>
+                <div style="max-width: 22rem; margin-bottom: 0.5rem">
+                  <label class="weak" style="font-size: 0.75rem; display: block">Search name / organisation / email</label>
+                  <input type="search" value="nordbank" style="width: 100%; padding: 0.25rem 0.5rem; border: 1px solid var(--n-80); border-radius: 0.25rem">
+                </div>
+                <table class="t">
+                  <tbody>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" checked aria-label="Select Anja Behrens"></td>
+                      <td>
+                        Anja Behrens
+                        <div class="weak" style="font-size: 0.75rem">Head of Market Risk</div>
+                      </td>
+                      <td class="weak">Nordbank AG</td>
+                    </tr>
+                    <tr>
+                      <td class="col-x"><input type="checkbox" aria-label="Select Piet Janssen"></td>
+                      <td>
+                        Piet Janssen
+                        <div class="weak" style="font-size: 0.75rem">Treasury Analyst</div>
+                      </td>
+                      <td class="weak">Nordbank AG</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style="margin-top: 0.5rem">
+                  <button class="btn btn-brand" type="button">Add and submit (1)</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2063,6 +2102,28 @@
 
     <div class="notes">
       <ul>
+        <li><b>★R13 The add panel is folded away until asked for.</b> Deciding what is in front of
+          you is this screen's job; adding to it is the second thought, and a permanently open
+          picker under every company would compete with the decision for attention on the handset
+          this screen was designed around.</li>
+        <li><b>★R13 It renders only for somebody who approves something on this event.</b> Not for
+          anyone holding <code>Event_Approver</code> — the server checks that the user is named in a
+          chain on <i>this</i> event, or holds a work item on it as a delegate. An AM on the same
+          record page sees the card's empty state and no add controls at all, and the same check
+          runs again on the write.</li>
+        <li><b>★R13 An addition is submitted, not left as a Draft.</b> Screen 3's submit acts on the
+          running user's own Draft rows, so a Draft created by an approver could be moved by nobody
+          but that approver — it would simply sit there. It goes into the ordinary chain from the
+          added person's own Account Owner upward, so it collects the same signatures an AM's
+          proposal would, and where the adder is level 1 it reappears in the list above for their
+          tick. Every level over them still signs, so nothing is skipped.</li>
+        <li><b>★R13 A rejected invitee is not offered here.</b> The AM's picker shows rejected people
+          again because re-proposing somebody is the AM's prerogative; undoing a rejection must not
+          be a side effect of ticking a name on the approval screen.</li>
+        <li><b>★R13 Search first, then at most 25 rows.</b> The server hands back up to 2,000 and the
+          panel shows a fraction: an approver adding somebody has a person in mind and types their
+          name, where an AM building a guest list browses. Both limits announce themselves when they
+          bite.</li>
         <li><b>Nothing starts selected.</b> Pre-ticking every row would make “approve everybody” the
           path of least resistance, which inverts what an approval is for.</li>
         <li><b>The group buttons act on the group's <i>selection</i>, not on the group.</b> They read

@@ -415,6 +415,136 @@ syncing unconditionally via automation, which is a formula's behaviour with a tr
 
 ★R12 items are marked ★R12. **All of it is built**, but see *★R12 What still needs an org*.
 
+**Revised 2026-08-26 (R13) — an approver can add people to the event from the screen they are
+approving on.** One change, and the business's own words for it are the shortest statement of
+it:
+
+> 在 approve invitee 的時候也需要讓簽核者從 attendee 加人.
+
+**What was actually missing.** Reviewing a list and noticing who is *not* on it are the same
+act of judgement, and until R13 only half of it had anywhere to go. An approver who saw that a
+customer's CFO had been proposed without the CFO's own risk lead had exactly two moves: reject
+the batch and explain why, or email the AM and wait. Both are slower than the thing they are
+trying to do, and the second one leaves no record on the event at all.
+
+**The decision that shapes everything else: an addition is submitted, not left as a Draft.**
+That is forced rather than chosen. Screen 3's submit acts on `Added_By__c = me AND Status =
+Draft` — an AM submits their own batch and nobody else's — so a Draft row created by an approver
+has precisely one person in the org who could ever submit it: the approver. A row nobody but its
+creator can move is not a proposal waiting for an AM; it is a row that sits there. The remaining
+choice was between submitting on the spot and giving the approver a second button that does the
+same thing one tap later, on a phone.
+
+**The chain is the ordinary one, and the adder stands on their own rung of it.** The person
+added routes from their own customer's Account Owner upward, exactly as they would have done had
+an AM proposed them. In particular the adder is **not** dropped from the chain the way a
+submitting AM is (`ApprovalChainService` excludes the submitter; `resolveBySeed(rows, null)`
+excludes nobody). Two consequences, both intended:
+
+- **An approver who is level 1 on the row they added approves it themselves**, from the same
+  screen, on the next tick. That reads like self-approval and is not one: every level above them
+  still has to sign, so the row collects precisely the signatures it would have collected anyway.
+  The approver gains no authority they did not already hold — they could always approve this
+  person once an AM added them — and the `ProcessInstance` records their decision as a decision
+  instead of leaving it implied.
+- **It removes a dead end that dropping them would have created.** A Regional Head who owns the
+  account is the most likely person to want this and would have been left with an empty chain and
+  an "unroutable" refusal, because there is nobody above them to route to.
+
+**Two narrowings, so that a second verb on this screen does not become a second set of powers.**
+
+- **A rejected invitee is not offered back.** The AM's picker shows rejected people again,
+  because re-proposing somebody is the AM's prerogative. The approver's picker does not: undoing
+  a rejection — their own or another approver's — must not be a side effect of ticking a name.
+  The remedy for a rejection that should not have happened is unchanged and is the AM's.
+- **Being an approver on *this event* is the permission, not holding `Event_Approver`.** The
+  server checks that the user is named in some chain on the event, or holds a work item on it as
+  a delegate. An AM opening the same record page sees no add controls at all, and a client that
+  posts the request anyway is refused.
+
+**What is deliberately *not* narrowed: the picker is the whole attendee pool.** Scoping it to the
+companies the approver has pending work on would serve the motivating case and silently forbid
+the next one along, where the person who should also be invited works somewhere else. The chain
+is resolved from *that person's* customer, so a wider picker cannot route anything anywhere it
+should not go.
+
+**What this costs, stated plainly.**
+
+- **`Event_Approver` gains Create on `Event_Invitee__c`.** It had none. Edit stays off and
+  `Status__c` stays read-only, which together mean the widest thing the grant allows outside our
+  Apex is creating a Draft row — the same thing the feature does. It is still a real widening of
+  a permission set whose whole point was that approvers write nothing.
+- **Nobody but the approver reviews an approver's addition below their own level.** A level-2
+  approver adding somebody routes the row to the Account Owner *below* them, who then sees a row
+  proposed by their own manager. Nothing forces that person to be neutral about it. This is a
+  people problem the software cannot solve and should not pretend to — see Open Question 28.
+- **An approver can now put work into another approver's queue.** Adding somebody from a
+  customer that is not theirs notifies that customer's owner, who has no say in whether the row
+  should have been created. The alternative — refusing to add outside your own accounts — was
+  rejected above.
+- **A guest with no customer still cannot be added**, by an approver any more than by an AM.
+  Open Question 21 is unchanged and R13 does not close it.
+- **Two more queries per load of Screen 4b**, for the picker and the "may this user add?" check,
+  plus a third in the delegated case.
+
+★R13 items are marked ★R13. **All of it is built**, but see *★R13 What still needs an org*.
+
+### ★R13 Deliverables delta
+
+**Added**
+
+| Item | Note |
+|---|---|
+| `AttendeePicker` | The "which attendees can still be put forward on this event?" query, extracted from `InviteeSelectorController` when Screen 4b grew a picker of its own. The two callers differ by exactly one picklist value — whether Rejected still blocks — which is why it takes a parameter rather than being one method |
+| `InviteeApprovalController.getAddableAttendees` | The picker plus `canAdd`. One call rather than two, so the add controls never render for a moment before the server says they should not |
+| `InviteeAddition` | Create, stamp, submit, notify — in that order, with the chain resolved *before* the insert so an unroutable batch writes nothing. A class rather than a long controller method, and PMD is what said so: the complexity thresholds fired the moment the sequence was inlined |
+| `InviteeApprovalController.addInvitees` | The two questions a controller should own — may this user add *here*, and is the request a sane size — and then it delegates |
+| `InviteeApprovalController.isApproverOnEvent` | Named in a chain on this event, or holding a work item as a delegate. Deliberately survives the decision: an approver who has just cleared their queue can still add |
+| `ApprovalChainService.resolveBySeed` | The same walk, keyed by Account Owner rather than by invitee Id, because R13 resolves chains for rows that do not exist yet and two unsaved rows would collide on a null key |
+| `approvalsByCompany` add panel | Folded away until asked for; search, up to 25 matches, one *Add and submit* button. Rendered only when `canAdd` |
+| Nine Apex tests, twelve Jest tests | The load-bearing Apex ones are `anApproverAddsSomebodyAndTheyAreSubmittedOnTheSpot` (the row comes out Pending with the full three-level chain, not a shortened one) and `somebodyWhoApprovesNothingHereCannotAdd` (the permission is involvement in this event, not the permission set) |
+
+**Modified**
+
+| File | Change |
+|---|---|
+| `InviteeSelectorController` | `getSelectableAttendees` delegates to `AttendeePicker`; `SelectableResult` / `SelectableAttendee` move there as `Page` / `Attendee`; the private `blockedAttendeeIds` goes with them. `ATTENDEE_CAP` stays as the name Screen 3 knows the number by |
+| `Event_Approver` permission set | Create on `Event_Invitee__c`; the sixteen fields the insert writes become editable. `Status__c`, `VIP__c`, `Remark__c`, `Current_Level__c` and `Decided_At__c` stay read-only |
+| `EventWorkflowTest` | Three references to the moved wrapper types |
+
+**Not shipped, deliberately**
+
+- **No approver-side edit of anything.** No status, no remark, no VIP flag, no attendance. The
+  add panel creates rows and does nothing else, and the permission set is shaped to make that
+  true outside Apex as well as inside it.
+- **No un-reject.** See the narrowings above.
+- **No "add on behalf of" the AM.** `Added_By__c` is the approver, so the All Invitees tab shows
+  who actually proposed each person. Attributing the row to the AM would make the event's record
+  of itself a lie for the sake of a tidier report.
+- **No second pair of eyes on an approver's own addition.** Open Question 28 records why that is
+  a business decision rather than an oversight.
+
+### ★R13 What still needs an org
+
+1. **Nothing here has been compiled or deployed.** The LWC suite, ESLint, Prettier, PMD and the
+   mutation spot-check pass locally; Apex compilation, the Apex tests and deploy validation all
+   require an org and have **not** been run. This is the same standing gap R12 recorded, not a
+   new one.
+2. **Whether an approver can insert an `Event_Invitee__c` at all.** `Marketing_Event__c` is the
+   master in a Master-Detail whose sharing setting is *Read/Write* — `writeRequiresMasterRead` is
+   `false` — so creating a detail needs read/write access to the master record. The org-wide
+   default on `Marketing_Event__c` is Public Read/Write and this Apex is `with sharing`, which
+   should satisfy it; what is unverified is whether the platform also weighs the approver's
+   object-level Read-only on `Marketing_Event__c` in that check. **If the insert fails with
+   INSUFFICIENT_ACCESS, the one-line remedy is `writeRequiresMasterRead` = `true` on
+   `Event_Invitee__c.Marketing_Event__c`** — read on the event, write on its invitees, which is
+   the sentence the permission set is trying to express anyway. Granting the approver Edit on
+   `Marketing_Event__c` would also work and is the wrong fix: it lets them edit the event.
+3. **Whether submitting an approval in the same transaction that created the record behaves.**
+   `submitMyInvitees` inserts and submits in two transactions' worth of steps but one
+   transaction; `addInvitees` does the same in a tighter loop. Nothing suggests it is a problem
+   and nothing here can prove it is not.
+
 ### ★R12 Deliverables delta
 
 **Added**
@@ -1645,6 +1775,38 @@ of avoidable code.
 | An AM sees it in its empty state | One line of text on every event page. Hiding it needs a component visibility filter or a per-profile record page — an admin decision about their org's pages, so it is a post-deploy step |
 | A cap of 200 per decision | `Approval.process` is DML; an enormous group would fail on limits. Refusing at a stated number beats a governor limit surfacing as an unexplained error. **Unverified against a real org** |
 
+#### ★R13 The same screen gained a second verb: adding
+
+The panel at the foot of the component adds people to the event from the imported attendee
+pool and submits them on the spot. The argument for why an addition is submitted rather than
+left as a Draft, why the adder is not dropped from the chain, and what the whole thing costs is
+in the R13 revision header rather than repeated here. What belongs with the screen is how it
+behaves:
+
+- **Folded away until asked for.** Deciding what is in front of you is this screen's job; adding
+  to it is the second thought. A permanently open picker under every company would compete with
+  the decision for attention on the handset the screen was designed around.
+- **It renders only when the server says this user approves something on this event**, so the AM
+  who sees the component's empty state does not also see add controls that would refuse them.
+  The same check runs again on the write — the flag is a courtesy to the UI, not the permission.
+- **Search, then up to 25 matches.** The server hands back up to 2,000 and the panel shows a
+  fraction of them, because an approver adding somebody has a person in mind and types their
+  name, where an AM building a guest list browses. Both the 25 and the 2,000 announce themselves
+  when they bite.
+- **The picker survives the queue emptying.** An approver who has just cleared a company and
+  then remembers one more person is the case this exists for; tying the panel to a pending work
+  item would remove it at exactly that moment.
+- **The toast says where each person went.** "Added" and "waiting on you" are different news:
+  a row the adder is level 1 on appears in the list above them and needs their tick, and an
+  approver who was not told that is an approver who never gives it.
+
+| Cost | Detail |
+|---|---|
+| `Event_Approver` gains Create on `Event_Invitee__c` | The set's whole point was that approvers write nothing. Edit stays off and `Status__c` stays read-only, so the widest thing the grant allows outside our Apex is creating a Draft row |
+| Two more queries per load, three in the delegated case | The picker, and "may this user add?" |
+| An approver can put work into another approver's queue | Adding somebody from a customer that is not theirs notifies that customer's owner, who has no say in whether the row should exist |
+| Nobody reviews an approver's addition below their own level | See Open Question 28 |
+
 ### Screen 5 — Export (★R3: standard Reports, no custom code)
 
 R3 deletes `EventExportController` (355 lines), the `approvedExport` LWC and the *Approved
@@ -1722,6 +1884,15 @@ Two Permission Sets: `Event_AM` (create events, import attendees, add/submit inv
 - `Event_AM` — **loses** Lead Create/Read/Edit and everything to do with `Event_History__c`; **gains** Create/Read/Edit on `Event_Attendee__c`. The result is that this permission set now grants **no permission on any standard object whatsoever**. R4 could say "the import no longer needs Contact edit"; R5 can say the feature does not need a standard object at all, which is a much stronger claim and the reason it can be handed to an org that would never let an import near its customer data.
 - `Event_Approver` — **loses** Read on `Lead`; **gains** Read on `Event_Attendee__c`. This is not decoration: the `Invitee_*__c` formulas traverse `Event_Attendee__r`, and without read access the name and organisation columns render blank on the exact screen the approval is made from. Same failure R3 had with Lead, on a different object.
 - `Event_Attendee__c.Source_File__c`, `Imported_On__c` and `Unique_Key__c` are FLS **read-only** for both sets even though the import writes them. Apex DML does not enforce FLS unless asked to, so the import still sets them; the point is that a hand-edit cannot make `Source_File__c` a lie.
+
+★R13 **`Event_Approver` gains its first write permission, and the shape of the grant is the
+point.** Create on `Event_Invitee__c`, no Edit, and `Status__c` still read-only. Those three
+together mean the widest thing an approver can do outside this project's Apex is create a Draft
+row — which is what the add panel does anyway — and the one thing they still cannot do by hand
+is set a status on anybody, their own additions included. Sixteen fields become editable because
+the insert writes them, the approver chain among them; `VIP__c`, `Remark__c`, `Current_Level__c`
+and `Decided_At__c` are not, because nothing in the feature writes those. The rule the set has
+kept since R5 is untouched: **no permission on any standard object.**
 
 ★R5 **Lead sharing stops being a surface, and attendee sharing becomes one.** Open Question 7 asked what the org's Lead OWD was, because under a Private OWD an approver could not see the Lead behind an invitee. That question is resolved by deletion — but the identical risk now lives on `Event_Attendee__c`, whose OWD this project sets itself to Public Read/Write. That is a decision made here rather than inherited, which is an improvement in one way (nothing outside the project can break it) and a widening in another: every AM can read every attendee. Tightening it is a production lever, but it cannot be tightened without giving AMs some other route to each other's attendees — see *Screen 3*.
 
@@ -2133,6 +2304,8 @@ strongest argument (after Open Question 15) for an attendee → Contact link one
 26. ★R9 **Does this org record a Regional Head in `User.Title`, and with what words?** The whole early-termination rule reads that field. Nothing in this repo knows whether the org populates it, whether it is maintained when people move, or whether "Regional Head" is the phrase used. The failure is quiet in a specific way worth planning for: an unmatched title does not error, it makes every chain climb to the level cap, so the symptom is approvals taking one signature longer than expected rather than anything visibly breaking. If titles turn out to be unreliable, a public group or a custom permission is the better mechanism and `ApprovalChainService.isRegionalHead` is the one method that changes.
 
 27. ★R9 **What should happen when somebody in the chain is on leave?** The design refuses an *inactive* user outright, which is right for somebody who has left. It says nothing about somebody who is simply away for three weeks, and a frozen chain will wait for them indefinitely. Salesforce's delegated approver is the standard answer and the process allows delegation, but it has to be set up per user before it is needed — worth deciding whether that is part of the rollout or something the business will discover the first time a batch stalls.
+
+28. ★R13 **Should an approver's own addition need a second pair of eyes below their level?** R13 lets an approver add people mid-review, and the row then routes from that person's Account Owner upward like any other. Where the adder *is* that Account Owner they approve their own addition — harmless, because every level above them still signs. Where the adder is higher up the chain, the row lands in the queue of somebody who reports to them, which is a different thing: nothing forces that person to be neutral about a guest their own manager put forward. The software cannot fix this and should not pretend to; the options are to accept it (an approver adding somebody is already a senior act), to forbid adding outside your own accounts (which forbids the useful case of inviting a colleague from another customer), or to route an approver's additions to *their* manager instead of down the chain (which invents a second routing rule for one case). **Nobody has been asked yet**, and until they are, the accepted answer is the first one.
 
 ## Success Criteria
 

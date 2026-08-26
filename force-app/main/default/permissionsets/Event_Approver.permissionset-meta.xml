@@ -12,9 +12,17 @@
         <viewAllRecords>false</viewAllRecords>
         <modifyAllRecords>false</modifyAllRecords>
     </objectPermissions>
+    <!--
+      ★R13 Create, and still no Edit. An approver adds invitees from the approvals screen, so
+      the grant is real work rather than decoration; Edit stays off because nothing they do
+      writes to a row that already exists. The pairing is what keeps Status__c read-only and
+      still usable: a created row takes the field's Draft default and the Approval Process
+      writes every value after that, so an approver can put somebody forward and still cannot
+      type a status onto anybody.
+    -->
     <objectPermissions>
         <object>Event_Invitee__c</object>
-        <allowCreate>false</allowCreate>
+        <allowCreate>true</allowCreate>
         <allowRead>true</allowRead>
         <allowEdit>false</allowEdit>
         <allowDelete>false</allowDelete>
@@ -118,12 +126,12 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Added_By__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Submitted_At__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Decided_At__c</field>
@@ -133,9 +141,14 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Unique_Key__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <!--
+      ★R13 The five approver fields, Approval_Levels__c and Submitted_At__c became writable
+      with the add panel: ApprovalChainService stamps the whole chain onto a row this user is
+      creating. Writable-on-create only — there is no Edit on the object — so a chain can be
+      set when the row is born and never rewritten underneath an approval in flight.
+
       ★R9 An approver reads the levels above and below their own, and edits none of them.
       Seeing the rest of the chain is part of deciding: "two more people will look at this"
       and "I am the last signature" are different decisions, and the row is where that is
@@ -144,27 +157,27 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Approver_1__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Approver_2__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Approver_3__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Approver_4__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Approver_5__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Current_Level__c</field>
@@ -174,7 +187,7 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Approval_Levels__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Invitee_Name__c</field>
@@ -189,17 +202,17 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Invitee_Title__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Invitee_Org__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Invitee_Salutation__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <!--
       ★R8 An approver needs the company and the customer code more than an AM does: those
@@ -209,17 +222,17 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Account__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Cust_Cd__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Account_Manager__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Invitee__c.Added_By_Me__c</field>
@@ -229,7 +242,7 @@
     <fieldPermissions>
         <field>Event_Invitee__c.Event_Attendee__c</field>
         <readable>true</readable>
-        <editable>false</editable>
+        <editable>true</editable>
     </fieldPermissions>
     <fieldPermissions>
         <field>Event_Attendee__c.First_Name__c</field>
@@ -321,6 +334,11 @@
       it is granted here rather than on Event_AM because approving is what this set is for —
       an AM who is also somebody's approver gets it by holding both sets, which is the
       accurate description of that person rather than a widening of either role.
+
+      ★R13 Still the only one. InviteeAddition, AttendeePicker, InviteeSnapshot and
+      ApprovalChainService are called from inside it and are not entry points, so they need no
+      grant of their own — which is also why an approver cannot reach InviteeSelectorController's
+      add or submit.
     -->
     <classAccesses>
         <apexClass>InviteeApprovalController</apexClass>

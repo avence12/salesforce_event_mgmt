@@ -506,4 +506,346 @@ private class InviteeApprovalControllerTest {
         System.assertEquals(3, [SELECT COUNT() FROM Account]);
         System.assertEquals(4, [SELECT COUNT() FROM Contact]);
     }
+
+    // ---------- ★R13 adding people mid-review ----------
+
+    /** The people this event has rows for, by the attendee's surname. */
+    private static Map<String, Event_Invitee__c> inviteesByLastName() {
+        Map<String, Event_Invitee__c> out = new Map<String, Event_Invitee__c>();
+        for (Event_Invitee__c inv : [
+            SELECT
+                Id,
+                Status__c,
+                Added_By__c,
+                Submitted_At__c,
+                Approval_Levels__c,
+                Approver_1__c,
+                Approver_2__c,
+                Approver_3__c,
+                Account__c,
+                Account_Manager__c,
+                Invitee_Org__c,
+                Event_Attendee__r.Last_Name__c
+            FROM Event_Invitee__c
+        ]) {
+            out.put(inv.Event_Attendee__r.Last_Name__c, inv);
+        }
+        return out;
+    }
+
+    private static Set<Id> addableIds(Id eventId) {
+        Set<Id> ids = new Set<Id>();
+        for (AttendeePicker.Attendee a : InviteeApprovalController.getAddableAttendees(eventId).attendees) {
+            ids.add(a.attendeeId);
+        }
+        return ids;
+    }
+
+    /**
+     * ★R13 The whole feature in one test: an approver reading a company's list adds the
+     * colleague the AM forgot, and that person is submitted there and then.
+     *
+     * The assertion that matters is not `added == 1` — it is that the row came out Pending
+     * with the ordinary three-level chain on it. An addition that skipped a level would look
+     * identical from the toast and be a different feature.
+     */
+    @IsTest
+    static void anApproverAddsSomebodyAndTheyAreSubmittedOnTheSpot() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+        User owner = findUser('apowner');
+
+        InviteeAddition.Result res;
+        System.runAs(owner) {
+            res = InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+        }
+
+        System.assertEquals(1, res.added, 'One attendee, one invitee row');
+        System.assertEquals(0, res.skipped, 'and nothing was dropped on the way');
+        System.assertEquals(1, res.waitingOnMe, 'The Account Owner added somebody from their own customer');
+        System.assertEquals(0, res.approversNotified, 'and is not emailed about their own submission');
+        System.assertEquals(3, res.levels, 'Acme’s chain is three deep');
+
+        Event_Invitee__c kim = inviteesByLastName().get('Kim');
+        System.assertNotEquals(null, kim, 'the row exists');
+        System.assertEquals('Pending Approval', kim.Status__c, 'submitted, not left as a Draft nobody can move');
+        System.assertEquals(owner.Id, kim.Added_By__c, 'and it records who put them forward');
+        System.assertNotEquals(null, kim.Submitted_At__c, 'stamped at the same moment it was created');
+        System.assertEquals(3, kim.Approval_Levels__c, 'the ordinary chain, with nobody skipped');
+        System.assertEquals(owner.Id, kim.Approver_1__c, 'the adder stands on their own rung');
+        System.assertEquals(findUser('apdana').Id, kim.Approver_2__c, 'their manager is level 2');
+        System.assertEquals(findUser('aprhead').Id, kim.Approver_3__c, 'and the Regional Head ends it');
+    }
+
+    /**
+     * ★R13 And it lands where the approver can act on it, in the same screen they added it
+     * from. This is what makes "the adder is not dropped from their own chain" a feature
+     * rather than a technicality.
+     */
+    @IsTest
+    static void theAddedRowAppearsInTheAddersOwnPendingList() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        List<InviteeApprovalController.CompanyGroup> groups;
+        System.runAs(findUser('apowner')) {
+            InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+            groups = InviteeApprovalController.getMyPendingByCompany(theEvent().Id);
+        }
+
+        Map<String, InviteeApprovalController.CompanyGroup> byName = groupsByCompany(groups);
+        System.assertEquals(2, byName.get('Acme Corporation').invitees.size(), 'Carter and the newly added Kim');
+    }
+
+    /**
+     * ★R13 A person from somebody else's customer routes to that customer's owner, not to the
+     * person who added them. An approver adding is not an approver deciding.
+     */
+    @IsTest
+    static void addingSomebodyElsesCustomerRoutesToThatCustomersOwner() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        InviteeAddition.Result res;
+        System.runAs(findUser('apowner')) {
+            res = InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Mueller') });
+        }
+
+        System.assertEquals(1, res.added, 'the row was created');
+        System.assertEquals(0, res.waitingOnMe, 'Nordbank is not this approver’s account');
+        System.assertEquals(1, res.approversNotified, 'so its owner is told');
+
+        Event_Invitee__c mueller = inviteesByLastName().get('Mueller');
+        System.assertEquals(findUser('apother').Id, mueller.Approver_1__c, 'level 1 is Nordbank’s owner');
+        System.assertEquals(findUser('apowner').Id, mueller.Added_By__c, 'and the adder is only the adder');
+    }
+
+    /**
+     * ★R13 The permission set is not the check. Somebody who approves nothing on this event
+     * cannot add to it, and the AM who submitted the batch is exactly such a person.
+     */
+    @IsTest
+    static void somebodyWhoApprovesNothingHereCannotAdd() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        Boolean threw = false;
+        InviteeApprovalController.AddableAttendees offered;
+        System.runAs(findUser('apalex')) {
+            offered = InviteeApprovalController.getAddableAttendees(theEvent().Id);
+            try {
+                InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+
+        System.assertEquals(false, offered.canAdd, 'the picker says no before the button is ever pressed');
+        System.assertEquals(0, offered.attendees.size(), 'and hands back nothing to pick from');
+        System.assertEquals(true, threw, 'and the server refuses a client that asks anyway');
+        System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c], 'nothing was added');
+    }
+
+    /**
+     * ★R13 The right to add survives the decision. An approver who has just cleared a company
+     * and then remembers one more person is the case this feature exists for; taking the panel
+     * away the moment their queue empties would take it away at exactly that moment.
+     */
+    @IsTest
+    static void anApproverCanStillAddAfterDecidingEverything() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        Test.startTest();
+        approveOneLevel(inviteeFor('Carter')); // level 1 (apowner) has now signed
+        Test.stopTest();
+
+        InviteeAddition.Result res;
+        System.runAs(findUser('apowner')) {
+            System.assertEquals(
+                0,
+                InviteeApprovalController.getMyPendingByCompany(theEvent().Id).size(),
+                'nothing is waiting on them any more'
+            );
+            System.assertEquals(
+                true,
+                InviteeApprovalController.getAddableAttendees(theEvent().Id).canAdd,
+                'but they are still an approver on it, so the panel is still offered'
+            );
+            res = InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+        }
+        System.assertEquals(1, res.added, 'and they can still add');
+    }
+
+    /** ★R13 Already on the event in any status: skipped and counted, never duplicated. */
+    @IsTest
+    static void attendeesAlreadyOnTheEventAreSkippedNotDuplicated() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        InviteeAddition.Result res;
+        System.runAs(findUser('apowner')) {
+            res = InviteeApprovalController.addInvitees(
+                theEvent().Id,
+                new List<Id>{ attendeeId('Carter'), attendeeId('Kim') }
+            );
+        }
+
+        System.assertEquals(1, res.added, 'only Kim');
+        System.assertEquals(1, res.skipped, 'Carter was already pending and is reported, not hidden');
+        System.assertEquals(2, [SELECT COUNT() FROM Event_Invitee__c], 'two rows, not three');
+    }
+
+    /**
+     * ★R13 A rejection is not undone from this screen — not the approver's own and not
+     * somebody else's. The picker leaves the person out and the server refuses the id anyway.
+     */
+    @IsTest
+    static void aRejectedInviteeIsNeitherOfferedNorAddable() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter'), attendeeId('Kim') });
+
+        Test.startTest();
+        System.runAs(findUser('apowner')) {
+            InviteeApprovalController.decide(theEvent().Id, new List<Id>{ inviteeFor('Carter') }, false, 'No');
+        }
+        Test.stopTest();
+        System.assertEquals('Rejected', inviteesByLastName().get('Carter').Status__c, 'fixture check');
+
+        Boolean threw = false;
+        System.runAs(findUser('apowner')) {
+            System.assertEquals(
+                false,
+                addableIds(theEvent().Id).contains(attendeeId('Carter')),
+                'a rejected person is not offered back to an approver'
+            );
+            try {
+                InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Carter') });
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+        System.assertEquals(true, threw, 'the server refuses the id even so');
+        System.assertEquals('Rejected', inviteesByLastName().get('Carter').Status__c, 'and the decision stands');
+    }
+
+    /**
+     * ★R13 A guest who belongs to no customer cannot be added, for the same reason an AM
+     * cannot submit one: there is no Account Owner to start the chain. The batch refuses
+     * whole, which is the half of this worth asserting — the routable row must not survive.
+     */
+    @IsTest
+    static void aGuestWithNoCustomerRefusesTheWholeAdd() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        Boolean threw = false;
+        System.runAs(findUser('apowner')) {
+            try {
+                InviteeApprovalController.addInvitees(
+                    theEvent().Id,
+                    new List<Id>{ attendeeId('Kim'), attendeeId('Dubois') }
+                );
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+
+        System.assertEquals(true, threw, 'the whole batch is refused');
+        System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c], 'nothing was written, Kim included');
+    }
+
+    /** ★R13 An empty selection is a client bug, not a no-op — same rule as decide(). */
+    @IsTest
+    static void addingNothingIsRefused() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        Boolean threw = false;
+        System.runAs(findUser('apowner')) {
+            try {
+                InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>());
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+        System.assertEquals(true, threw, 'an empty selection is a client bug');
+    }
+
+    /**
+     * ★R13 The cap is refused before anything is read or written. The ids need not exist for
+     * that to be true, which is the point — the check is on the size of the request.
+     */
+    @IsTest
+    static void anAddOverTheCapIsRefusedBeforeAnyDml() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        // Distinct ids of the right sobject type, built rather than inserted: 201 attendees
+        // would be 201 rows of DML asserting nothing.
+        String prefix = String.valueOf(attendeeId('Carter')).substring(0, 3);
+        List<Id> tooMany = new List<Id>();
+        for (Integer i = 0; i <= InviteeApprovalController.MAX_PER_ADD; i++) {
+            tooMany.add(Id.valueOf(prefix + String.valueOf(100000000000L + i)));
+        }
+
+        Boolean threw = false;
+        System.runAs(findUser('apowner')) {
+            try {
+                InviteeApprovalController.addInvitees(theEvent().Id, tooMany);
+            } catch (AuraHandledException e) {
+                threw = true;
+            }
+        }
+        System.assertEquals(true, threw, 'refused on size alone');
+        System.assertEquals(1, [SELECT COUNT() FROM Event_Invitee__c], 'and nothing was added');
+    }
+
+    /** ★R13 The picker offers everybody not on the event, and drops them once they are. */
+    @IsTest
+    static void thePickerDropsPeopleAsTheyAreAdded() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        System.runAs(findUser('apowner')) {
+            InviteeApprovalController.AddableAttendees before = InviteeApprovalController.getAddableAttendees(
+                theEvent().Id
+            );
+            System.assertEquals(true, before.canAdd, 'they approve something here');
+            System.assertEquals(4, before.attendees.size(), 'five attendees, one already invited');
+            System.assertEquals(false, before.truncated, 'five attendees is nowhere near the cap');
+            System.assertEquals(AttendeePicker.CAP, before.cap, 'and the cap is reported either way');
+
+            InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+
+            System.assertEquals(
+                false,
+                addableIds(theEvent().Id).contains(attendeeId('Kim')),
+                'and the person just added is gone from it'
+            );
+        }
+    }
+
+    /**
+     * ★R13 The invariant, again, on the one code path in this repo that both reads the org's
+     * customer data and writes records: adding an invitee touches no Account, Contact, Lead or
+     * User. See CLAUDE.md — this is asserted rather than intended.
+     */
+    @IsTest
+    static void addingAsAnApproverNeverWritesToTheOrgsOwnData() {
+        submitAs(findUser('apalex'), new List<Id>{ attendeeId('Carter') });
+
+        Map<Id, Account> accountsBefore = new Map<Id, Account>(
+            [SELECT Id, Name, OwnerId, LastModifiedDate FROM Account]
+        );
+        Map<Id, Contact> contactsBefore = new Map<Id, Contact>([SELECT Id, AccountId, LastModifiedDate FROM Contact]);
+        Map<Id, User> usersBefore = new Map<Id, User>(
+            [SELECT Id, ManagerId, Title, LastModifiedDate FROM User WHERE Alias LIKE 'ap%']
+        );
+
+        System.runAs(findUser('apowner')) {
+            InviteeApprovalController.addInvitees(theEvent().Id, new List<Id>{ attendeeId('Kim') });
+        }
+
+        for (Account a : [SELECT Id, Name, OwnerId, LastModifiedDate FROM Account]) {
+            System.assertEquals(accountsBefore.get(a.Id).LastModifiedDate, a.LastModifiedDate, 'Account untouched');
+            System.assertEquals(accountsBefore.get(a.Id).OwnerId, a.OwnerId, 'and its owner is unchanged');
+        }
+        for (Contact c : [SELECT Id, AccountId, LastModifiedDate FROM Contact]) {
+            System.assertEquals(contactsBefore.get(c.Id).LastModifiedDate, c.LastModifiedDate, 'Contact untouched');
+        }
+        for (User u : [SELECT Id, ManagerId, Title, LastModifiedDate FROM User WHERE Alias LIKE 'ap%']) {
+            System.assertEquals(usersBefore.get(u.Id).LastModifiedDate, u.LastModifiedDate, 'User untouched');
+        }
+        System.assertEquals(0, [SELECT COUNT() FROM Lead], 'and no Lead was invented');
+    }
 }

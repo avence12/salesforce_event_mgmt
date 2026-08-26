@@ -44,3 +44,15 @@
 .col-select {
     width: 2.5rem;
 }
+
+/* ★R13 The add panel is deliberately quiet and folded away. Deciding what is in front of you
+   is this screen's job; adding to it is the second thought, and a permanently open picker
+   under every company would compete with the decision for attention on a small screen. */
+.add-panel {
+    border-color: var(--slds-g-color-neutral-base-80, #c9c9c9);
+}
+
+.more-matches,
+.hidden-selected {
+    font-style: italic;
+}

@@ -1,4 +1,4 @@
-# Business Process — as built (R9), with the multi-level approval chain
+# Business Process — as built (R13), with the multi-level approval chain and the approver-side add
 
 The end-to-end flow of the PoC after R3 (standard Approval Process + standard Reports), R4 (the
 import stopped writing to Contact) and **R5** (it stopped reading standard objects altogether —
@@ -25,7 +25,7 @@ forward the attendee list — which leaves approving to somebody else.
 | Role | Owns |
 |---|---|
 | **BMD** | Steps 1–4 and 7 — import the list, create the event, propose the invitees, submit them, export the approved result |
-| **AM** | Step 5, level 1 — the **Account Owner** of the customer that invitee belongs to |
+| **AM** | Step 5, level 1 — the **Account Owner** of the customer that invitee belongs to. ★R13 also step 4½: an approver at any level can add somebody the proposed list is missing |
 | **Their manager** | Step 5, level 2 — reached by `User.ManagerId` |
 | **Regional head** | Step 5, wherever in that line they first appear — they sign, and the chain stops rather than climbing past them |
 | *further levels* | Step 5 — up to five, and reaching them is a setting rather than a deploy |
@@ -55,9 +55,12 @@ and stamps every level's approver onto the row at once. The chain then runs in o
 must agree; any level's rejection ends it. ★R8 Approvers decide from **Approvals by
 Company** on the event page — their pending invitees grouped by the company each was invited as,
 so one tick selects a whole company and one button decides it — or from the standard Approvals
-list on desktop or the mobile app, which still works but cannot group by company. When a batch
-has no pending rows left, its submitter is notified, and the approved list is read and exported
-from standard reports.
+list on desktop or the mobile app, which still works but cannot group by company. ★R13 An
+approver reading that list can also **add** to it: anybody in the attendee pool who is not already
+on the event, submitted on the spot into the ordinary chain from their own customer's Account
+Owner upward, so an addition collects the same signatures a BMD user's proposal would. When a
+batch has no pending rows left, its submitter is notified, and the approved list is read and
+exported from standard reports.
 
 ## Flow diagram
 
@@ -143,6 +146,10 @@ flowchart TD
         P1["Level N approver opens the bell or email link,<br/>then Approvals by Company on the event page —<br/>R8, one tick per company, per-person veto kept.<br/>The standard Approvals list still works too"]:::approver
         P2["Mass-select the pending items"]:::approver
         P3{"Approve or reject?"}:::approver
+        PADD["R13 · or add somebody the list is missing:<br/>pick from the imported attendees, and they are<br/>submitted on the spot into the ordinary chain<br/>from their own customer's Account Owner upward"]:::approver
+        PADDR{"Is the adder level 1<br/>on the new row?"}:::system
+        PMINE["It appears in their own list above —<br/>they tick it like any other. Every level<br/>above them still has to sign"]:::approver
+        POTHER["It goes to that customer's owner,<br/>who is notified. The adder only added"]:::system
         PN{"Any level left<br/>above this one?"}:::system
         NOTIFY["Step approval action advances Current_Level__c<br/>→ flow Invitee_Level_Advanced → one aggregated<br/>notice per approver per event. Without it the<br/>regional head would never be told at all"]:::system
         P4["Status → Approved<br/>Decided_At__c stamped · everyone agreed"]:::system
@@ -151,6 +158,9 @@ flowchart TD
 
         P0 -- no --> PSKIP --> PN
         P0 -- yes --> P1 --> P2 --> P3
+        P1 -.-> PADD --> PADDR
+        PADDR -- yes --> PMINE -.-> P2
+        PADDR -- no --> POTHER
         P3 -- approve --> PN
         P3 -- reject --> P5 -.-> P6
         PN -- "yes — level N+1" --> NOTIFY -.-> P0
@@ -220,6 +230,14 @@ see, or a chain that reaches only the submitter each fail the whole submit with 
 Falling back to the submitter's manager was considered and rejected: it converts a data-quality
 problem into a silently weaker approval, which is the exact failure the workflow exists to
 prevent.
+
+★R13 **An approver adding somebody is a proposal, not a decision.** The row routes from the
+added person's own Account Owner upward and is stamped with the whole chain like any other, so
+the only thing the approver's involvement changes is who is recorded in `Added_By__c`. Where the
+adder happens to be level 1 they approve it themselves on the next tick — every level above them
+still signs, so nothing is skipped — and where they are not, it lands in another approver's queue
+and they are told. The one thing the add panel deliberately cannot do is bring back a **rejected**
+invitee: that stays the BMD user's re-add on Screen 3, where it is visible as a fresh proposal.
 
 **Nothing scopes the attendee pool.** `getSelectableAttendees` filters only on "not already
 invited to this event". Any user who can reach the selector can propose anybody in the org's pool.

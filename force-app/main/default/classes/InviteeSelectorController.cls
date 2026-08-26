@@ -35,29 +35,6 @@
  * — this class resolves who approves, the process owns the status from there.
  */
 public with sharing class InviteeSelectorController {
-    public class SelectableAttendee {
-        @AuraEnabled
-        public Id attendeeId { get; set; }
-        @AuraEnabled
-        public String name { get; set; }
-        @AuraEnabled
-        public String title { get; set; }
-        @AuraEnabled
-        public String email { get; set; }
-        @AuraEnabled
-        public String company { get; set; }
-    }
-
-    /** Wrapper so a truncated list can say so — a silently short list reads as "that's everyone". */
-    public class SelectableResult {
-        @AuraEnabled
-        public List<SelectableAttendee> attendees { get; set; }
-        @AuraEnabled
-        public Boolean truncated { get; set; }
-        @AuraEnabled
-        public Integer cap { get; set; }
-    }
-
     public class InviteeRow {
         @AuraEnabled
         public Id inviteeId { get; set; }
@@ -101,45 +78,22 @@ public with sharing class InviteeSelectorController {
         public Integer levels { get; set; }
     }
 
-    /** Most attendees the selector will hand back in one call. */
-    public static final Integer ATTENDEE_CAP = 2000;
+    /**
+     * Most attendees the selector will hand back in one call.
+     *
+     * ★R13 The number lives on AttendeePicker now, which is the class that enforces it. Kept
+     * here as the name Screen 3 and its tests already know it by.
+     */
+    public static final Integer ATTENDEE_CAP = AttendeePicker.CAP;
 
+    /**
+     * ★R13 The query moved to AttendeePicker when Screen 4b grew a picker of its own. What is
+     * left here is which of its two questions Screen 3 asks: the AM's, in which a rejected
+     * invitee reappears and re-adding one resets the existing row.
+     */
     @AuraEnabled(cacheable=true)
-    public static SelectableResult getSelectableAttendees(Id eventId) {
-        SelectableResult res = new SelectableResult();
-        res.attendees = new List<SelectableAttendee>();
-        res.truncated = false;
-        res.cap = ATTENDEE_CAP;
-
-        Set<Id> blocked = blockedAttendeeIds(eventId);
-
-        // One row past the cap: if it comes back, there are more than we are showing.
-        Integer probe = ATTENDEE_CAP + 1;
-        List<Event_Attendee__c> found = [
-            SELECT Id, Name, Title__c, Email__c, Company__c
-            FROM Event_Attendee__c
-            WHERE Id NOT IN :blocked
-            ORDER BY Company__c, Name
-            LIMIT :probe
-        ];
-        if (found.size() > ATTENDEE_CAP) {
-            res.truncated = true;
-            found.remove(ATTENDEE_CAP); // drop the probe row
-        }
-
-        for (Event_Attendee__c a : found) {
-            SelectableAttendee sa = new SelectableAttendee();
-            sa.attendeeId = a.Id;
-            sa.name = a.Name;
-            sa.title = a.Title__c;
-            sa.email = a.Email__c;
-            // Grouping key is the Company *text*: two spellings of one organisation
-            // group separately, which is accepted for the PoC — there is no record
-            // to key on, by design.
-            sa.company = a.Company__c;
-            res.attendees.add(sa);
-        }
-        return res;
+    public static AttendeePicker.Page getSelectableAttendees(Id eventId) {
+        return AttendeePicker.selectable(eventId);
     }
 
     @AuraEnabled
@@ -407,21 +361,6 @@ public with sharing class InviteeSelectorController {
     }
 
     // ---------- internals ----------
-
-    /** Attendees already on the event, unless their row is Rejected — those reappear. */
-    private static Set<Id> blockedAttendeeIds(Id eventId) {
-        Set<Id> ids = new Set<Id>();
-        for (Event_Invitee__c inv : [
-            SELECT Event_Attendee__c
-            FROM Event_Invitee__c
-            WHERE Marketing_Event__c = :eventId AND Status__c != 'Rejected'
-        ]) {
-            if (inv.Event_Attendee__c != null) {
-                ids.add(inv.Event_Attendee__c);
-            }
-        }
-        return ids;
-    }
 
     /**
      * ★R8 Freezes onto the invitee what was true of this person, and of the customer they
