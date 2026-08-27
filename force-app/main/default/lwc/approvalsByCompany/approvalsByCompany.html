@@ -145,6 +145,102 @@
                     approval routes to you.
                 </p>
             </template>
+
+            <!-- ============ ★R13 ADD INVITEES ============ -->
+            <template lwc:if={canAdd}>
+                <div class="add-panel slds-m-top_medium slds-border_top slds-p-top_small">
+                    <lightning-button
+                        class="add-toggle"
+                        label={addPanelLabel}
+                        variant="base"
+                        icon-name={addPanelIcon}
+                        onclick={handleToggleAddPanel}
+                    ></lightning-button>
+
+                    <template lwc:if={addOpen}>
+                        <p class="slds-text-body_small slds-text-color_weak slds-m-vertical_x-small">
+                            Somebody missing from this list? Search the imported attendees and add them. They are
+                            submitted straight away and approved the same way as anyone else — starting with the account
+                            manager who owns their customer — so an addition of yours still collects every signature it
+                            would have collected had an AM proposed it.
+                        </p>
+
+                        <lightning-input
+                            class="add-search"
+                            type="search"
+                            label="Search name / organisation / email"
+                            value={addSearch}
+                            onchange={handleAddSearch}
+                        ></lightning-input>
+
+                        <template lwc:if={addTruncated}>
+                            <div
+                                class="slds-box slds-box_x-small slds-theme_warning slds-m-top_x-small slds-text-body_small"
+                                role="status"
+                            >
+                                {addTruncationNote}
+                            </div>
+                        </template>
+
+                        <template lwc:if={hasAddRows}>
+                            <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_x-small">
+                                <thead class="slds-assistive-text">
+                                    <tr>
+                                        <th scope="col">Select</th>
+                                        <th scope="col">Attendee</th>
+                                        <th scope="col">Organisation</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={addRows} for:item="a">
+                                        <tr key={a.attendeeId}>
+                                            <td class="col-select">
+                                                <input
+                                                    type="checkbox"
+                                                    data-attendee={a.attendeeId}
+                                                    checked={a.selected}
+                                                    onchange={handleAddToggle}
+                                                />
+                                            </td>
+                                            <td>
+                                                <span>{a.name}</span>
+                                                <div class="slds-text-body_small slds-text-color_weak">{a.title}</div>
+                                            </td>
+                                            <td class="slds-text-body_small">{a.company}</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </template>
+                        <template lwc:else>
+                            <p class="slds-text-body_small slds-text-color_weak slds-p-vertical_small no-matches">
+                                No attendee matches that search. Everyone already on this event is left out of it,
+                                including anyone whose invitation was rejected — only the AM who proposed them can put
+                                those forward again.
+                            </p>
+                        </template>
+
+                        <template lwc:if={hasMoreMatches}>
+                            <p class="slds-text-body_small slds-text-color_weak more-matches">{moreMatchesNote}</p>
+                        </template>
+                        <template lwc:if={hasHiddenAddSelected}>
+                            <p class="slds-text-body_small slds-text-color_weak hidden-selected">
+                                {hiddenAddSelectedNote}
+                            </p>
+                        </template>
+
+                        <div class="slds-m-top_small">
+                            <lightning-button
+                                class="add-submit"
+                                label={addSubmitLabel}
+                                variant="brand"
+                                disabled={addSubmitDisabled}
+                                onclick={handleAddSubmit}
+                            ></lightning-button>
+                        </div>
+                    </template>
+                </div>
+            </template>
         </div>
     </lightning-card>
 </template>

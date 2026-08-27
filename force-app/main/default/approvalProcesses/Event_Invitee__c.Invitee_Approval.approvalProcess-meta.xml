@@ -6,9 +6,15 @@
     <description>Screen 4. Replaces the approvalConsole LWC and ApprovalConsoleController. ★R9 Routing is a chain rather than a person: five pre-provisioned steps, each addressed to its own Approver_N__c Related User Field and gated on that field being populated, so a chain shorter than five simply skips the steps it does not use. ApprovalChainService resolves the chain at submit time — Account Owner, their manager, that manager&apos;s manager, ending at the first Regional Head — and freezes it onto the record, because an approval process can only address a stored User lookup and because a reorganisation mid-approval must not reroute an item somebody is already looking at.</description>
 
     <!--
-      No entryCriteria: submission is always explicit, from Screen 3, and the submitting
-      Apex has already checked ownership, resolved the chain and stamped Submitted_At__c.
-      A duplicate entry test here would only be able to repeat that less precisely.
+      No entryCriteria: submission is always explicit, and the submitting Apex has already
+      checked ownership, resolved the chain and stamped Submitted_At__c. A duplicate entry
+      test here would only be able to repeat that less precisely.
+
+      ★R13 There are two such callers now rather than one. Screen 3 submits an AM's own Draft
+      rows; Screen 4b submits rows an approver has just created, in the same transaction that
+      creates them. Both resolve the chain before writing anything, so what reaches this
+      process is identical either way — which is the reason the second caller needed no change
+      here at all.
     -->
 
     <allowRecall>true</allowRecall>

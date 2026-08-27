@@ -65,6 +65,34 @@ public with sharing class ApprovalChainService {
      * Account Owner rather than once per row.
      */
     public static Map<Id, List<Id>> resolve(List<Event_Invitee__c> invitees, Id submitterId) {
+        Map<Id, List<Id>> chainBySeed = resolveBySeed(invitees, submitterId);
+
+        Map<Id, List<Id>> out = new Map<Id, List<Id>>();
+        for (Event_Invitee__c inv : invitees) {
+            out.put(inv.Id, chainBySeed.get(inv.Account_Manager__c));
+        }
+        return out;
+    }
+
+    /**
+     * ★R13 The same walk, keyed by the Account Owner it started from rather than by the
+     * invitee's Id.
+     *
+     * It exists because R13 resolves a chain for rows that **do not exist yet** — an approver
+     * adding people from Screen 4b stamps the chain before the insert, so that a batch which
+     * cannot be routed writes nothing at all rather than leaving Draft rows behind. An
+     * unsaved row has no Id to key on, and two of them would collide on null.
+     *
+     * The caller maps each row back through its own Account_Manager__c, which is what
+     * resolve() does one line further down. Nothing else differs: same validation, same walk,
+     * same refusals.
+     *
+     * `submitterId` may be null, meaning **drop nobody**. That is not a convenience — see the
+     * note on the exclusion inside walkFrom. An approver adding a person is not submitting
+     * somebody else's proposal, so there is no submitter to exclude, and their own rung of the
+     * chain is one they should be asked for rather than one the act of adding skips.
+     */
+    public static Map<Id, List<Id>> resolveBySeed(List<Event_Invitee__c> invitees, Id submitterId) {
         List<String> noOwner = new List<String>();
         Set<Id> seeds = new Set<Id>();
         for (Event_Invitee__c inv : invitees) {
@@ -86,13 +114,7 @@ public with sharing class ApprovalChainService {
             );
         }
 
-        Map<Id, List<Id>> chainBySeed = walkFrom(seeds, submitterId);
-
-        Map<Id, List<Id>> out = new Map<Id, List<Id>>();
-        for (Event_Invitee__c inv : invitees) {
-            out.put(inv.Id, chainBySeed.get(inv.Account_Manager__c));
-        }
-        return out;
+        return walkFrom(seeds, submitterId);
     }
 
     /**

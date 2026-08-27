@@ -241,17 +241,70 @@ controller, which reports the skipped row rather than failing the batch, and onc
 DML that must be refused by the database. A guard that only exists in Apex is a guard that
 disappears the first time somebody uses Data Loader.
 
+Re-run after the R13 revision (the approver-side add on Screen 4b):
+
+```
+LWC tests      233 passing   (16 more — the add panel: who sees it, what it sends,
+                              and what the toast says about where each person went)
+ESLint         clean
+Prettier       clean
+PMD            no new violations — and this is the first run that actually happened
+Mutation       16/16 as expected (3 new mutants, see below)
+Apex tests     not run — needs an org
+LWC coverage   reported 0/0 by the gate in this environment; see below
+```
+
+**R13 — PMD ran for the first time, and the stale baseline above is now dealt with.** Every
+entry in this file until now says *not run — PMD is not installed in this environment*, and the
+note two sections up predicted what would happen when it finally was. It happened: against
+PMD 7.7.0 the branch point produced **170** findings where the pruned baseline recorded 55, for
+the reason that note gives — the 55 was "what survived a deletion", not what the code produces.
+The composition is the same debt the baseline already named: **138 `ApexAssertionsShouldIncludeMessage`**
+in the test classes, **24 `ApexCRUDViolation`**, and six complexity/debug findings.
+`scripts/quality/pmd-baseline.txt` has been re-recorded at 175, which is the honest number, and
+the gate is meaningful again — but it is now a *bigger* baseline, and the assertion-message debt
+in particular is worth burning down by somebody with an afternoon.
+
+**What R13 itself added to it: five `ApexCRUDViolation`, and nothing else.** Two in
+`AttendeePicker`, three in `InviteeAddition` — the same finding the existing controllers carry,
+from the same deliberate decision (Apex here does not enforce CRUD/FLS; see the FLS note in
+[README.md](README.md)). The new tests added **zero** assertion-message findings, because they
+were written with messages. PMD also caught something real on the way: inlining the whole
+add-and-submit sequence into `InviteeApprovalController` tripped `ExcessiveClassLength`,
+`NcssMethodCount` and both complexity rules at once. That is what produced `InviteeAddition` as a
+class of its own rather than a 120-line controller method — the thresholds were right and the
+first draft was wrong.
+
+**R13 — the three mutants worth having.** The expensive way for this feature to be wrong is not
+a broken picker. It is (1) the add panel rendering for somebody the server would refuse, which
+turns a clean permission boundary into an error message; (2) the toast losing the clause that
+says how many of the added rows are now waiting on *the adder*, which is how an approver ends up
+never approving their own addition; and (3) the 25-row display limit disappearing, which puts
+2,000 rows on a phone and hides the "more match" note. One mutant per failure, all three killed.
+
+**R13 — a gap this run found in the gate itself.** `npx sfdx-lwc-jest -- --coverage` reports
+`0/0` and `Unknown%` in this environment, so the coverage thresholds in `jest.config.js` pass
+without measuring anything — a green tick that means nothing. Re-running the same suite with
+Jest's **v8** coverage provider does collect, and reports `approvalsByCompany.js` at 97.6%
+statements with every uncovered line belonging to R8 code that predates this change. So the new
+code is covered; what is unverified is the *gate*, and the babel-provider instrumentation is
+what needs looking at. It is not changed here because the thresholds were calibrated against the
+babel numbers and swapping providers would move all four.
+
 ### Known gaps, stated plainly
 
 - **Apex has no local test layer.** Apex tests only run inside an org. Everything the gauntlet
   checks locally for Apex is static analysis. Run with `--org` before believing a change is safe.
-- **55 baselined PMD violations, and the count is not trustworthy right now.** PMD was adopted
-  against an existing codebase, so the gate is "no new violations" rather than zero. The baseline
-  is `scripts/quality/pmd-baseline.txt`. R5 pruned the 18 entries belonging to the deleted
-  `ContactImportController` and its test, but nothing has scanned the classes that replaced them
-  — so 55 is "what survived a deletion", not "what the code currently produces". Re-record it on
-  the first machine with PMD installed. The CRUD findings overlap the FLS gap already noted in
-  [README.md](README.md) — they are real, not noise, and worth burning down.
+- **★R13 175 baselined PMD violations, and the count is now trustworthy — which is worse news
+  than 55 was.** PMD was adopted against an existing codebase, so the gate is "no new violations"
+  rather than zero. R5 pruned the baseline to 55 and nothing scanned the classes that replaced
+  the deleted ones, so that number was "what survived a deletion". R13 is the first revision on
+  which PMD actually ran (7.7.0), and `scripts/quality/pmd-baseline.txt` is re-recorded from what
+  the code really produces. **138 of the 175 are `ApexAssertionsShouldIncludeMessage`** in the
+  four test classes — cheap to fix, one message at a time, and worth an afternoon. **29 are
+  `ApexCRUDViolation`**, which overlap the FLS gap noted in [README.md](README.md): those are
+  real, not noise. The remaining eight are complexity and debug findings in
+  `ApprovalChainService`, `AttendeeImportController` and `EventNotificationService`.
 - **No mutation testing for Apex.** No tool exists. Apex correctness rests on the two test classes
   and the org-side coverage bar.
 - **The declarative half of the workflow has no local test at all.** Since R3, approval routing

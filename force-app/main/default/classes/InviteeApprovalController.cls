@@ -30,6 +30,13 @@
  * ProcessInstanceWorkitem instead of comparing an approver field. A level-2 approver opening
  * this screen while level 1 still holds the row sees nothing, which is correct and is not
  * what a field comparison would have done.
+ *
+ * ★R13 The screen gained a second verb. An approver reviewing a company's list can now add
+ * people to the event from the imported attendee pool, and those people are submitted on the
+ * spot into the ordinary chain. Reviewing an invitation and noticing who is missing from it
+ * are the same act of judgement, and until R13 the second half of it had to be mailed to an
+ * AM. What did **not** change is who decides: an added invitee collects exactly the signatures
+ * it would have collected had an AM proposed it. InviteeAddition carries the argument in full.
  */
 public with sharing class InviteeApprovalController {
     /** One company's worth of pending work for the running user. */
@@ -288,5 +295,157 @@ public with sharing class InviteeApprovalController {
         // the approver with no way to tell which half went through.
         Approval.process(requests, true);
         return res;
+    }
+
+    // ---------- ★R13 adding people mid-review ----------
+
+    /**
+     * ★R13 The attendee picker on the approver's screen, plus the one thing the client cannot
+     * be trusted to work out: whether this user may add anybody here at all.
+     *
+     * The flag and the list travel together because they are one question. A component that
+     * asked "may I?" and "what can I pick?" separately would render a picker for a moment
+     * before finding out it should not have, and an AM looking at the event page would see the
+     * add controls flicker past on every load.
+     */
+    public class AddableAttendees {
+        /** True when the running user is an approver on this event — see isApproverOnEvent. */
+        @AuraEnabled
+        public Boolean canAdd { get; set; }
+        @AuraEnabled
+        public List<AttendeePicker.Attendee> attendees { get; set; }
+        @AuraEnabled
+        public Boolean truncated { get; set; }
+        @AuraEnabled
+        public Integer cap { get; set; }
+    }
+
+    /**
+     * ★R13 Most attendees one add may cover.
+     *
+     * The same number as MAX_PER_DECISION and for the same reason rather than by coincidence:
+     * adding submits, submitting is Approval.process, and Approval.process is DML.
+     */
+    public static final Integer MAX_PER_ADD = MAX_PER_DECISION;
+
+    /**
+     * ★R13 Attendees the running user could still put forward on this event.
+     *
+     * Deliberately the whole attendee pool and not just the companies they have pending work
+     * on. The case that motivated the feature — an approver reading a company's list and
+     * noticing the one person missing from it — is served by either, but scoping to pending
+     * companies would silently forbid the next case along, where the person who should also be
+     * invited works somewhere else entirely. The chain is resolved from *that person's*
+     * customer, so a wider picker cannot route anything anywhere it should not go.
+     *
+     * A rejected invitee is **not** offered here. See AttendeePicker.
+     */
+    @AuraEnabled(cacheable=true)
+    public static AddableAttendees getAddableAttendees(Id eventId) {
+        AddableAttendees res = new AddableAttendees();
+        res.canAdd = isApproverOnEvent(eventId);
+        res.attendees = new List<AttendeePicker.Attendee>();
+        res.truncated = false;
+        res.cap = AttendeePicker.CAP;
+        if (!res.canAdd) {
+            return res;
+        }
+
+        AttendeePicker.Page page = AttendeePicker.addable(eventId);
+        res.attendees = page.attendees;
+        res.truncated = page.truncated;
+        res.cap = page.cap;
+        return res;
+    }
+
+    /**
+     * ★R13 Adds attendees to this event as an approver, and submits them in the same breath.
+     *
+     * The controller owns the two things a controller should: **may this user do it here**, and
+     * **is the request a sane size**. Everything after that — what to create, how it routes, in
+     * what order it is written — is InviteeAddition, which is also where the argument for each
+     * of those decisions is written down.
+     */
+    @AuraEnabled
+    public static InviteeAddition.Result addInvitees(Id eventId, List<Id> attendeeIds) {
+        if (attendeeIds == null || attendeeIds.isEmpty()) {
+            throw new AuraHandledException('No attendees selected.');
+        }
+        // The client is never asked whether the user is an approver, for the same reason
+        // decide() re-scopes its ids server-side: the answer is not the client's to give.
+        if (!isApproverOnEvent(eventId)) {
+            throw new AuraHandledException(
+                'You are not an approver on this event, so you cannot add invitees to it. ' +
+                'Ask the account manager running the event to add them. Nothing was changed.'
+            );
+        }
+
+        Set<Id> wanted = new Set<Id>(attendeeIds);
+        if (wanted.size() > MAX_PER_ADD) {
+            throw new AuraHandledException(
+                'Too many attendees in one action: ' +
+                    wanted.size() +
+                    ' selected, ' +
+                    MAX_PER_ADD +
+                    ' is the maximum. Add them in smaller batches. Nothing was added.'
+            );
+        }
+
+        try {
+            return InviteeAddition.addAndSubmit(eventId, wanted);
+        } catch (InviteeAddition.RefusedException e) {
+            // Re-thrown rather than handled: the service's messages already name the cause and
+            // the remedy, and it refuses before writing anything.
+            throw new AuraHandledException(e.getMessage());
+        } catch (ApprovalChainService.UnroutableException e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    /**
+     * ★R13 May this user add invitees to this event?
+     *
+     * "Yes if they approve something on it" — which is two questions, because being an
+     * approver is recorded in two places and neither one alone is the whole answer:
+     *
+     *   - **Named in a chain**, in any status. This is the ordinary case, and it deliberately
+     *     survives the decision: an approver who has just approved a company and then thinks of
+     *     one more person can still add them. Tying the right to a *pending* work item would
+     *     take the feature away at the exact moment it is most likely to be wanted.
+     *   - **Holding a work item without being named.** A delegated approver acts on somebody
+     *     else's behalf and appears in no Approver_N__c field. They can decide, so they can add.
+     *
+     * What this is not is a check that the user holds Event_Approver. Somebody with the
+     * permission set and no involvement in this event gets nothing here, which is the point.
+     */
+    private static Boolean isApproverOnEvent(Id eventId) {
+        Id me = UserInfo.getUserId();
+
+        Integer named = [
+            SELECT COUNT()
+            FROM Event_Invitee__c
+            WHERE
+                Marketing_Event__c = :eventId
+                AND (Approver_1__c = :me
+                OR Approver_2__c = :me
+                OR Approver_3__c = :me
+                OR Approver_4__c = :me
+                OR Approver_5__c = :me)
+            LIMIT 1
+        ];
+        if (named > 0) {
+            return true;
+        }
+
+        Set<Id> pending = new Set<Id>();
+        for (Event_Invitee__c inv : [
+            SELECT Id
+            FROM Event_Invitee__c
+            WHERE Marketing_Event__c = :eventId AND Status__c = 'Pending Approval'
+            LIMIT :PENDING_CAP
+        ]) {
+            pending.add(inv.Id);
+        }
+        return !assignedToMe(pending).isEmpty();
     }
 }

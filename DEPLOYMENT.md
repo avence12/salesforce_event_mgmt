@@ -213,13 +213,33 @@ rather than inherit from a `git push`.
    meant one column read oddly. Under R12 it is half of a matching key, so a wrong guess means
    **nothing matches at all** — every attendee imports unlinked and every invitee falls back to
    free-text company, quietly and with no error.
-9. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
+9. **★R13 Verify that an approver can actually add an invitee** — the one new thing in this
+   revision that this repo cannot prove from outside an org. *Approvals by Company* now lets an
+   approver add people from the imported attendee pool and submits them on the spot;
+   `Event_Approver` gains **Create** on `Event_Invitee__c` for it (and no Edit — the set still
+   grants nothing on any standard object). What is unverified is the master-detail rule:
+   `Event_Invitee__c.Marketing_Event__c` has *Sharing Setting = Read/Write*
+   (`writeRequiresMasterRead` = `false`), so creating an invitee needs read/write access to the
+   parent event. The event's org-wide default is Public Read/Write and the Apex is
+   `with sharing`, which should satisfy it — but approvers hold object-level **Read** on
+   Marketing Event, and whether the platform weighs that in the same check is not something this
+   repo can answer.
+   **Test it once, as a real approver**, on an event they approve something on: open the card,
+   *Add invitees from the attendee list*, pick somebody, *Add and submit*.
+   - It works → nothing to do.
+   - It fails with `INSUFFICIENT_ACCESS` → set **Sharing Setting = Read Only** on that
+     master-detail field (Setup → Object Manager → Event Invitee → Fields → Marketing Event, or
+     `writeRequiresMasterRead` = `true` in the metadata). "Read the event, write its invitees" is
+     the sentence the permission set is trying to express anyway.
+   - **Do not fix it by granting approvers Edit on Marketing Event.** That works and is wrong: it
+     lets them edit the event itself.
+10. **★R8 Optional — hide the approval component from users who never approve.** *Approvals by
     Company* ships on the Marketing Event record page above the attendee selector. An AM who is
     nobody's approver sees it in its empty state, which is one line of text rather than an empty
     table. If that is unwanted, add a component visibility filter on the page or assign a
     second record page by profile. Both change how your org's pages are laid out, so neither is
     deployed from here.
-10. **★R9 Create the non-customer-guest Account, and reconcile the guests behind it** —
+11. **★R9 Create the non-customer-guest Account, and reconcile the guests behind it** —
     required before any such guest can be submitted, and a decision only the business can make.
     Professors, journalists and anyone else who is nobody's customer reach no Account Owner and
     therefore have no approval chain; the submit refuses them by design rather than routing them
@@ -259,7 +279,7 @@ rather than inherit from a `git push`.
        -- confirms the bucket Account resolves to a level-1 owner
        SELECT Id, Name, OwnerId FROM Account WHERE Name LIKE 'ZZ Non-Customer Guests%'
        ```
-11. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
+12. **★R9 Verify the chain in the org before demonstrating it**, because two pieces of it cannot
     be verified from the repo:
     - **A short chain must finish where it ends.** Submit an invitee whose chain has two levels
       and confirm that approving both marks it Approved — the third step is skipped because
@@ -269,7 +289,7 @@ rather than inherit from a `git push`.
       bell. That notification comes from a step approval action updating `Current_Level__c`,
       which fires the `Invitee_Level_Advanced` flow. If the chain of events does not hold, the
       symptom is silence: the item sits in their Approvals list unannounced.
-12. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
+13. Demo import file: `demo-data/FinTech_Summit_2026_Attendees.csv`. Follow the demo script in [README.md](README.md).
 
 ---
 

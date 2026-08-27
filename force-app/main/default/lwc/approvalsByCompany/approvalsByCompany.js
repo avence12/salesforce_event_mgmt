@@ -3,6 +3,18 @@ import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getMyPendingByCompany from '@salesforce/apex/InviteeApprovalController.getMyPendingByCompany';
 import decide from '@salesforce/apex/InviteeApprovalController.decide';
+import getAddableAttendees from '@salesforce/apex/InviteeApprovalController.getAddableAttendees';
+import addInvitees from '@salesforce/apex/InviteeApprovalController.addInvitees';
+
+/**
+ * ★R13 How many matching attendees the add panel puts on screen at once.
+ *
+ * The server will hand back up to 2,000. Rendering them would be the wrong shape for this
+ * screen: an approver adding somebody has a person in mind and types their name, where an AM
+ * building a guest list browses. A short list plus an honest "N more match" is a better answer
+ * on a phone than a wall of rows, and it is the same 2,000-row truncation notice one level in.
+ */
+const MAX_VISIBLE_MATCHES = 25;
 
 /**
  * ★R8 Screen 4b — the approver's side of the Marketing Event page.
@@ -14,6 +26,13 @@ import decide from '@salesforce/apex/InviteeApprovalController.decide';
  *
  * Nothing starts selected for the same reason. Pre-ticking every row would make "approve
  * everyone" the path of least resistance, which is the opposite of what an approval is for.
+ *
+ * ★R13 The panel at the bottom adds people. It is folded away until asked for, and it renders
+ * at all only when the server says this user approves something on this event — an AM looking
+ * at the same record page sees the empty state and no add controls. Adding submits immediately
+ * and says where each person went, because "added" and "waiting on you" are different news and
+ * a toast that ran them together would be the reason somebody never approved their own
+ * addition.
  */
 export default class ApprovalsByCompany extends LightningElement {
     @api recordId; // Marketing_Event__c
@@ -24,6 +43,16 @@ export default class ApprovalsByCompany extends LightningElement {
 
     wiredPending;
     groups = [];
+
+    // ★R13 add panel
+    @track addOpen = false;
+    @track addSearch = '';
+    @track addSelectedIds = new Set();
+    @track canAdd = false;
+    @track addTruncated = false;
+    @track addCap = 0;
+    wiredAddable;
+    addable = [];
 
     @wire(getMyPendingByCompany, { eventId: '$recordId' })
     handlePending(result) {
@@ -39,6 +68,24 @@ export default class ApprovalsByCompany extends LightningElement {
                 if (live.has(id)) kept.add(id);
             });
             this.selectedIds = kept;
+        }
+    }
+
+    @wire(getAddableAttendees, { eventId: '$recordId' })
+    handleAddable(result) {
+        this.wiredAddable = result;
+        if (result.data) {
+            this.canAdd = result.data.canAdd;
+            this.addable = result.data.attendees || [];
+            this.addTruncated = result.data.truncated;
+            this.addCap = result.data.cap;
+            // Somebody added elsewhere since the last load must not stay ticked here.
+            const live = new Set(this.addable.map((a) => a.attendeeId));
+            const kept = new Set();
+            this.addSelectedIds.forEach((id) => {
+                if (live.has(id)) kept.add(id);
+            });
+            this.addSelectedIds = kept;
         }
     }
 
@@ -188,7 +235,132 @@ export default class ApprovalsByCompany extends LightningElement {
     }
 
     async reload() {
-        await refreshApex(this.wiredPending);
+        // ★R13 Both: adding changes what is pending *and* what is left to add, and a picker
+        // still offering somebody who is now an invitee is the next duplicate-add attempt.
+        await Promise.all([refreshApex(this.wiredPending), refreshApex(this.wiredAddable)]);
+    }
+
+    // ---------- ★R13 adding people mid-review ----------
+
+    get addPanelLabel() {
+        return this.addOpen ? 'Close' : 'Add invitees from the attendee list';
+    }
+    get addPanelIcon() {
+        return this.addOpen ? 'utility:chevronup' : 'utility:add';
+    }
+
+    /** Everything the search matches, before the display limit — the count the notes quote. */
+    get matchedAttendees() {
+        const needle = this.addSearch.trim().toLowerCase();
+        if (!needle) return this.addable;
+        return this.addable.filter(
+            (a) =>
+                (a.name || '').toLowerCase().includes(needle) ||
+                (a.title || '').toLowerCase().includes(needle) ||
+                (a.email || '').toLowerCase().includes(needle) ||
+                (a.company || '').toLowerCase().includes(needle)
+        );
+    }
+
+    get addRows() {
+        return this.matchedAttendees.slice(0, MAX_VISIBLE_MATCHES).map((a) => ({
+            ...a,
+            selected: this.addSelectedIds.has(a.attendeeId)
+        }));
+    }
+    get hasAddRows() {
+        return this.addRows.length > 0;
+    }
+
+    get moreMatches() {
+        return Math.max(this.matchedAttendees.length - MAX_VISIBLE_MATCHES, 0);
+    }
+    get hasMoreMatches() {
+        return this.moreMatches > 0;
+    }
+    get moreMatchesNote() {
+        return `${this.moreMatches} more attendee(s) match. Narrow the search to reach them.`;
+    }
+    get addTruncationNote() {
+        return `Only the first ${this.addCap} attendees were loaded — more have been imported. Search by name, organisation or email to reach the rest.`;
+    }
+
+    /**
+     * Ticks that the current search has scrolled out of view. Same rule as the AM's selector:
+     * a count disagreeing with the rows on screen is worse than a sentence saying why.
+     */
+    get hiddenAddSelectedCount() {
+        const visible = new Set(this.addRows.map((r) => r.attendeeId));
+        let hidden = 0;
+        this.addSelectedIds.forEach((id) => {
+            if (!visible.has(id)) hidden++;
+        });
+        return hidden;
+    }
+    get hasHiddenAddSelected() {
+        return this.hiddenAddSelectedCount > 0;
+    }
+    get hiddenAddSelectedNote() {
+        const n = this.hiddenAddSelectedCount;
+        return `${n} ticked attendee(s) are outside the current search and will still be added.`;
+    }
+
+    get addSubmitLabel() {
+        return `Add and submit (${this.addSelectedIds.size})`;
+    }
+    get addSubmitDisabled() {
+        return this.loading || this.addSelectedIds.size === 0;
+    }
+
+    handleToggleAddPanel() {
+        this.addOpen = !this.addOpen;
+    }
+    handleAddSearch(event) {
+        this.addSearch = event.target.value;
+    }
+    handleAddToggle(event) {
+        const next = new Set(this.addSelectedIds);
+        if (event.target.checked) next.add(event.target.dataset.attendee);
+        else next.delete(event.target.dataset.attendee);
+        this.addSelectedIds = next;
+    }
+
+    async handleAddSubmit() {
+        const attendeeIds = [...this.addSelectedIds];
+        if (!attendeeIds.length) return;
+        this.loading = true;
+        try {
+            const res = await addInvitees({ eventId: this.recordId, attendeeIds });
+            this.toast('Added', this.addOutcome(res), 'success');
+            this.addSelectedIds = new Set();
+            this.addSearch = '';
+            await this.reload();
+        } catch (e) {
+            this.toast('Nothing was added', this.messageOf(e), 'error');
+        } finally {
+            this.loading = false;
+        }
+    }
+
+    /**
+     * Where each added person went. Every clause is omitted when its number is zero, because
+     * the common case is one of them and a sentence listing three zeroes reads as a failure.
+     */
+    addOutcome(res) {
+        const mine = res.waitingOnMe
+            ? ` ${res.waitingOnMe} of them are waiting on you and are listed above.`
+            : '';
+        const others = res.approversNotified
+            ? ` ${res.approversNotified} other approver(s) were notified.`
+            : '';
+        const chain =
+            res.levels > 1
+                ? ` The longest chain is ${res.levels} levels — each one decides in turn.`
+                : '';
+        const skipped = res.skipped
+            ? ` ${res.skipped} were already on this event and were left alone.`
+            : '';
+        return `${res.added} attendee(s) added and submitted for approval.${mine}${others}${chain}${skipped}`;
     }
 
     messageOf(e) {

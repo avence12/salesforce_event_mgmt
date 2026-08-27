@@ -89,6 +89,33 @@ so plainly, and should not read as though it were upgrading a previous release.
   `design.md` are for things a business has to answer, not for things that can be looked up.
 - Verify rather than assert: run the tests, parse the mermaid, grep for stale references. Say
   explicitly what could not be verified here — Apex tests and any deploy need a real org.
+- **A UI change is not finished until `docs/wireframes.html` shows it.** That page is drawn from
+  the LWC templates as built, and it is the only artefact a non-developer reads to see what the
+  screens actually do — so a component that changed and a wireframe that did not is a document
+  that now lies. Treat it as part of the change, in the same commit, not as follow-up work.
+
+  What counts: anything a user could see or press. A new control, a changed label or empty
+  state, a new panel or tab, a rule about who sees what, a different toast. Not: refactors,
+  renamed variables, or Apex that leaves every rendered pixel where it was.
+
+  Three things that are easy to half-do:
+
+  - **Every view of the screen, not just the one you edited.** Most screens are drawn twice —
+    desktop and phone (`#s4b` and `#s4m`) — and there is a third gallery of empty and error
+    states at `#states`, plus the record-page composition inside Screen 3. Grep the component's
+    card title across the file and check each hit.
+  - **A control that is absent for a reason still has to be drawn as absent**, with a note
+    saying why. Otherwise the next reader files it as an omission and adds it back.
+  - **The notes under each drawing are the point**, more than the boxes. Each bullet should say
+    what the interaction decides and what it costs, in the same voice as the rest — a drawing
+    with no reasoning is a screenshot.
+
+  Then re-check the markup parses (the page has no build step, so a stray tag is only found by
+  looking), and keep to the existing CSS tokens and classes — no new colours, no `var(--brand)`
+  when the token is `--brand-50`.
+
+  `docs/screen-flow.png` is a **binary and cannot be regenerated here**. When a change makes it
+  stale, say so plainly in the summary rather than leaving it silently wrong.
 
 ## Commands
 

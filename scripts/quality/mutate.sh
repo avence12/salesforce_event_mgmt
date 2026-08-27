@@ -39,6 +39,14 @@ MUTANTS=(
   "$LWC/attendeeSelector/attendeeSelector.js|return this.invitees.filter((i) => i.canAttend).length;|return this.invitees.length;|attendance is counted against every invitee instead of the approved ones|kill"
   "$LWC/attendeeSelector/attendeeSelector.js|const notAttendedIds = this.invitees|const notAttendedIds = [];  const _unused = this.invitees|absence is inferred server-side instead of sent, which would silently clear everyone past the row cap|kill"
 
+  # ★R13 The approver-side add. The expensive way to be wrong here is not a
+  # broken picker — it is the panel appearing for somebody the server would
+  # refuse, or the toast losing the half that tells an approver their own
+  # addition is now waiting on them.
+  "$LWC/approvalsByCompany/approvalsByCompany.js|this.canAdd = result.data.canAdd;|this.canAdd = true;|the add panel renders for anyone, including an AM the server would refuse|kill"
+  "$LWC/approvalsByCompany/approvalsByCompany.js|const mine = res.waitingOnMe|const mine = false|the toast stops saying which added rows landed on the approver, so nobody approves their own addition|kill"
+  "$LWC/approvalsByCompany/approvalsByCompany.js|this.matchedAttendees.slice(0, MAX_VISIBLE_MATCHES)|this.matchedAttendees.slice(0)|the display limit is dropped, so 2,000 rows render and the \"more match\" note never appears|kill"
+
   # Equivalent: dropping the CRLF skip makes '\r' and '\n' two separate
   # terminators, but the empty row that produces is ['']  — which
   # `rows.filter(r => r.length > 1 || r[0] !== '')` at the end of parseCsv
